@@ -160,8 +160,12 @@ const app = new BedrockAgentCoreApp({
         let reply = llamaData.content || 'Desculpe, não consegui gerar uma resposta.';
 
         // Remove quais blocos de raciocínio remanescentes (defesa em profundidade)
+        // Qwen3-2B pode envolver thinking em blocos de codigo markdown ou tags HTML
         reply = reply.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '');
         reply = reply.replace(/<\/thinking>/gi, '');
+        reply = reply.replace(/```[\s\S]*?Thinking Process:[\s\S]*$/gi, '');
+        reply = reply.replace(/Thinking Process:[\s\S]*$/gi, '');
+        reply = reply.replace(/```[\s\S]*$/gi, '');
         reply = reply.replace(/<think>[\s\S]*?<\/think>/gi, '');
         reply = reply.replace(/<\/think>/gi, '');
         reply = reply.replace(/<思考>[\s\S]*?<\/思考>/gi, '');
