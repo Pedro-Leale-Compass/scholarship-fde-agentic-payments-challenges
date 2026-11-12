@@ -44,34 +44,38 @@ Região: `us-east-1`. Prefixo dos recursos: `luiz-henrique`.
 
 **Fluxo local dev vs remoto:**
 
-**Local (sem AWS):**
-- `cd agent && npm install` → `npm run dev` (roda `BedrockAgentCoreApp` na porta 3000)
-- As tools usam stubs quando `AWS_PROFILE=local` ou `LOCAL_DEV=true`
-- Testa o agente diretamente contra o servidor local
-- Não precisa de Docker, ECR, ou credenciais AWS
+**Local (sem AWS, usa llama.cpp na porta 1203):**
+- `cd agent && npm install && npm run dev` → BedrockAgentCoreApp na porta 3031
+- `cd api/local && npm install && npm run dev` → API na porta 3032 (JWT mock + invoke Agent)
+- `cd frontend && NEXT_PUBLIC_API_URL=http://localhost:3032 npm run dev -- -p 3033` → frontend na porta 3033
+- Script único: `scripts/local-dev-setup.sh` inicia todos os serviços
+- JWT mock (assinatura não verificada) — apenas o `sub` é lido pela API
+- Não precisa de Docker, ECR, AgentCore Runtime da AWS, ou credenciais AWS
 
 **Remoto (AWS):**
 - `cd agent && docker build -t <ecr-uri>:latest . && docker push <ecr-uri>:latest`
 - `cd infra && cdk deploy --require-approval never` (cria AgentCore Runtime via CfnResource)
 - API Lambda chama `InvokeAgentRuntime` no ARN do runtime
-- Custos: ECR storage + AgentCore Runtime compute (pague pelo que usar)
+- Custos: ECR storage + AgentCore Runtime compute
 
 **Nota:** não há L2 CDK construct para `AWS::BedrockAgentCore::AgentRuntime`, então usa-se `cloudformation.CfnResource` diretamente.
 
 ## 4. API (api/)
 
 - [x] API Gateway (REST) com autorizador JWT Cognito.
-- [x] Lambda do chat que chama o AgentCore Runtime via InvokeAgentRuntime (bedrock-agentcore-data-plane SDK).
+- [x] Lambda do chat que chama o AgentCore Runtime via InvokeAgentRuntime (bedrock-agentcore SDK).
 - [x] `usuario_id` vem do `sub` do token Cognito, nunca do corpo nem do modelo.
 - [x] Resposta `401` sem token válido.
 - [ ] CORS aceita apenas o domínio do CloudFront.
 
-**Registro de usuários:** Cognito User Pool com `AllowAdminCreateUserOnly` (sem auto cadastro). Usuários são criados por admin via `admin-create-user`. Para testes locais, usar `scripts/local-test-setup.sh` que cria pool, cliente, usuário e gera um JWT manual (assinatura não verificada pela API — apenas leitura do `sub` do payload).
+**Registro de usuários:** Cognito User Pool com `AllowAdminCreateUserOnly` (sem auto cadastro). Usuários são criados por admin via `admin-create-user`. Para testes locais, usar `scripts/local-dev-setup.sh` que inicia API com endpoint `/auth/token` gerando JWT mock (assinatura não verificada pela API — apenas leitura do `sub` do payload).
 
 ## 5. Frontend (frontend/)
 
-- [x] Chatbot com login Cognito e envio de JWT como Bearer token.
-- [x] Build e upload no bucket S3 privado (pendente deploy AWS).
+- [x] Chatbot com login Cognito (mock local: `scripts/local-dev-setup.sh` + `frontend/lib/mock-auth.ts`).
+- [x] Login com usuários mock: luiz.fsilva@... / Temp1234!, maria.silva@... / Temp1234!
+- [x] Chat conectado à API local via `NEXT_PUBLIC_API_URL=http://localhost:3032`.
+- [ ] Build e upload no bucket S3 privado (pendente deploy AWS).
 - [ ] Invalidação do CloudFront após upload.
 
 ## 6. Infraestrutura (infra/)
@@ -91,14 +95,16 @@ Região: `us-east-1`. Prefixo dos recursos: `luiz-henrique`.
 ## 7. Testes e evidências
 
 - [x] Tool Lambdas testadas localmente contra MiniStack (listar_catalogo, registrar_intencao, realizar_compra).
-- [x] Agente Strands com bedrock-agentcore SDK compila e roda localmente (`npm run dev`).
-- [ ] Teste end-to-end local: API Lambda → InvokeAgentRuntime → BedrockAgentCoreApp local.
-- [ ] Login com usuário válido (JWT obtido via Cognito).
-- [ ] Requisição sem token → `401`.
-- [ ] Compra com cartão de crédito.
-- [ ] Compra com Pix.
-- [ ] Tentativa de compra com limite excedido → rejeitada.
-- [ ] Compra com `intencao_id` inválido → erro.
+- [x] Agente Strands com bedrock-agentcore SDK roda localmente (porta 3031, llama.cpp).
+- [x] API local roda na porta 3032 (JWT mock + invoke AgentCore local).
+- [x] Frontend roda na porta 3033 (Authenticator mock + chat).
+- [x] Teste end-to-end local: frontend → API → Agent → llama.cpp (respostas em português).
+- [ ] Login com usuário válido via Cognito (produção AWS).
+- [ ] Requisição sem token → `401` (produção AWS).
+- [ ] Compra com cartão de crédito (produção AWS).
+- [ ] Compra com Pix (produção AWS).
+- [ ] Tentativa de compra com limite excedido → rejeitada (produção AWS).
+- [ ] Compra com `intencao_id` inválido → erro (produção AWS).
 - [ ] Capturar screenshots/logs de cada evidência para o `README.md`.
 
 ## 8. Deploy

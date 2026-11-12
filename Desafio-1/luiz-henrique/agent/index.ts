@@ -176,7 +176,7 @@ const app = new BedrockAgentCoreApp({
 });
 
 if (IS_LOCAL || process.env.NODE_ENV === 'development') {
-  app.run({ port: Number(process.env.PORT) || 3000 });
+  app.run({ port: Number(process.env.PORT) || 3031 });
 }
 
 export { app, agent };
