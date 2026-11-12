@@ -1,0 +1,20 @@
+{
+  "name": "desafio-1",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Desafio 1 - Agente de Pagamentos na AWS (luiz-henrique) - raiz do CDK",
+  "scripts": {
+    "build": "cd infra && npm run build",
+    "synth": "cdk synth",
+    "deploy:local": "cdk deploy --require-approval never",
+    "deploy:aws": "cdk deploy --require-approval never",
+    "diff": "cdk diff",
+    "destroy": "cdk destroy --force",
+    "test": "cd test && npm test"
+  },
+  "devDependencies": {
+    "aws-cdk": "2.160.0",
+    "tsx": "^4.23.0",
+    "typescript": "~5.5.0"
+  }
+}
