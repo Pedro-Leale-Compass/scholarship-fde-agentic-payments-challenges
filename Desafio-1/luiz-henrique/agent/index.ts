@@ -160,10 +160,13 @@ const app = new BedrockAgentCoreApp({
         let reply = llamaData.content || 'Desculpe, não consegui gerar uma resposta.';
 
         // Remove quais blocos de raciocínio remanescentes (defesa em profundidade)
-        reply = reply.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
-        reply = reply.replace(/<思考>[\s\S]*?<\/思考>/gi, '').trim();
-        reply = reply.replace(/<\/thinking>/gi, '').trim();
-        reply = reply.replace(/<\/思考>/gi, '').trim();
+        reply = reply.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '');
+        reply = reply.replace(/<\/thinking>/gi, '');
+        reply = reply.replace(/<think>[\s\S]*?<\/think>/gi, '');
+        reply = reply.replace(/<\/think>/gi, '');
+        reply = reply.replace(/<思考>[\s\S]*?<\/思考>/gi, '');
+        reply = reply.replace(/<\/思考>/gi, '');
+        reply = reply.trim();
 
         return { ok: true, usuario_id, reply, local: true, model: 'llama.cpp' };
       }
