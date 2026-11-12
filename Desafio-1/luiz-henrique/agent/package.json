@@ -2,14 +2,18 @@
   "name": "desafio-1-agent",
   "version": "0.1.0",
   "private": true,
-  "description": "Agente Strands Lambda para Desafio 1 - luiz-henrique",
+  "type": "module",
+  "description": "Agente Strands no AgentCore Runtime para Desafio 1 - luiz-henrique",
   "scripts": {
+    "dev": "node index.js",
     "build": "tsc",
     "lint": "eslint index.ts 2>/dev/null || true"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock-runtime": "^3.0.0",
-    "@aws-sdk/client-lambda": "^3.0.0"
+    "bedrock-agentcore": "^0.4.0",
+    "@strands-agents/sdk": "^1.0.0",
+    "@aws-sdk/client-lambda": "^3.0.0",
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

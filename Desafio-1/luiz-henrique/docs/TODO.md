@@ -37,12 +37,26 @@ Região: `us-east-1`. Prefixo dos recursos: `luiz-henrique`.
 - [x] Implementar agente Strands com as 3 tools acima (código em agent/index.ts)
 - [x] Modelo: Amazon Bedrock (Claude Haiku) via AgentCore Runtime (CDK: CfnAgentRuntime)
 - [x] Regras de negócio da Fase 1 inalteradas
-- [x] Container image no ECR (repositório criado via CDK; build/push pendente)
+- [x] Container image no ECR (repositório criado via CDK; Dockerfile em agent/)
 - [x] IAM role com permissões para Bedrock Converse + invoke das 3 tool Lambdas
 - [ ] Deploy do agente no Bedrock AgentCore Runtime (pendente AWS)
 - [ ] Build e push da imagem do container para ECR (pendente)
 
-**Nota sobre AgentCore Runtime:** não há L2 CDK construct para `AWS::BedrockAgentCore::AgentRuntime`, então usa-se `cloudformation.CfnResource` diretamente. O container image precisa ser built e pushed para o ECR repositório criado pelo CDK antes do deploy do runtime.
+**Fluxo local dev vs remoto:**
+
+**Local (sem AWS):**
+- `cd agent && npm install` → `npm run dev` (roda `BedrockAgentCoreApp` na porta 3000)
+- As tools usam stubs quando `AWS_PROFILE=local` ou `LOCAL_DEV=true`
+- Testa o agente diretamente contra o servidor local
+- Não precisa de Docker, ECR, ou credenciais AWS
+
+**Remoto (AWS):**
+- `cd agent && docker build -t <ecr-uri>:latest . && docker push <ecr-uri>:latest`
+- `cd infra && cdk deploy --require-approval never` (cria AgentCore Runtime via CfnResource)
+- API Lambda chama `InvokeAgentRuntime` no ARN do runtime
+- Custos: ECR storage + AgentCore Runtime compute (pague pelo que usar)
+
+**Nota:** não há L2 CDK construct para `AWS::BedrockAgentCore::AgentRuntime`, então usa-se `cloudformation.CfnResource` diretamente.
 
 ## 4. API (api/)
 
@@ -77,8 +91,8 @@ Região: `us-east-1`. Prefixo dos recursos: `luiz-henrique`.
 ## 7. Testes e evidências
 
 - [x] Tool Lambdas testadas localmente contra MiniStack (listar_catalogo, registrar_intencao, realizar_compra).
-- [x] Agente Strands testado localmente contra MiniStack (Bedrock Converse + tool use orquestração).
-- [x] API Lambda testada localmente contra MiniStack (JWT autenticação + invoke agent).
+- [x] Agente Strands com bedrock-agentcore SDK compila e roda localmente (`npm run dev`).
+- [ ] Teste end-to-end local: API Lambda → InvokeAgentRuntime → BedrockAgentCoreApp local.
 - [ ] Login com usuário válido (JWT obtido via Cognito).
 - [ ] Requisição sem token → `401`.
 - [ ] Compra com cartão de crédito.

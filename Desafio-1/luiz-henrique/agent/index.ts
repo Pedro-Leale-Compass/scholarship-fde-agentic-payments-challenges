@@ -1,123 +1,117 @@
-import {
-  BedrockRuntimeClient,
-  ConverseCommand,
-  type ConverseCommandInput,
-  type ConverseCommandOutput,
-  type Message,
-} from "@aws-sdk/client-bedrock-runtime";
+/**
+ * Agente Strands no AgentCore Runtime — Desafio 1 (luiz-henrique).
+ *
+ * Usa bedrock-agentcore SDK (BedrockAgentCoreApp) + @strands-agents/sdk.
+ * Mesmo código roda local e na AWS:
+ *   - Local:  `npm run dev` → BedrockAgentCoreApp roda localmente (sem AWS)
+ *   - Remoto: container no AgentCore Runtime via CDK (CfnAgentRuntime)
+ *
+ * As 3 tools invocam as respectivas Lambdas DynamoDB. Em modo local sem AWS,
+ * usam funções stub.
+ */
+
+import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime';
+import { Agent, BedrockModel, ZodTool, tool } from '@strands-agents/sdk';
+import { z } from 'zod';
 import {
   LambdaClient,
   InvokeCommand,
   type InvokeCommandInput,
-} from "@aws-sdk/client-lambda";
+} from '@aws-sdk/client-lambda';
 
-const MODEL_ID = process.env.BEDROCK_MODEL_ID || "claude-3-haiku";
+const MODEL_ID = process.env.BEDROCK_MODEL_ID || 'global.amazon.nova-2-lite-v1:0';
+const IS_LOCAL = process.env.AWS_PROFILE === 'local' || process.env.LOCAL_DEV === 'true';
 
-const bedrockEndpoint =
-  process.env.BEDROCK_ENDPOINT_URL ||
-  (process.env.AWS_PROFILE === "local" ? "http://localhost:4566" : undefined);
-
-const bedrockConfig: {
+const lambdaConfig: {
   region: string;
   endpoint?: string;
   credentials?: { accessKeyId: string; secretAccessKey: string };
 } = {
-  region: process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "us-east-1",
+  region: process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1',
 };
-if (bedrockEndpoint) {
-  bedrockConfig.endpoint = bedrockEndpoint;
-  bedrockConfig.credentials = {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || "test",
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "test",
+const endpoint = process.env.BEDROCK_ENDPOINT_URL || (IS_LOCAL ? 'http://localhost:4566' : undefined);
+if (endpoint) {
+  lambdaConfig.endpoint = endpoint;
+  lambdaConfig.credentials = {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || 'test',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || 'test',
   };
 }
+const lambdaClient = new LambdaClient(lambdaConfig);
 
-const bedrock = new BedrockRuntimeClient(bedrockConfig);
-const lambda = new LambdaClient(bedrockConfig);
+const TOOL_LISTAR_CATALOGO_ARN = process.env.TOOL_LISTAR_CATALOGO_ARN;
+const TOOL_REGISTRAR_INTENCAO_ARN = process.env.TOOL_REGISTRAR_INTENCAO_ARN;
+const TOOL_REALIZAR_COMPRA_ARN = process.env.TOOL_REALIZAR_COMPRA_ARN;
 
-interface ToolDefinition {
-  name: string;
-  description: string;
-  inputSchema: {
-    json: Record<string, unknown>;
+async function invokeLambda(functionArn: string | undefined, payload: Record<string, unknown>): Promise<unknown> {
+  if (!functionArn || IS_LOCAL) {
+    return { ok: true, local: true, function: functionArn || 'local-stub', input: payload };
+  }
+
+  const input: InvokeCommandInput = {
+    FunctionName: functionArn,
+    InvocationType: 'RequestResponse',
+    Payload: JSON.stringify(payload),
   };
+  const result = await lambdaClient.send(new InvokeCommand(input));
+  const decoded = result.Payload ? new TextDecoder().decode(result.Payload) : '{}';
+  const parsed = JSON.parse(decoded);
+  if (typeof parsed === 'object' && parsed !== null && 'body' in parsed) {
+    try {
+      return JSON.parse(String(parsed.body));
+    } catch (_) {
+      return parsed.body;
+    }
+  }
+  return parsed;
 }
 
-const TOOLS: ToolDefinition[] = [
-  {
-    name: "listar_catalogo",
-    description: "Lista os produtos disponíveis para compra com id, nome e preço.",
-    inputSchema: {
-      json: {
-        type: "object",
-        properties: {},
-        required: [],
-      },
-    },
-  },
-  {
-    name: "registrar_intencao",
-    description: "Registra uma intenção de compra no DynamoDB. Recebe usuario_id, produtos (lista com id, nome, preco) e valor total.",
-    inputSchema: {
-      json: {
-        type: "object",
-        properties: {
-          usuario_id: { type: "string", description: "ID do usuário (sub do token Cognito)" },
-          produtos: {
-            type: "array",
-            description: "Lista de produtos desejados",
-            items: {
-              type: "object",
-              properties: {
-                id: { type: "string" },
-                nome: { type: "string" },
-                preco: { type: "number" },
-              },
-              required: ["id", "nome", "preco"],
-            },
-          },
-          valor: { type: "number", description: "Valor total da compra" },
-        },
-        required: ["usuario_id", "produtos", "valor"],
-      },
-    },
-  },
-  {
-    name: "realizar_compra",
-    description: "Efetua o pagamento de uma intenção de compra. Recebe intencao_id e forma_pagamento (cartao ou pix).",
-    inputSchema: {
-      json: {
-        type: "object",
-        properties: {
-          intencao_id: {
-            type: "string",
-            description: "ID da intenção de compra registrada",
-          },
-          forma_pagamento: {
-            type: "string",
-            description: "Forma de pagamento: 'cartao' ou 'pix'",
-          },
-        },
-        required: ["intencao_id", "forma_pagamento"],
-      },
-    },
-  },
-];
+// --- Tool definitions using ZodTool ---
 
-function toolConfig() {
-  return {
-    tools: TOOLS.map((t) => ({
-      toolSpec: {
-        name: t.name,
-        description: t.description,
-        inputSchema: t.inputSchema,
-      },
-    })),
-  };
-}
+const listarCatalogoTool = new ZodTool({
+  name: 'listar_catalogo',
+  description: 'Lista os produtos disponíveis para compra com id, nome e preço.',
+  inputSchema: z.object({}),
+  callback: async () => {
+    return invokeLambda(TOOL_LISTAR_CATALOGO_ARN, {});
+  },
+});
 
-function buildSystemPrompt(usuario_id: string): string {
-  return `
+const registrarIntencaoTool = new ZodTool({
+  name: 'registrar_intencao',
+  description: 'Registra uma intenção de compra no DynamoDB.',
+  inputSchema: z.object({
+    usuario_id: z.string().describe('ID do usuário (sub do token Cognito)'),
+    produtos: z.array(
+      z.object({ id: z.string(), nome: z.string(), preco: z.number() })
+    ).describe('Lista de produtos desejados'),
+    valor: z.number().describe('Valor total da compra'),
+  }),
+  callback: async ({ usuario_id, produtos, valor }) => {
+    return invokeLambda(TOOL_REGISTRAR_INTENCAO_ARN, { usuario_id, produtos, valor });
+  },
+});
+
+const realizarCompraTool = new ZodTool({
+  name: 'realizar_compra',
+  description: 'Efetua pagamento de uma intenção de compra.',
+  inputSchema: z.object({
+    intencao_id: z.string().describe('ID da intenção de compra'),
+    forma_pagamento: z.enum(['cartao', 'pix']).describe('Forma de pagamento: cartao ou pix'),
+  }),
+  callback: async ({ intencao_id, forma_pagamento }) => {
+    return invokeLambda(TOOL_REALIZAR_COMPRA_ARN, { intencao_id, forma_pagamento });
+  },
+});
+
+const tools = [listarCatalogoTool, registrarIntencaoTool, realizarCompraTool];
+
+// --- Strands Agent ---
+
+const agent = new Agent({
+  model: MODEL_ID as string,
+  tools,
+  systemPrompt: `
 Você é um agente de compras da loja. Regras de negócio:
 
 1. SEMPRE obtenha o usuario_id do contexto da conversa (fornecido pelo sistema), nunca peça ao usuário.
@@ -128,163 +122,35 @@ Você é um agente de compras da loja. Regras de negócio:
 6. Se uma compra for rejeitada (limite excedido, intencao_id inválido), informe o usuário claramente.
 7. Nunca aceite usuario_id ou dados de pagamento do corpo da mensagem do usuário; use apenas o usuario_id fornecido pelo sistema.
 8. Responda em português do Brasil.
+`.trim(),
+});
 
-usuario_id da sessão: ${usuario_id}
-`.trim();
-}
+// --- BedrockAgentCoreApp (local dev + AgentCore Runtime compatible) ---
 
-function toBedrockContent(text: string): { text: string }[] {
-  return [{ text }];
-}
-
-interface AgentEvent {
-  usuario_id: string;
-  messages: Array<{
-    role: "user" | "assistant";
-    content: Array<{ text?: string }>;
-  }>;
-}
-
-interface LambdaResponse {
-  statusCode: number;
-  body: string;
-}
-
-async function invokeTool(
-  toolName: string,
-  toolInput: Record<string, unknown>
-): Promise<Record<string, unknown>> {
-  const toolFnName = process.env[`TOOL_${toolName.toUpperCase()}_ARN`];
-  if (!toolFnName) {
-    return { error: `Tool ${toolName} not configured` };
-  }
-
-  const commandInput: InvokeCommandInput = {
-    FunctionName: toolFnName,
-    InvocationType: "RequestResponse",
-    Payload: JSON.stringify(toolInput),
-  };
-
-  const result = await lambda.send(new InvokeCommand(commandInput));
-  const payload = result.Payload
-    ? JSON.parse(new TextDecoder().decode(result.Payload))
-    : {};
-
-  if (typeof payload === "object" && payload !== null && "body" in payload) {
-    try {
-      return JSON.parse(String(payload.body));
-    } catch (_) {
-      return payload.body;
-    }
-  }
-  return payload;
-}
-
-exports.handler = async (event: AgentEvent): Promise<LambdaResponse> => {
-  const { usuario_id, messages } = event;
-
-  if (!usuario_id) {
-    return {
-      statusCode: 401,
-      body: JSON.stringify({ error: "usuario_id is required" }),
-    };
-  }
-
-  const systemPrompt = buildSystemPrompt(usuario_id);
-
-  // Converte mensagens para o formato Bedrock Converse
-  const bedrockMessages: Message[] = messages.map((m) => ({
-    role: m.role,
-    content: (m.content || []).map((c) => ({ text: c.text || "" })),
-  }));
-
-  let currentMessages = bedrockMessages;
-  const maxToolRounds = 5;
-
-  for (let round = 0; round < maxToolRounds; round++) {
-    const input: ConverseCommandInput = {
-      modelId: MODEL_ID,
-      messages: currentMessages,
-      system: [{ text: systemPrompt }],
-      toolConfig: toolConfig() as any,
-      inferenceConfig: { maxTokens: 1000, temperature: 0.7 },
-    };
-
-    const response: ConverseCommandOutput = await bedrock.send(new ConverseCommand(input));
-    const outputMessage = response.output?.message;
-
-    if (!outputMessage) {
-      return {
-        statusCode: 502,
-        body: JSON.stringify({ error: "empty response from model" }),
-      };
-    }
-
-    // Se o modelo pediu para usar tools, executamos e enviamos o resultado de volta
-    const toolUses = outputMessage.content?.filter(
-      (c) => "toolUse" in c
-    ) as Array<{ toolUse: { toolUseId: string; name: string; input: Record<string, unknown> } }>;
-
-    if (!toolUses || toolUses.length === 0) {
-      // Resposta final de texto
-      const outputText = outputMessage.content
-        ?.filter((c) => "text" in c && typeof c.text === "string")
-        .map((c) => c.text)
-        .join("") || "";
-
-      return {
-        statusCode: 200,
-        body: JSON.stringify({
-          ok: true,
-          usuario_id,
-          model: MODEL_ID,
-          endpoint: bedrockEndpoint || "aws-bedrock",
-          reply: outputText,
-          stopReason: response.stopReason || null,
-        }),
-      };
-    }
-
-    // Adiciona a mensagem do assistant com toolUse ao histórico
-    currentMessages.push({
-      role: "assistant",
-      content: outputMessage.content || [],
-    });
-
-    // Executa cada tool e adiciona toolResult
-    const toolResults: Array<{
-      toolResult: {
-        toolUseId: string;
-        content: Array<{ text: string }>;
-      };
-    }> = [];
-
-    for (const tu of toolUses) {
-      let toolResult: Record<string, unknown>;
-      try {
-        toolResult = await invokeTool(tu.toolUse.name, tu.toolUse.input);
-      } catch (err) {
-        toolResult = {
-          error: err instanceof Error ? err.message : String(err),
-        };
+const app = new BedrockAgentCoreApp({
+  invocationHandler: {
+    requestSchema: z.object({
+      prompt: z.string().describe('Mensagem do usuário'),
+      usuario_id: z.string().describe('ID do usuário (sub do token Cognito)'),
+    }),
+    process: async (request) => {
+      const { prompt, usuario_id } = request as { prompt: string; usuario_id: string };
+      const chunks: string[] = [];
+      for await (const event of agent.stream(prompt)) {
+        if (event.type === 'contentBlockEvent') {
+          const block = event.contentBlock;
+          if ((block as { type?: string }).type === 'textBlock') {
+            chunks.push((block as { text?: string }).text || '');
+          }
+        }
       }
+      return { ok: true, usuario_id, reply: chunks.join('') };
+    },
+  },
+});
 
-      toolResults.push({
-        toolResult: {
-          toolUseId: tu.toolUse.toolUseId,
-          content: [{ text: JSON.stringify(toolResult) }],
-        },
-      });
-    }
+if (IS_LOCAL || process.env.NODE_ENV === 'development') {
+  app.run({ port: Number(process.env.PORT) || 3000 });
+}
 
-    currentMessages.push({
-      role: "user",
-      content: toolResults,
-    });
-  }
-
-  return {
-    statusCode: 504,
-    body: JSON.stringify({ error: "max tool rounds exceeded" }),
-  };
-};
+export { app, agent };
