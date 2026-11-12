@@ -126,3 +126,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
 }
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204 });
+}

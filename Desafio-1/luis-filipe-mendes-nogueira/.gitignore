@@ -10,3 +10,5 @@ build/
 *.db-wal
 *.db-shm
 .agents/
+frontend/out/
+frontend/*.tsbuildinfo

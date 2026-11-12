@@ -32,5 +32,14 @@ services:
     command: sh -c "node tickets-tools/dist/src/db/seed.js && node server.js"
     restart: unless-stopped
 
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "3001:80"
+    depends_on:
+      - app
+    restart: unless-stopped
+
 volumes:
   ingressos_db:
