@@ -19,15 +19,15 @@ interface MockUser {
 
 const MOCK_USERS: MockUser[] = [
   {
-    email: 'luiz.fsilva@desafio1.local',
+    email: '<test-email>',
     password: 'Temp1234!',
-    name: 'Luiz F. Silva',
+    name: 'Luiz',
     sub: 'usr-luiz-001',
   },
   {
-    email: 'maria.silva@desafio1.local',
+    email: 'maria@test.com',
     password: 'Temp1234!',
-    name: 'Maria Silva',
+    name: 'Maria',
     sub: 'usr-maria-002',
   },
 ];
