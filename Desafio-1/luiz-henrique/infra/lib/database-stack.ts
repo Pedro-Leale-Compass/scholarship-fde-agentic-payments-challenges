@@ -1,19 +1,19 @@
-import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
+import * as cdk from 'aws-cdk-lib';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 
-export interface DatabaseStackProps extends cdk.StackProps {
+export interface DatabaseStackProps {
   stackPrefix: string;
 }
 
-export class DatabaseStack extends cdk.Stack {
+export class DatabaseStack extends Construct {
   public readonly usuariosTable: dynamodb.Table;
   public readonly conversasTable: dynamodb.Table;
   public readonly intencoesTable: dynamodb.Table;
   public readonly catalogoTable: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props: DatabaseStackProps) {
-    super(scope, id, props);
+    super(scope, id);
 
     const { stackPrefix } = props;
     const prefix = `${stackPrefix}-`;
@@ -57,11 +57,5 @@ export class DatabaseStack extends cdk.Stack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
-
-    // Outputs
-    new cdk.CfnOutput(this, 'UsuariosTableName', { value: this.usuariosTable.tableName });
-    new cdk.CfnOutput(this, 'ConversasTableName', { value: this.conversasTable.tableName });
-    new cdk.CfnOutput(this, 'IntencoesTableName', { value: this.intencoesTable.tableName });
-    new cdk.CfnOutput(this, 'CatalogoTableName', { value: this.catalogoTable.tableName });
   }
 }

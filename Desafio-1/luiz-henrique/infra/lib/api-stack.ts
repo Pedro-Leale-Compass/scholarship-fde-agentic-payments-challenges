@@ -1,18 +1,19 @@
-import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
+import * as cdk from 'aws-cdk-lib';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigw from 'aws-cdk-lib/aws-apigateway';
 import * as path from 'path';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as iam from 'aws-cdk-lib/aws-iam';
 
-export interface ApiStackProps extends cdk.StackProps {
+export interface ApiStackProps {
   stackPrefix: string;
-  agentRuntimeArn: string;
+  agentFnArn: string;
   usuariosTable: dynamodb.Table;
 }
 
-export class ApiStack extends cdk.Stack {
+export class ApiStack extends Construct {
   public readonly userPool: cognito.UserPool;
   public readonly userPoolClient: cognito.UserPoolClient;
   public readonly chatFn: lambda.Function;
@@ -21,17 +22,16 @@ export class ApiStack extends cdk.Stack {
   public readonly apiDomain: string;
 
   constructor(scope: Construct, id: string, props: ApiStackProps) {
-    super(scope, id, props);
+    super(scope, id);
 
-    const { stackPrefix, agentRuntimeArn, usuariosTable } = props;
+    const { stackPrefix, agentFnArn, usuariosTable } = props;
     const prefix = `${stackPrefix}-`;
 
-    // Cognito User Pool (no self sign-up; users invited by admin)
     this.userPool = new cognito.UserPool(this, 'UserPool', {
       userPoolName: `${prefix}users`,
       selfSignUpEnabled: false,
       signInAliases: { email: true },
-      autoVerifiedAttributes: [cognito.AutoVerifiedAttrs.EMAIL],
+      autoVerify: { email: true },
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
@@ -45,34 +45,34 @@ export class ApiStack extends cdk.Stack {
       generateSecret: false,
     });
 
-    // Switch dev local (MiniStack) vs AWS real via AWS_PROFILE.
-    //   AWS_PROFILE=local cdk deploy   → Lambda aponta p/ http://localhost:4566 (MiniStack → llama.cpp)
-    //   AWS_PROFILE=desafio-1 cdk deploy → Lambda usa Bedrock real (sem endpoint_url)
-    // Pode sobrescrever com BEDROCK_ENDPOINT_URL=<url> cdk deploy se quiser forçar.
     const isLocalProfile = process.env.AWS_PROFILE === 'local';
     const bedrockEndpoint = process.env.BEDROCK_ENDPOINT_URL || (isLocalProfile ? 'http://localhost:4566' : '');
 
-    // Lambda do chat: chama o Bedrock-Runtime (MiniStack local ou AWS real)
     this.chatFn = new lambda.Function(this, 'ChatFn', {
       functionName: `${prefix}chat`,
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'index.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '..', '..', 'api')),
       environment: {
-        AGENT_RUNTIME_ARN: agentRuntimeArn,
+        AGENT_FN_ARN: agentFnArn,
         USUARIOS_TABLE: usuariosTable.tableName,
         BEDROCK_ENDPOINT_URL: bedrockEndpoint,
         BEDROCK_MODEL_ID: 'qwen3.5',
-        AWS_REGION: 'us-east-1',
       },
     });
 
-    // API Gateway com autorizador JWT Cognito
+    this.chatFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['lambda:InvokeFunction'],
+        resources: [agentFnArn],
+      })
+    );
+
     this.api = new apigw.RestApi(this, 'Api', {
       restApiName: `${prefix}api`,
       description: 'Desafio 1 - API do chat de pagamentos',
       defaultCorsPreflightOptions: {
-        allowOrigins: ['*'], // restringir ao domínio CloudFront após deploy do frontend
+        allowOrigins: ['*'],
         allowMethods: ['GET', 'POST', 'OPTIONS'],
         allowHeaders: ['Content-Type', 'Authorization'],
       },
@@ -81,31 +81,19 @@ export class ApiStack extends cdk.Stack {
       },
     });
 
-    const authorizer = new apigw.CfnAuthorizer(this, 'JwtAuthorizer', {
-      restApiId: this.api.restApiId,
-      name: `${prefix}cognito-authorizer`,
-      type: 'COGNITO_USER_POOLS',
-      providerArns: [this.userPool.userPoolArn],
+    const authorizer = new apigw.CognitoUserPoolsAuthorizer(this, 'JwtAuthorizer', {
+      cognitoUserPools: [this.userPool],
+      authorizerName: `${prefix}cognito-authorizer`,
       identitySource: 'method.request.header.Authorization',
     });
 
     const chatResource = this.api.root.addResource('chat');
     chatResource.addMethod('POST', new apigw.LambdaIntegration(this.chatFn), {
-      authorizer: new apigw.CfnAuthorizer(this.api, 'RefAuthorizer', {
-        restApiId: this.api.restApiId,
-        name: `${prefix}cognito-authorizer-ref`,
-        type: 'COGNITO_USER_POOLS',
-        providerArns: [this.userPool.userPoolArn],
-        identitySource: 'method.request.header.Authorization',
-      }),
+      authorizer,
       authorizationType: apigw.AuthorizationType.COGNITO,
     });
 
     this.apiUrl = this.api.url;
     this.apiDomain = this.api.url.replace('https://', '').replace(/\/.*$/, '');
-
-    new cdk.CfnOutput(this, 'UserPoolId', { value: this.userPool.userPoolId });
-    new cdk.CfnOutput(this, 'UserPoolClientId', { value: this.userPoolClient.userPoolClientId });
-    new cdk.CfnOutput(this, 'ApiUrl', { value: this.apiUrl });
   }
 }

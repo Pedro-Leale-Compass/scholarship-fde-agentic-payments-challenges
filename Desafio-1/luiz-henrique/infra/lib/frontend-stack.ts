@@ -1,26 +1,25 @@
-import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
+import * as cdk from 'aws-cdk-lib';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 
-export interface FrontendStackProps extends cdk.StackProps {
+export interface FrontendStackProps {
   stackPrefix: string;
   apiDomain: string;
 }
 
-export class FrontendStack extends cdk.Stack {
+export class FrontendStack extends Construct {
   public readonly bucket: s3.Bucket;
   public readonly distribution: cloudfront.Distribution;
 
   constructor(scope: Construct, id: string, props: FrontendStackProps) {
-    super(scope, id, props);
+    super(scope, id);
 
     const { stackPrefix } = props;
     const prefix = `${stackPrefix}-`;
 
-    // Bucket S3 privado para o frontend estático
     this.bucket = new s3.Bucket(this, 'FrontendBucket', {
       bucketName: `${prefix}frontend`,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
@@ -29,8 +28,7 @@ export class FrontendStack extends cdk.Stack {
       encryption: s3.BucketEncryption.S3_MANAGED,
     });
 
-    // OAC para acesso ao bucket privado via CloudFront
-    const oac = new cloudfront.S3OriginAccessIdentity(this, 'OAC', {
+    const oac = new cloudfront.OriginAccessIdentity(this, 'OAC', {
       comment: `${prefix}oac`,
     });
 
@@ -66,16 +64,11 @@ export class FrontendStack extends cdk.Stack {
       })
     );
 
-    // Deploy dos arquivos estáticos (out/) para o bucket S3
     new s3deploy.BucketDeployment(this, 'DeployFrontend', {
       sources: [s3deploy.Source.asset('../frontend/out')],
       destinationBucket: this.bucket,
       distribution: this.distribution,
       distributionPaths: ['/*'],
     });
-
-    new cdk.CfnOutput(this, 'BucketName', { value: this.bucket.bucketName });
-    new cdk.CfnOutput(this, 'DistributionDomain', { value: this.distribution.domainName });
-    new cdk.CfnOutput(this, 'DistributionId', { value: this.distribution.distributionId });
   }
 }

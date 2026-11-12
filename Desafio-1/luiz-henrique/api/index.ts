@@ -1,12 +1,12 @@
 /**
  * Lambda do chat — Desafio 1 (luiz-henrique).
  *
- * Chama o Agente Strands via Bedrock-Runtime. Suporta dois modos através de
- * variável de ambiente / AWS profile, sem alterar código:
+ * Chama o Agente Strands (Lambda do agent/) que orquestra Bedrock Converse
+ * com as 3 tool Lambdas. Suporta dois modos através de variável de ambiente /
+ * AWS profile, sem alterar código:
  *
  *   Desenvolvimento local:  AWS_PROFILE=local
- *                           → BEDROCK_ENDPOINT_URL=http://localhost:4566
- *                           → MiniStack (Bedrock emulator) → llama.cpp (Qwen3.5 2B Q8)
+ *                           → Lambda aponta p/ http://localhost:4566 (MiniStack → llama.cpp/Qwen3.5)
  *   Produção AWS:           AWS_PROFILE=desafio-1 (ou qualquer outro)
  *                           → Amazon Bedrock real (us-east-1, Claude Haiku)
  *
@@ -15,36 +15,36 @@
  */
 
 import {
-  BedrockRuntimeClient,
-  ConverseCommand,
-  type ConverseCommandOutput,
-} from "@aws-sdk/client-bedrock-runtime";
+  LambdaClient,
+  InvokeCommand,
+  type InvokeCommandInput,
+} from "@aws-sdk/client-lambda";
 
-const MODEL_ID = process.env.BEDROCK_MODEL_ID || "qwen3.5";
+const endpoint =
+  process.env.BEDROCK_ENDPOINT_URL ||
+  (process.env.AWS_PROFILE === "local" ? "http://localhost:4566" : undefined);
 
-// Endpoint do Bedrock: env var BEDROCK_ENDPOINT_URL tem prioridade.
-// Fallback: AWS_PROFILE=local aponta para o MiniStack local (:4566).
-let bedrockEndpoint = process.env.BEDROCK_ENDPOINT_URL;
-if (!bedrockEndpoint && process.env.AWS_PROFILE === "local") {
-  bedrockEndpoint = "http://localhost:4566";
-}
-
-const bedrockConfig: {
+const lambdaConfig: {
   region: string;
   endpoint?: string;
   credentials?: { accessKeyId: string; secretAccessKey: string };
 } = {
   region: process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "us-east-1",
 };
-if (bedrockEndpoint) {
-  bedrockConfig.endpoint = bedrockEndpoint;
-  bedrockConfig.credentials = {
+if (endpoint) {
+  lambdaConfig.endpoint = endpoint;
+  lambdaConfig.credentials = {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID || "test",
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "test",
   };
 }
 
-const bedrock = new BedrockRuntimeClient(bedrockConfig);
+const lambdaClient = new LambdaClient(lambdaConfig);
+
+const agentFnArn = process.env.AGENT_FN_ARN;
+if (!agentFnArn) {
+  throw new Error("AGENT_FN_ARN environment variable is required");
+}
 
 interface MessageContent {
   text: string;
@@ -57,6 +57,11 @@ interface Message {
 
 interface ChatEventBody {
   messages?: Message[];
+}
+
+interface LambdaResponse {
+  statusCode: number;
+  body: string;
 }
 
 /**
@@ -82,24 +87,6 @@ function extractUsuarioId(headers: Record<string, string> | undefined): string |
   }
 }
 
-/**
- * Converte a lista de mensagens do formato da requisição para o formato Bedrock Converse.
- */
-function toBedrockMessages(messages: Message[] | undefined): {
-  role: "user" | "assistant";
-  content: { text: string }[];
-}[] {
-  return (messages || []).map((m) => ({
-    role: m.role === "assistant" ? "assistant" : "user",
-    content: (m.content || []).map((c) => ({ text: c.text || "" })),
-  }));
-}
-
-interface LambdaResponse {
-  statusCode: number;
-  body: string;
-}
-
 exports.handler = async (event: {
   headers?: Record<string, string>;
   body?: string;
@@ -122,47 +109,39 @@ exports.handler = async (event: {
   }
 
   const messages = body.messages || [];
-  const userMessage = messages[messages.length - 1];
-  const userText =
-    (userMessage &&
-      userMessage.content &&
-      userMessage.content[0] &&
-      userMessage.content[0].text) ||
-    "";
+
+  const commandInput: InvokeCommandInput = {
+    FunctionName: agentFnArn,
+    InvocationType: "RequestResponse",
+    Payload: JSON.stringify({
+      usuario_id,
+      messages,
+    }),
+  };
 
   try {
-    const command = new ConverseCommand({
-      modelId: MODEL_ID,
-      messages: toBedrockMessages(messages),
-      inferenceConfig: { maxTokens: 400, temperature: 0.7 },
-    });
+    const result = await lambdaClient.send(new InvokeCommand(commandInput));
+    const payload = result.Payload
+      ? JSON.parse(new TextDecoder().decode(result.Payload))
+      : {};
 
-    const response: ConverseCommandOutput = await bedrock.send(command);
-
-    const outputText =
-      response.output?.message?.content
-        ?.filter((c) => "text" in c && typeof c.text === "string")
-        .map((c) => c.text)
-        .join("") || "";
+    if (typeof payload === "object" && payload !== null && "statusCode" in payload) {
+      return {
+        statusCode: payload.statusCode as number,
+        body: JSON.stringify(payload.body || payload),
+      };
+    }
 
     return {
       statusCode: 200,
-      body: JSON.stringify({
-        ok: true,
-        usuario_id,
-        model: MODEL_ID,
-        endpoint: bedrockEndpoint || "aws-bedrock",
-        reply: outputText,
-        usage: response.usage || null,
-        stopReason: response.stopReason || null,
-      }),
+      body: JSON.stringify(payload),
     };
   } catch (err) {
-    console.error("Bedrock Converse error:", err);
+    console.error("agent invoke error:", err);
     return {
       statusCode: 502,
       body: JSON.stringify({
-        error: "bedrock_error",
+        error: "agent_error",
         message: err instanceof Error ? err.message : String(err),
       }),
     };

@@ -27,16 +27,16 @@ export class Desafio1Stack extends cdk.Stack {
       catalogoTable: database.catalogoTable,
     });
 
-    // 3. AgentCore Runtime + Strands agent (Bedrock Claude Haiku) + ECR image
+    // 3. Agente Strands: orquestra Bedrock Converse + invoca as 3 tool Lambdas
     const agent = new AgentStack(this, 'AgentStack', {
       stackPrefix,
-      toolsLambdaArns: tools.toolLambdaArns,
+      toolLambdaArns: tools.toolLambdaArns,
     });
 
     // 4. Cognito user pool + API Gateway + Lambda chat + JWT authorizer
     const api = new ApiStack(this, 'ApiStack', {
       stackPrefix,
-      agentRuntimeArn: agent.agentRuntimeArn,
+      agentFnArn: agent.agentFnArn,
       usuariosTable: database.usuariosTable,
     });
 

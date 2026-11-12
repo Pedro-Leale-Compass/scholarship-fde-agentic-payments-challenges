@@ -1,11 +1,10 @@
-import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as path from 'path';
 
-export interface ToolsStackProps extends cdk.StackProps {
+export interface ToolsStackProps {
   stackPrefix: string;
   intencoesTable: dynamodb.Table;
   usuariosTable: dynamodb.Table;
@@ -18,14 +17,14 @@ export interface ToolLambdaArns {
   realizarCompra: string;
 }
 
-export class ToolsStack extends cdk.Stack {
+export class ToolsStack extends Construct {
   public readonly toolLambdaArns: ToolLambdaArns;
   public readonly listarCatalogoFn: lambda.Function;
   public readonly registrarIntencaoFn: lambda.Function;
   public readonly realizarCompraFn: lambda.Function;
 
   constructor(scope: Construct, id: string, props: ToolsStackProps) {
-    super(scope, id, props);
+    super(scope, id);
 
     const { stackPrefix, intencoesTable, usuariosTable, catalogoTable } = props;
     const prefix = `${stackPrefix}-`;
@@ -63,7 +62,6 @@ export class ToolsStack extends cdk.Stack {
       environment: commonEnv,
     });
 
-    // Least-privilege IAM: DynamoDB conditional writes on own tables only
     const ddbWritePolicy = new iam.PolicyStatement({
       actions: [
         'dynamodb:PutItem',
@@ -74,7 +72,7 @@ export class ToolsStack extends cdk.Stack {
       ],
       resources: [
         intencoesTable.tableArn,
-        intencoesTable.tableArn + '/index/*',
+        `${intencoesTable.tableArn}/index/*`,
         usuariosTable.tableArn,
         catalogoTable.tableArn,
       ],
@@ -91,9 +89,5 @@ export class ToolsStack extends cdk.Stack {
       registrarIntencao: this.registrarIntencaoFn.functionArn,
       realizarCompra: this.realizarCompraFn.functionArn,
     };
-
-    new cdk.CfnOutput(this, 'ListarCatalogoArn', { value: this.listarCatalogoFn.functionArn });
-    new cdk.CfnOutput(this, 'RegistrarIntencaoArn', { value: this.registrarIntencaoFn.functionArn });
-    new cdk.CfnOutput(this, 'RealizarCompraArn', { value: this.realizarCompraFn.functionArn });
   }
 }
