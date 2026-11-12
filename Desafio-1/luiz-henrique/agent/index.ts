@@ -151,11 +151,19 @@ const app = new BedrockAgentCoreApp({
             temperature: 0.7,
             top_p: 0.9,
             stream: false,
+            // Qwen3: desabilita o modo de raciocínio interno (thinking blocks)
+            no_think: true,
           }),
         });
 
         const llamaData = (await llamaResponse.json()) as { content?: string };
-        const reply = llamaData.content || 'Desculpe, não consegui gerar uma resposta.';
+        let reply = llamaData.content || 'Desculpe, não consegui gerar uma resposta.';
+
+        // Remove quais blocos de raciocínio remanescentes (defesa em profundidade)
+        reply = reply.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
+        reply = reply.replace(/<思考>[\s\S]*?<\/思考>/gi, '').trim();
+        reply = reply.replace(/<\/thinking>/gi, '').trim();
+        reply = reply.replace(/<\/思考>/gi, '').trim();
 
         return { ok: true, usuario_id, reply, local: true, model: 'llama.cpp' };
       }
