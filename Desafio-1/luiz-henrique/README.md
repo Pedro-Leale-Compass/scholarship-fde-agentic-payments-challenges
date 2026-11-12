@@ -15,7 +15,8 @@ Desafio-1/luiz-henrique/
 ├── agent/      # Agente Strands no Bedrock AgentCore Runtime (Claude Haiku)
 ├── tools/      # Lambdas das tools: listar_catalogo, registrar_intencao, realizar_compra
 ├── infra/      # IaC (único comando de deploy: backend, agente, frontend S3 + CloudFront)
-├── docs/       # TODO.md, STACK.md, MIGRACAO-ANTERIOR.md
+├── dev-tools/  # MiniStack + llama.cpp Qwen3.5 (Ambiente local, Bedrock emulator)
+├── docs/       # TODO.md, STACK.md, MIGRACAO-ANTERIOR.md, ministack-docker.md
 └── README.md   # este arquivo
 ```
 
@@ -50,6 +51,28 @@ cdk deploy --require-approval never
 Verificar criação de: bucket S3, distribuição CloudFront, runtime do AgentCore, imagens no ECR, tabelas DynamoDB, logs CloudWatch.
 
 Aplicação acessível via domínio do CloudFront.
+
+## Ambiente de desenvolvimento local (MiniStack + LLM)
+
+Para desenvolver sem custos na AWS, use o MiniStack (emulador AWS local) como provedor Bedrock, com llama.cpp (Qwen3.5 2B Q8) como modelo de linguagem:
+
+```bash
+# 1. Subir MiniStack + llama-server (Docker, porta 4566)
+cd Desafio-1/luiz-henrique/dev-tools
+docker compose up -d
+
+# 2. Voltar para a raiz e fazer o deploy apontando para o MiniStack
+cd Desafio-1/luiz-henrique
+set -a && . .env.example && set +a   # AWS_PROFILE=local, endpoints :4566
+npm install                          # dependências do CDK
+cdk bootstrap && cdk deploy --require-approval never
+```
+
+O `chatFn` do `api/` usa a variável `BEDROCK_ENDPOINT_URL`:
+- `AWS_PROFILE=local` → aponta para `http://localhost:4566` (MiniStack → llama.cpp/Qwen3.5)
+- `AWS_PROFILE=desafio-1` (ou outro) → Bedrock real us-east-1 (Claude Haiku)
+
+Detalhes: [`docs/ministack-docker.md`](./docs/ministack-docker.md)
 
 ## Modelo usado
 
