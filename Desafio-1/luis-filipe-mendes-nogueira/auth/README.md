@@ -1,10 +1,10 @@
 # auth (Microsserviço de Autenticação e Limites)
 
-![Squad 8 Header](../docs/headers/agentic-payments-fde-workshops-mainheader-squad8.webp)
+![Squad 8 Header](../headers/agentic-payments-fde-workshops-mainheader-squad8.webp)
 
 Microsserviço independente em Express (porta 4000) responsável pela autenticação de usuários, emissão e validação de tokens JWT (RFC 7519) e controle transacional do saldo de gastos.
 
-> **Fonte da Verdade:** Para a documentação arquitetural completa, contratos normativos e matriz de testes do ecossistema, consulte o [`README.md`](../README.md) raiz do repositório e o contrato formal em [`docs/contrato-api.md`](../docs/contrato-api.md).
+> **Fonte da Verdade:** Para a documentação arquitetural completa, contratos normativos e matriz de testes do ecossistema, consulte o [`README.md`](../README.md) raiz do repositório e o contrato formal em [`docs/contrato-api.md`](../contrato-api.md).
 
 ---
 

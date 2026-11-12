@@ -20,7 +20,7 @@
 
 ---
 
-![header](./docs/headers/agentic-payments-fde-workshops-mainheader-squad8.webp)
+![header](./headers/agentic-payments-fde-workshops-mainheader-squad8.webp)
 
 # agentic-payments-fde-workshops (Squad 8)
 
@@ -198,7 +198,7 @@ O projeto implementa uma arquitetura local de **Pagamentos Agênticos** orientad
 
 ### Metodologias de Desenvolvimento
 
-- **Spec-Driven Development (SDD):** Todo o desenvolvimento foi guiado previamente pelo documento normativo [`docs/contrato-api.md`](./docs/contrato-api.md), garantindo que schemas, códigos de erro e regras de negócio estivessem alinhados antes da escrita de código.
+- **Spec-Driven Development (SDD):** Todo o desenvolvimento foi guiado previamente pelo documento normativo [`docs/contrato-api.md`](./contrato-api.md), garantindo que schemas, códigos de erro e regras de negócio estivessem alinhados antes da escrita de código.
 - **Test-Driven & Defensive Development (TDD):** Criação extensiva de testes unitários e de integração cobrindo fluxos de sucesso, casos de borda (edge cases), precisão monetária (IEEE 754), condições de corrida (TOCTOU) e testes adversariais (Jailbreak / Prompt Injection).
 - **Clean Code & DRY:** Separação de responsabilidades em camadas (Controllers, Validators, Data Access, Adapters, Executors) com funções puras e reaproveitamento seguro.
 - **Gitflow Adaptado:** Organização em branches hierárquicas (`prod`, `stage`, `dev`, `feature/*`, `fix/*`, `documentation/*`) com revisões e testes em cada incremento.
@@ -253,7 +253,7 @@ O projeto implementa uma arquitetura local de **Pagamentos Agênticos** orientad
 
 ## Contrato de API
 
-O contrato completo de tipos e codigos de erro está documentado em [`docs/contrato-api.md`](./docs/contrato-api.md).
+O contrato completo de tipos e codigos de erro está documentado em [`docs/contrato-api.md`](./contrato-api.md).
 
 ### Resumo dos Códigos de Erro Padronizados (`ErroTool`)
 
@@ -503,7 +503,7 @@ Todas as versões de runtime, protocolos e pacotes fixados no arquivo [`requirem
 
 ## Regras de Repositorio
 
-![Regras do Repositorio](docs/headers/agentic-payments-fde-workshops-secondaryheader-repositoryrules.webp)
+![Regras do Repositorio](./headers/agentic-payments-fde-workshops-secondaryheader-repositoryrules.webp)
 
 ### Estrategia de Branches
 
@@ -523,7 +523,7 @@ Todas as versões de runtime, protocolos e pacotes fixados no arquivo [`requirem
 
 Para traduzir a dinâmica de uma equipe de desenvolvimento sênior na UOL / Compass, a Squad 8 planejou e acompanhou todo o ciclo de produto através de sessões diárias de discovery (27 a 31 de Agosto) e gerenciamento ágil via quadro Kanban no FigJam:
 
-> **Documento Completo de Planejamento e ADRs:** [`docs/planejamento.md`](./docs/planejamento.md)  
+> **Documento Completo de Planejamento e ADRs:** [`docs/planejamento.md`](./planejamento.md)  
 > **Quadro Oficial no FigJam:** [https://www.figma.com/board/fuvlMSJtHwcVPCh1t2NbxZ/Planejamento-Projeto-Compass-UOL?node-id=0-1&t=SyuwYfN6naNAYsu6-1](https://www.figma.com/board/fuvlMSJtHwcVPCh1t2NbxZ/Planejamento-Projeto-Compass-UOL?node-id=0-1&t=SyuwYfN6naNAYsu6-1)
 
 ### Discovery e Estruturacao de Epicos
@@ -540,44 +540,44 @@ O backlog foi originado a partir do discovery técnico e organizado em **5 épic
 Abaixo estão os registros visuais do processo de planejamento e acompanhamento do time:
 
 #### A. Visão Geral do Board no FigJam
-![Visão Geral do Board no FigJam](./docs/screenshots/figjam-board-screenshot.png)
+![Visão Geral do Board no FigJam](./screenshots/figjam-board-screenshot.png)
 
 #### B. Estrutura de Colunas do Kanban (Backlog, To Do, Doing, Done e Decisões)
-![Estrutura de Colunas Kanban](./docs/screenshots/figjam-kanban-board.png)
+![Estrutura de Colunas Kanban](./screenshots/figjam-kanban-board.png)
 
 #### C. Sessão de Discovery e Mapeamento de Épicos
-![Discovery e Épicos no Board](./docs/screenshots/figjam-discovery-1.png)
-![Discovery e Épicos no Board 2](./docs/screenshots/figjam-epics-discovery-1.png)
+![Discovery e Épicos no Board](./screenshots/figjam-discovery-1.png)
+![Discovery e Épicos no Board 2](./screenshots/figjam-epics-discovery-1.png)
 
 #### D. Quadro de Histórico de Decisões Arquiteturais
-![Histórico de Decisões no Board](./docs/screenshots/figjam-decisions-board-1.png)
+![Histórico de Decisões no Board](./screenshots/figjam-decisions-board-1.png)
 
 ### Evidencias Visuais da Interface (Front-end e UX)
 
-Para detalhamento normativo do vocabulário, personas e comportamento de tela, consulte [`docs/design/vocabulario.md`](./docs/design/vocabulario.md). Abaixo estão as capturas de tela dos componentes em funcionamento:
+Para detalhamento normativo do vocabulário, personas e comportamento de tela, consulte [`docs/design/vocabulario.md`](./design/vocabulario.md). Abaixo estão as capturas de tela dos componentes em funcionamento:
 
 #### A. Tela de Autenticação e Cadastro (`LoginForm`)
 <!-- Capturas da tela de login e criação de conta -->
-![Tela de Autenticação 1](./docs/screenshots/interface-login-form-1.png)
-![Tela de Autenticação 2](./docs/screenshots/interface-login-form-2.png)
+![Tela de Autenticação 1](./screenshots/interface-login-form-1.png)
+![Tela de Autenticação 2](./screenshots/interface-login-form-2.png)
 
 #### B. Tela de Carregamento
 <!-- Captura do estado de carregamento inicial -->
-![Tela de Carregamento](./docs/screenshots/loading-screen.png)
+![Tela de Carregamento](./screenshots/loading-screen.png)
 
 #### C. Interface Principal do Chat e Saldo em Tempo Real
 <!-- Capturas do diálogo conversacional e saldo restante -->
-![Interface do Chat Principal 1](./docs/screenshots/talking1.png)
-![Interface do Chat Principal 2](./docs/screenshots/talking2.png)
+![Interface do Chat Principal 1](./screenshots/talking1.png)
+![Interface do Chat Principal 2](./screenshots/talking2.png)
 
 #### D. Confirmação de Pagamento e Atualização de Saldo
 <!-- Captura de compra aprovada com atualização de limite -->
-![Pagamento Aprovado](./docs/screenshots/madeit.png)
+![Pagamento Aprovado](./screenshots/madeit.png)
 
 #### E. Bloqueio Amigável por Saldo Insuficiente
 <!-- Capturas do tratamento de saldo excedido e alternativas -->
-![Saldo Insuficiente 1](./docs/screenshots/dontmadeit.png)
-![Saldo Insuficiente 2](./docs/screenshots/dontmadeit2.png)
+![Saldo Insuficiente 1](./screenshots/dontmadeit.png)
+![Saldo Insuficiente 2](./screenshots/dontmadeit2.png)
 
 ### Evidencias Visuais e Logs de Ferramentas de Desenvolvedor (DevTools e Tool Calling)
 
@@ -585,26 +585,26 @@ Demonstração do fluxo operacional das chamadas de ferramentas, requisições d
 
 #### A. Fluxo de Autenticação e Emissão de Token JWT (`POST /login`)
 <!-- Captura do DevTools inspecionando o payload de login e retorno do Bearer Token -->
-![DevTools Network Login 1](./docs/screenshots/login1.png)
-![DevTools Network Login 2](./docs/screenshots/login2.png)
-![DevTools Network Login 3](./docs/screenshots/login3.png)
-![DevTools Network Login 4](./docs/screenshots/login4.png)
-![DevTools Network Login 5](./docs/screenshots/postlogin1.png)
-![DevTools Network Login 6](./docs/screenshots/postlogin2.png)
+![DevTools Network Login 1](./screenshots/login1.png)
+![DevTools Network Login 2](./screenshots/login2.png)
+![DevTools Network Login 3](./screenshots/login3.png)
+![DevTools Network Login 4](./screenshots/login4.png)
+![DevTools Network Login 5](./screenshots/postlogin1.png)
+![DevTools Network Login 6](./screenshots/postlogin2.png)
 
 #### B. Invocação de Ferramenta de Consulta de Catálogo (`listar_catalogo`)
 <!-- Captura do log de requisição do modelo disparando a tool listar_catalogo no MCP -->
-![DevTools ToolCall Catalogo 1](./docs/screenshots/tool1.png)
-![DevTools ToolCall Catalogo 2](./docs/screenshots/tool2.png)
-![DevTools ToolCall Catalogo 3](./docs/screenshots/tool3.png)
+![DevTools ToolCall Catalogo 1](./screenshots/tool1.png)
+![DevTools ToolCall Catalogo 2](./screenshots/tool2.png)
+![DevTools ToolCall Catalogo 3](./screenshots/tool3.png)
 
 #### C. Registro de Intenção e Injeção de Sessão (`registrar_intencao`)
 <!-- Captura do DevTools exibindo a interceptação do route.ts e injeção de usuario_id -->
-![DevTools ToolCall Reserva](./docs/screenshots/intencao1.png)
+![DevTools ToolCall Reserva](./screenshots/intencao1.png)
 
 #### D. Execução de Compra e Débito Atômico (`realizar_compra`)
 <!-- Captura da chamada de pagamento com verificação de limites e confirmação de estoque -->
-![DevTools ToolCall Compra](./docs/screenshots/comprarealizada1.png)
+![DevTools ToolCall Compra](./screenshots/comprarealizada1.png)
 
 ---
 

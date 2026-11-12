@@ -1,10 +1,10 @@
 # tickets-tools (Servidor MCP de Ferramentas de Pagamento)
 
-![Squad 8 Header](../docs/headers/agentic-payments-fde-workshops-mainheader-squad8.webp)
+![Squad 8 Header](../headers/agentic-payments-fde-workshops-mainheader-squad8.webp)
 
 Servidor Model Context Protocol (MCP 1.0) implementado em TypeScript via transporte Stdio, expondo as ferramentas transacionais de catálogo, reserva de assentos e confirmação de pagamentos com soberania de regras no backend.
 
-> **Fonte da Verdade:** Para a documentação arquitetural completa, contratos normativos e matriz de testes do ecossistema, consulte o [`README.md`](../README.md) raiz do repositório e o contrato formal em [`docs/contrato-api.md`](../docs/contrato-api.md).
+> **Fonte da Verdade:** Para a documentação arquitetural completa, contratos normativos e matriz de testes do ecossistema, consulte o [`README.md`](../README.md) raiz do repositório e o contrato formal em [`docs/contrato-api.md`](../contrato-api.md).
 
 ---
 

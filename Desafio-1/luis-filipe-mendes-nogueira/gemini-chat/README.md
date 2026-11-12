@@ -1,6 +1,6 @@
 # gemini-chat (Frontend e Agente Conversacional)
 
-![Squad 8 Header](../docs/headers/agentic-payments-fde-workshops-mainheader-squad8.webp)
+![Squad 8 Header](../headers/agentic-payments-fde-workshops-mainheader-squad8.webp)
 
 Módulo responsável pela interface visual do usuário (Next.js 14) e pela orquestração do loop conversacional de Tool Calling integrado à API do Google Gemini e ao protocolo Model Context Protocol (MCP 1.0).
 
