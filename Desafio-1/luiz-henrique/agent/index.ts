@@ -11,7 +11,7 @@
  */
 
 import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime';
-import { Agent, BedrockModel, ZodTool, tool } from '@strands-agents/sdk';
+import { Agent, BedrockModel, ZodTool } from '@strands-agents/sdk';
 import { z } from 'zod';
 import {
   LambdaClient,
@@ -21,6 +21,7 @@ import {
 
 const MODEL_ID = process.env.BEDROCK_MODEL_ID || 'global.amazon.nova-2-lite-v1:0';
 const IS_LOCAL = process.env.AWS_PROFILE === 'local' || process.env.LOCAL_DEV === 'true';
+const LLAMA_URL = process.env.LLAMA_URL || 'http://localhost:1203/completion';
 
 const lambdaConfig: {
   region: string;
@@ -106,7 +107,7 @@ const realizarCompraTool = new ZodTool({
 
 const tools = [listarCatalogoTool, registrarIntencaoTool, realizarCompraTool];
 
-// --- Strands Agent ---
+// --- Strands Agent (modo AWS - Bedrock real) ---
 
 const agent = new Agent({
   model: MODEL_ID as string,
@@ -135,6 +136,31 @@ const app = new BedrockAgentCoreApp({
     }),
     process: async (request) => {
       const { prompt, usuario_id } = request as { prompt: string; usuario_id: string };
+
+      // Modo local sem AWS: usa llama.cpp diretamente (não chama Bedrock)
+      if (IS_LOCAL) {
+        const systemPrompt = `Você é um agente de compras da loja. Responda em português do Brasil. Ajude o usuário a listar produtos, registrar intenções de compra e realizar pagamentos. Usuário: ${usuario_id}. Seja direto e útil.`;
+        const fullPrompt = `${systemPrompt}\n\nUsuário: ${prompt}\n\nAgente:`;
+
+        const llamaResponse = await fetch(LLAMA_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: fullPrompt,
+            n_predict: 512,
+            temperature: 0.7,
+            top_p: 0.9,
+            stream: false,
+          }),
+        });
+
+        const llamaData = (await llamaResponse.json()) as { content?: string };
+        const reply = llamaData.content || 'Desculpe, não consegui gerar uma resposta.';
+
+        return { ok: true, usuario_id, reply, local: true, model: 'llama.cpp' };
+      }
+
+      // Modo AWS: usa Strands Agent com BedrockModel real
       const chunks: string[] = [];
       for await (const event of agent.stream(prompt)) {
         if (event.type === 'contentBlockEvent') {
