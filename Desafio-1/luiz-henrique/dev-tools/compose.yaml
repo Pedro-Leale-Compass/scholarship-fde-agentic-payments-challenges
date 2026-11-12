@@ -1,39 +1,11 @@
 services:
-  ministack:
-    container_name: ministack
-    image: ministackorg/ministack
-    pull_policy: always
-    restart: unless-stopped
-    networks:
-      - dev-tools-network
-    ports:
-      - "4566:4566"
-    environment:
-      - LOG_LEVEL=DEBUG
-      - MINISTACK_REGION=us-east-1
-      - MINISTACK_ACCOUNT_ID=000000000000
-      # Point MiniStack Bedrock emulator at the llama.cpp OpenAI-compatible
-      # endpoint so Converse/InvokeModel return real completions (Qwen3.5).
-      - MINISTACK_BEDROCK_PROXY_URL=http://llama-server:8080
-      - MINISTACK_BEDROCK_PROXY_TIMEOUT_SECONDS=30
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4566/_ministack/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    depends_on:
-      llama-server:
-        condition: service_started
-
   llama-server:
     container_name: llama-server
     image: ghcr.io/ggml-org/llama.cpp:server-cuda13
     pull_policy: always
     restart: unless-stopped
-    networks:
-      - dev-tools-network
     ports:
-      - "1203:8080"
+      - "3035:8080"
     volumes:
       - ${HOME}/.cache/huggingface:/root/.cache/huggingface:z
     ulimits:
@@ -51,8 +23,7 @@ services:
       - LLAMA_ARG_MMAP=false
       - LLAMA_ARG_CTX_CHECKPOINTS=64
       - LLAMA_ARG_FLASH_ATTN=on
-      # Qwen3.5 2B Q8 (bedrock provider for MiniStack). unsloth publishes this
-      # GGUF as unsloth/Qwen3.5-2B-GGUF:<quant>; Q8_K_XL quant selected here.
+      # Qwen3.5 2B Q8. unsloth publishes this GGUF as unsloth/Qwen3.5-2B-GGUF:<quant>; Q8_K_XL quant selected here.
       - LLAMA_ARG_HF_REPO=unsloth/Qwen3.5-2B-GGUF:UD-Q8_K_XL
     command: >
       --seed 42
@@ -69,7 +40,3 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
-
-networks:
-  dev-tools-network:
-    name: dev-tools-network

@@ -2,7 +2,7 @@
 # Local dev setup for Desafio 1 (luiz-henrique) — sem AWS
 #
 # Portas 303X:
-#   - llama.cpp:   1203  (precisa estar rodando via dev-tools/docker compose)
+#   - llama.cpp:   3035  (precisa estar rodando via dev-tools/docker compose)
 #   - Agent:       3031  (BedrockAgentCoreApp + llama.cpp)
 #   - API:         3032  (JWT mock + /chat → invoca Agent)
 #   - Frontend:    3033  (Next.js + Authenticator mock + chat)
@@ -44,11 +44,11 @@ echo "  Desafio 1 — Dev Local (sem AWS)"
 echo "============================================="
 echo ""
 
-echo "==> Verificando llama.cpp na porta 1203..."
-if curl -s http://localhost:1203/health > /dev/null 2>&1; then
-  echo "   OK llama.cpp em http://localhost:1203"
+echo "==> Verificando llama.cpp na porta 3035..."
+if curl -s http://localhost:3035/completion > /dev/null 2>&1; then
+  echo "   OK llama.cpp em http://localhost:3035"
 else
-  echo "   WARN llama.cpp nao respondeu em http://localhost:1203"
+  echo "   WARN llama.cpp nao respondeu em http://localhost:3035"
   echo "       Inicie com: cd dev-tools && docker compose up"
 fi
 
@@ -104,7 +104,7 @@ echo ""
 echo "  Frontend:   http://localhost:3033"
 echo "  API:        http://localhost:3032"
 echo "  Agent:      http://localhost:3031"
-echo "  llama.cpp:  http://localhost:1203"
+echo "  llama.cpp:  http://localhost:3035"
 echo ""
 echo "  Usuarios de teste:"
 echo "    <test-email> / Temp1234!"

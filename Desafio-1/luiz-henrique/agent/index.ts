@@ -21,7 +21,7 @@ import {
 
 const MODEL_ID = process.env.BEDROCK_MODEL_ID || 'global.amazon.nova-2-lite-v1:0';
 const IS_LOCAL = process.env.AWS_PROFILE === 'local' || process.env.LOCAL_DEV === 'true';
-const LLAMA_URL = process.env.LLAMA_URL || 'http://localhost:1203/completion';
+const LLAMA_URL = process.env.LLAMA_URL || 'http://localhost:3035/completion';
 
 const lambdaConfig: {
   region: string;

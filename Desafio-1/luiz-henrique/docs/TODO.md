@@ -44,13 +44,14 @@ Região: `us-east-1`. Prefixo dos recursos: `luiz-henrique`.
 
 **Fluxo local dev vs remoto:**
 
-**Local (sem AWS, usa llama.cpp na porta 1203):**
+**Local (sem AWS, usa llama.cpp na porta 3035):**
 - `cd agent && npm install && npm run dev` → BedrockAgentCoreApp na porta 3031
 - `cd api/local && npm install && npm run dev` → API na porta 3032 (JWT mock + invoke Agent)
 - `cd frontend && NEXT_PUBLIC_API_URL=http://localhost:3032 npm run dev -- -p 3033` → frontend na porta 3033
 - Script único: `scripts/local-dev-setup.sh` inicia todos os serviços
 - JWT mock (assinatura não verificada) — apenas o `sub` é lido pela API
 - Não precisa de Docker, ECR, AgentCore Runtime da AWS, ou credenciais AWS
+- llama.cpp roda em `http://localhost:3035` (via `dev-tools/compose.yaml`)
 
 **Remoto (AWS):**
 - `cd agent && docker build -t <ecr-uri>:latest . && docker push <ecr-uri>:latest`

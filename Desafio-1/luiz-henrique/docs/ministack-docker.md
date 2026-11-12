@@ -28,7 +28,7 @@ Camadas:
 
 | Camada | Serviço | Porta host | Descrição |
 |--------|---------|------------|-----------|
-| LLM / inferência | llama.cpp (CUDA) | `1203` → contêiner `8080` | Qwen3.5 2B Q8, endpoint OpenAI-compatível `/v1/chat/completions` |
+| LLM / inferência | llama.cpp (CUDA) | `3035` → contêiner `8080` | Qwen3.5 2B Q8, endpoint OpenAI-compatível `/v1/chat/completions` |
 | Emulador AWS / Bedrock | MiniStack | `4566` | Bedrock-Runtime (Converse/InvokeModel), DynamoDB, S3, IAM, etc. com `LOG_LEVEL=DEBUG` |
 | Proxy Bedrock → LLM | `MINISTACK_BEDROCK_PROXY_URL` | — | `http://llama-server:8080` (mesma rede Docker `dev-tools-network`) |
 
@@ -44,7 +44,7 @@ docker compose up -d
 
 # Verificar saúde
 curl http://localhost:4566/_ministack/health
-curl http://localhost:1203/health
+curl http://localhost:3035/health
 
 # Logs (DEBUG do MiniStack)
 docker compose logs -f ministack
@@ -72,7 +72,7 @@ docker compose down
 | `http://localhost:4566/_ministack/health` | Health check do MiniStack | `curl http://localhost:4566/_ministack/health` |
 | `http://localhost:4566/_ministack/reset` | Reset de todo o estado (entre testes) | `curl -X POST http://localhost:4566/_ministack/reset` |
 | `http://localhost:4566` | Bedrock-Runtime + todos os serviços AWS emulados | `boto3.client("bedrock-runtime", endpoint_url="http://localhost:4566", ...)` |
-| `http://localhost:1203/v1/chat/completions` | llama.cpp OpenAI-compatível (direto) | `curl -X POST http://localhost:1203/v1/chat/completions ...` |
+| `http://localhost:3035/v1/chat/completions` | llama.cpp OpenAI-compatível (direto) | `curl -X POST http://localhost:3035/v1/chat/completions ...` |
 | `http://localhost:4566` (modelId=`qwen3.5`) | Bedrock Converse via proxy llama.cpp | `bedrock.converse(modelId="qwen3.5", ...)` |
 
 ---
@@ -325,5 +325,5 @@ Ele faz:
 - O `compose.yaml` usa a rede `dev-tools-network` (autocontida). Não depende da rede externa `llama-network`.
 - O modelo ativo é `unsloth/Qwen3.5-2B-GGUF:UD-Q8_K_XL` (Qwen3.5 2B Q8). Ajuste `LLAMA_ARG_HF_REPO` se quiser outro quant.
 - Qwen3 emite `reasoning_content` (modo de pensamento); o campo `content` da Bedrock pode vir vazio se o modelo estiver pensando — isso é comportamento do Qwen3, não erro do MiniStack.
-- Para usar com a rede externa `llama-network` (se o `llama-server-cuda-small` já estiver rodando), aponte `MINISTACK_BEDROCK_PROXY_URL=http://host.docker.internal:1203` e rode o MiniStack com `--network llama-network`.
+- Para usar com a rede externa `llama-network` (se o `llama-server-cuda-small` já estiver rodando), aponte `MINISTACK_BEDROCK_PROXY_URL=http://host.docker.internal:3035` e rode o MiniStack com `--network llama-network`.
 - Não commitar segredos: nenhum `.env` com chaves de acesso; `test/test` são credenciais fictícias do emulador local.
