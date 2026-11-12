@@ -219,6 +219,16 @@ docker compose up -d
 
 ### 2. Exportar variáveis e fazer o deploy (comando único na raiz)
 
+> ⚠️ Pré-requisito: antes de qualquer `cdk deploy` contra o MiniStack, os
+> containers do Docker precisam estar rodando:
+>
+> ```bash
+> cd Desafio-1/luiz-henrique/dev-tools
+> docker compose up -d
+> ```
+>
+> Só então execute o deploy a partir da raiz:
+
 Vá para a raiz do seu diretório (`Desafio-1/luiz-henrique/`) e rode um único `cdk deploy`:
 
 ```bash
