@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Agente Strands no AgentCore Runtime para Desafio 1 - luiz-henrique",
   "scripts": {
-    "dev": "node index.js",
+    "dev": "tsx index.ts",
     "build": "tsc",
     "lint": "eslint index.ts 2>/dev/null || true"
   },

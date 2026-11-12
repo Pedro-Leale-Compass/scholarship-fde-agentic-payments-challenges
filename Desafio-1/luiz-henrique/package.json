@@ -10,7 +10,11 @@
     "deploy:aws": "cdk deploy --require-approval never",
     "diff": "cdk diff",
     "destroy": "cdk destroy --force",
-    "test": "cd test && npm test"
+    "test": "cd test && npm test",
+    "dev:agent": "cd agent && export AWS_PROFILE=local && export LOCAL_DEV=true && npx tsx index.ts",
+    "dev:api": "cd api/local && export LOCAL_DEV=true && export AWS_PROFILE=local && npx tsx index.ts",
+    "dev:frontend": "cd frontend && export NEXT_PUBLIC_API_URL=http://localhost:3032 && export NEXT_PUBLIC_LOCAL_DEV=true && npm run dev -- -p 3033",
+    "dev:local": "bash scripts/local-dev-setup.sh"
   },
   "devDependencies": {
     "aws-cdk": "2.160.0",
