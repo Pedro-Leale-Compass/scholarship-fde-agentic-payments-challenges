@@ -3,8 +3,8 @@ import { Construct } from 'constructs';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigw from 'aws-cdk-lib/aws-apigateway';
+import * as path from 'path';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
-import * as ssm from 'aws-cdk-lib/aws-ssm';
 
 export interface ApiStackProps extends cdk.StackProps {
   stackPrefix: string;
@@ -45,23 +45,25 @@ export class ApiStack extends cdk.Stack {
       generateSecret: false,
     });
 
-    // Lambda do chat: chama o agente Strands no AgentCore Runtime
+    // Switch dev local (MiniStack) vs AWS real via AWS_PROFILE.
+    //   AWS_PROFILE=local cdk deploy   → Lambda aponta p/ http://localhost:4566 (MiniStack → llama.cpp)
+    //   AWS_PROFILE=desafio-1 cdk deploy → Lambda usa Bedrock real (sem endpoint_url)
+    // Pode sobrescrever com BEDROCK_ENDPOINT_URL=<url> cdk deploy se quiser forçar.
+    const isLocalProfile = process.env.AWS_PROFILE === 'local';
+    const bedrockEndpoint = process.env.BEDROCK_ENDPOINT_URL || (isLocalProfile ? 'http://localhost:4566' : '');
+
+    // Lambda do chat: chama o Bedrock-Runtime (MiniStack local ou AWS real)
     this.chatFn = new lambda.Function(this, 'ChatFn', {
       functionName: `${prefix}chat`,
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'index.handler',
-      code: lambda.Code.fromInline(`
-        exports.handler = async (event) => {
-          const token = event.headers?.Authorization || event.headers?.authorization;
-          if (!token) {
-            return { statusCode: 401, body: JSON.stringify({ error: 'missing token' }) };
-          }
-          return { statusCode: 200, body: JSON.stringify({ ok: true, agentRuntime: process.env.AGENT_RUNTIME_ARN }) };
-        };
-      `),
+      code: lambda.Code.fromAsset(path.join(__dirname, '..', '..', 'api')),
       environment: {
         AGENT_RUNTIME_ARN: agentRuntimeArn,
         USUARIOS_TABLE: usuariosTable.tableName,
+        BEDROCK_ENDPOINT_URL: bedrockEndpoint,
+        BEDROCK_MODEL_ID: 'qwen3.5',
+        AWS_REGION: 'us-east-1',
       },
     });
 

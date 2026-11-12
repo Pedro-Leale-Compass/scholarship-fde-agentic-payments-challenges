@@ -1,0 +1,18 @@
+{
+  "name": "desafio-1-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "API Gateway + Lambda do chat (Desafio 1 - luiz-henrique)",
+  "scripts": {
+    "build": "tsc",
+    "dev": "echo 'Rode o Lambda localmente com: BEDROCK_ENDPOINT_URL=http://localhost:4566 node index.js'",
+    "lint": "eslint index.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  }
+}
