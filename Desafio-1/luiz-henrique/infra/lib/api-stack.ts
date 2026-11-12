@@ -9,7 +9,7 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 
 export interface ApiStackProps {
   stackPrefix: string;
-  agentFnArn: string;
+  agentRuntimeArn: string;
   usuariosTable: dynamodb.Table;
 }
 
@@ -24,7 +24,7 @@ export class ApiStack extends Construct {
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id);
 
-    const { stackPrefix, agentFnArn, usuariosTable } = props;
+    const { stackPrefix, agentRuntimeArn, usuariosTable } = props;
     const prefix = `${stackPrefix}-`;
 
     this.userPool = new cognito.UserPool(this, 'UserPool', {
@@ -54,17 +54,18 @@ export class ApiStack extends Construct {
       handler: 'index.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '..', '..', 'api')),
       environment: {
-        AGENT_FN_ARN: agentFnArn,
+        AGENT_RUNTIME_ARN: agentRuntimeArn,
         USUARIOS_TABLE: usuariosTable.tableName,
         BEDROCK_ENDPOINT_URL: bedrockEndpoint,
-        BEDROCK_MODEL_ID: 'qwen3.5',
+        BEDROCK_MODEL_ID: 'claude-3-haiku',
       },
     });
 
+    // Permissão para o chatFn invocar o AgentCore Runtime
     this.chatFn.addToRolePolicy(
       new iam.PolicyStatement({
-        actions: ['lambda:InvokeFunction'],
-        resources: [agentFnArn],
+        actions: ['bedrock-agentcore:InvokeAgentRuntime'],
+        resources: [agentRuntimeArn],
       })
     );
 

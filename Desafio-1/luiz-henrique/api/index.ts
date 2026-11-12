@@ -1,30 +1,29 @@
 /**
  * Lambda do chat — Desafio 1 (luiz-henrique).
  *
- * Chama o Agente Strands (Lambda do agent/) que orquestra Bedrock Converse
- * com as 3 tool Lambdas. Suporta dois modos através de variável de ambiente /
- * AWS profile, sem alterar código:
+ * Chama o Agente Strands no AgentCore Runtime via InvokeAgentRuntime.
+ * Suporta dois modos através de variável de ambiente / AWS profile:
  *
  *   Desenvolvimento local:  AWS_PROFILE=local
- *                           → Lambda aponta p/ http://localhost:4566 (MiniStack → llama.cpp/Qwen3.5)
+ *                           → aponta p/ http://localhost:4566 (MiniStack bedrock-agentcore-data-plane)
  *   Produção AWS:           AWS_PROFILE=desafio-1 (ou qualquer outro)
- *                           → Amazon Bedrock real (us-east-1, Claude Haiku)
+ *                           → Amazon Bedrock AgentCore Runtime real (us-east-1)
  *
  * usuario_id vem exclusivamente do sub do token JWT Cognito (authorizer),
  * nunca do corpo da requisição nem do modelo.
  */
 
 import {
-  LambdaClient,
-  InvokeCommand,
-  type InvokeCommandInput,
-} from "@aws-sdk/client-lambda";
+  BedrockAgentCoreClient,
+  InvokeAgentRuntimeCommand,
+  type InvokeAgentRuntimeCommandInput,
+} from "@aws-sdk/client-bedrock-agentcore";
 
 const endpoint =
   process.env.BEDROCK_ENDPOINT_URL ||
   (process.env.AWS_PROFILE === "local" ? "http://localhost:4566" : undefined);
 
-const lambdaConfig: {
+const clientConfig: {
   region: string;
   endpoint?: string;
   credentials?: { accessKeyId: string; secretAccessKey: string };
@@ -32,18 +31,18 @@ const lambdaConfig: {
   region: process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "us-east-1",
 };
 if (endpoint) {
-  lambdaConfig.endpoint = endpoint;
-  lambdaConfig.credentials = {
+  clientConfig.endpoint = endpoint;
+  clientConfig.credentials = {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID || "test",
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "test",
   };
 }
 
-const lambdaClient = new LambdaClient(lambdaConfig);
+const bedrockAgentCore = new BedrockAgentCoreClient(clientConfig);
 
-const agentFnArn = process.env.AGENT_FN_ARN;
-if (!agentFnArn) {
-  throw new Error("AGENT_FN_ARN environment variable is required");
+const agentRuntimeArn = process.env.AGENT_RUNTIME_ARN;
+if (!agentRuntimeArn) {
+  throw new Error("AGENT_RUNTIME_ARN environment variable is required");
 }
 
 interface MessageContent {
@@ -110,34 +109,49 @@ exports.handler = async (event: {
 
   const messages = body.messages || [];
 
-  const commandInput: InvokeCommandInput = {
-    FunctionName: agentFnArn,
-    InvocationType: "RequestResponse",
-    Payload: JSON.stringify({
-      usuario_id,
-      messages,
-    }),
+  const prompt = messages
+    .map((m) => `${m.role}: ${m.content.map((c) => c.text).join(" ")}`)
+    .join("\n");
+
+  const commandInput: InvokeAgentRuntimeCommandInput = {
+    agentRuntimeArn,
+    payload: Buffer.from(
+      JSON.stringify({
+        prompt,
+        usuario_id,
+        messages,
+      }),
+    ),
+    qualifier: "DEFAULT",
   };
 
   try {
-    const result = await lambdaClient.send(new InvokeCommand(commandInput));
-    const payload = result.Payload
-      ? JSON.parse(new TextDecoder().decode(result.Payload))
-      : {};
+    const result = await bedrockAgentCore.send(new InvokeAgentRuntimeCommand(commandInput));
+    const responseStream = result.response;
 
-    if (typeof payload === "object" && payload !== null && "statusCode" in payload) {
+    let responseBody: unknown = {};
+    if (responseStream) {
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of responseStream as unknown as AsyncIterable<Uint8Array>) {
+        chunks.push(chunk);
+      }
+      const combined = Buffer.concat(chunks);
+      responseBody = combined.length > 0 ? JSON.parse(combined.toString("utf-8")) : {};
+    }
+
+    if (typeof responseBody === "object" && responseBody !== null && "statusCode" in responseBody) {
       return {
-        statusCode: payload.statusCode as number,
-        body: JSON.stringify(payload.body || payload),
+        statusCode: (responseBody as { statusCode: number }).statusCode,
+        body: JSON.stringify((responseBody as { body?: unknown }).body || responseBody),
       };
     }
 
     return {
       statusCode: 200,
-      body: JSON.stringify(payload),
+      body: JSON.stringify(responseBody),
     };
   } catch (err) {
-    console.error("agent invoke error:", err);
+    console.error("agent runtime invoke error:", err);
     return {
       statusCode: 502,
       body: JSON.stringify({

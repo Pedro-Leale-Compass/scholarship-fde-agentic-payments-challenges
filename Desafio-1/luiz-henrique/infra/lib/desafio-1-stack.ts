@@ -1,5 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import { DatabaseStack } from './database-stack';
 import { ToolsStack } from './tools-stack';
 import { AgentStack } from './agent-stack';
@@ -15,6 +16,28 @@ export class Desafio1Stack extends cdk.Stack {
     super(scope, id, props);
 
     const { stackPrefix } = props;
+    const prefix = `${stackPrefix}-`;
+
+    // VPC para AgentCore Runtime (modo público, ainda requer VPC)
+    const vpc = new ec2.Vpc(this, 'Vpc', {
+      vpcName: `${prefix}vpc`,
+      maxAzs: 2,
+      natGateways: 0, // sem NAT para reduzir custo
+      subnetConfiguration: [
+        {
+          name: 'public',
+          subnetType: ec2.SubnetType.PUBLIC,
+          cidrMask: 24,
+        },
+      ],
+    });
+
+    const securityGroup = new ec2.SecurityGroup(this, 'AgentSecurityGroup', {
+      vpc,
+      securityGroupName: `${prefix}agent-sg`,
+      allowAllOutbound: true,
+      description: 'Security group for AgentCore Runtime',
+    });
 
     // 1. DynamoDB tables (usuarios, conversas, intencoes)
     const database = new DatabaseStack(this, 'DatabaseStack', { stackPrefix });
@@ -27,16 +50,18 @@ export class Desafio1Stack extends cdk.Stack {
       catalogoTable: database.catalogoTable,
     });
 
-    // 3. Agente Strands: orquestra Bedrock Converse + invoca as 3 tool Lambdas
+    // 3. Agente Strands no AgentCore Runtime
     const agent = new AgentStack(this, 'AgentStack', {
       stackPrefix,
       toolLambdaArns: tools.toolLambdaArns,
+      vpc,
+      securityGroup,
     });
 
     // 4. Cognito user pool + API Gateway + Lambda chat + JWT authorizer
     const api = new ApiStack(this, 'ApiStack', {
       stackPrefix,
-      agentFnArn: agent.agentFnArn,
+      agentRuntimeArn: agent.agentRuntimeArn,
       usuariosTable: database.usuariosTable,
     });
 
@@ -59,6 +84,14 @@ export class Desafio1Stack extends cdk.Stack {
     new cdk.CfnOutput(this, 'CognitoUserPoolClientId', {
       value: api.userPoolClient.userPoolClientId,
       description: 'Cognito User Pool Client ID',
+    });
+    new cdk.CfnOutput(this, 'AgentRuntimeArn', {
+      value: agent.agentRuntimeArn,
+      description: 'AgentCore Runtime ARN',
+    });
+    new cdk.CfnOutput(this, 'EcrRepositoryUri', {
+      value: agent.ecrRepositoryUri,
+      description: 'ECR repository URI for agent container image',
     });
   }
 }

@@ -34,19 +34,25 @@ Região: `us-east-1`. Prefixo dos recursos: `luiz-henrique`.
 
 ## 3. Agente Strands (agent/)
 
-- [x] Implementar agente Strands com as 3 tools acima.
-- [x] Modelo: Amazon Bedrock (Claude Haiku) via AgentCore Runtime (local: MiniStack → llama.cpp/Qwen3.5).
-- [x] Regras de negócio da Fase 1 inalteradas.
-- [ ] Deploy do agente no Bedrock AgentCore Runtime (pendente AWS).
-- [ ] Imagem de container no ECR (para remoção posterior).
+- [x] Implementar agente Strands com as 3 tools acima (código em agent/index.ts)
+- [x] Modelo: Amazon Bedrock (Claude Haiku) via AgentCore Runtime (CDK: CfnAgentRuntime)
+- [x] Regras de negócio da Fase 1 inalteradas
+- [x] Container image no ECR (repositório criado via CDK; build/push pendente)
+- [x] IAM role com permissões para Bedrock Converse + invoke das 3 tool Lambdas
+- [ ] Deploy do agente no Bedrock AgentCore Runtime (pendente AWS)
+- [ ] Build e push da imagem do container para ECR (pendente)
+
+**Nota sobre AgentCore Runtime:** não há L2 CDK construct para `AWS::BedrockAgentCore::AgentRuntime`, então usa-se `cloudformation.CfnResource` diretamente. O container image precisa ser built e pushed para o ECR repositório criado pelo CDK antes do deploy do runtime.
 
 ## 4. API (api/)
 
 - [x] API Gateway (REST) com autorizador JWT Cognito.
-- [x] Lambda do chat que chama o agente Strands via Lambda Invoke.
+- [x] Lambda do chat que chama o AgentCore Runtime via InvokeAgentRuntime (bedrock-agentcore-data-plane SDK).
 - [x] `usuario_id` vem do `sub` do token Cognito, nunca do corpo nem do modelo.
 - [x] Resposta `401` sem token válido.
 - [ ] CORS aceita apenas o domínio do CloudFront.
+
+**Registro de usuários:** Cognito User Pool com `AllowAdminCreateUserOnly` (sem auto cadastro). Usuários são criados por admin via `admin-create-user`. Para testes locais, usar `scripts/local-test-setup.sh` que cria pool, cliente, usuário e gera um JWT manual (assinatura não verificada pela API — apenas leitura do `sub` do payload).
 
 ## 5. Frontend (frontend/)
 
@@ -57,13 +63,16 @@ Região: `us-east-1`. Prefixo dos recursos: `luiz-henrique`.
 ## 6. Infraestrutura (infra/)
 
 - [x] Escolher IaC: CDK (TypeScript) — definido, pasta `infra/` com stacks database/tools/agent/api/frontend.
-- [x] Um único comando deve criar todo o ambiente: `cdk deploy --require-approval never` (sintetiza corretamente; deploy local bloqueado por bootstrap do CDK/MiniStack).
-- [x] CloudFront + S3 (frontend estático, OAC, bucket privado) — código escrito, não testado em AWS.
+- [x] Um único comando deve criar todo o ambiente: `cdk deploy --require-approval never` (sintetiza corretamente; deploy não executado para evitar custos AWS).
+- [x] CloudFront + S3 (frontend estático, OAC, bucket privado) — código escrito.
 - [x] Cognito user pool sem auto cadastro (`AllowAdminCreateUserOnly`); usuários por convite.
 - [ ] Criar usuário no Cognito com o e-mail do instrutor.
-- [x] IAM de menor privilégio para Lambda, API Gateway, DynamoDB, S3, CloudFront.
+- [x] IAM de menor privilégio para Lambda, AgentCore Runtime, API Gateway, DynamoDB, S3, CloudFront, ECR.
 - [x] Stack/recursos prefixados com `luiz-henrique` para não colidir.
 - [x] Nenhum segredo no Git.
+- [x] VPC pública (sem NAT Gateway para reduzir custo) + security group para AgentCore Runtime.
+- [x] ECR repository para imagem do container do agente.
+- [x] AgentCore Runtime via `cloudformation.CfnResource` (AWS::BedrockAgentCore::AgentRuntime, sem L2 CDK construct).
 
 ## 7. Testes e evidências
 
