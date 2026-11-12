@@ -18,17 +18,17 @@ Região: `us-east-1`. Prefixo dos recursos: `luiz-henrique`.
 
 ## 1. Modelo de dados (DynamoDB)
 
-- [ ] Definir modelagem do DynamoDB: usuários, conversas, intenções/transações.
-- [ ] Escrever o diagrama de modelagem no `docs/TODO.md` ou `README.md`.
+- [x] Definir modelagem do DynamoDB: usuários, conversas, intenções/transações.
+- [x] Escrever o diagrama de modelagem no `docs/TODO.md` ou `README.md`.
 - [ ] Tabelas: `Usuarios`, `Conversas`, `Intencoes` (ou conforme modelagem).
 - [ ] Chaves de partição e sort definidas; índices secundários se necessário.
 - [ ] Escrita condicional para evitar duplicidade de pagamento/limite.
 
 ## 2. Ferramentas do agente (tools/)
 
-- [ ] `listar_catalogo` — retorna catálogo de produtos disponíveis.
-- [ ] `registrar_intencao` — salva intenção de compra no DynamoDB (condicional).
-- [ ] `realizar_compra` — efetua pagamento com cartão ou Pix; valida limite e intenção.
+- [x] `listar_catalogo` — retorna catálogo de produtos disponíveis.
+- [x] `registrar_intencao` — salva intenção de compra no DynamoDB (condicional).
+- [x] `realizar_compra` — efetua pagamento com cartão ou Pix; valida limite e intenção.
 - [ ] Cada tool em sua própria Lambda com IAM de menor privilégio.
 - [ ] Tratamento de erros: `intencao_id` inválido, limite excedido, pagamento rejeitado.
 
@@ -85,13 +85,13 @@ Região: `us-east-1`. Prefixo dos recursos: `luiz-henrique`.
 ## 9. README da entrega
 
 Preencher `Desafio-1/luiz-henrique/README.md` com:
-- [ ] Diagrama implementado.
-- [ ] Passo a passo de deploy.
-- [ ] Modelo usado (Bedrock Claude Haiku via AgentCore).
-- [ ] Modelagem do DynamoDB.
-- [ ] Resumo do IAM.
+- [x] Diagrama implementado.
+- [x] Passo a passo de deploy.
+- [x] Modelo usado (Bedrock Claude Haiku via AgentCore).
+- [x] Modelagem do DynamoDB.
+- [x] Resumo do IAM.
 - [ ] Evidências: login, `401` sem token, compra com cartão, compra com Pix, limite excedido, `intencao_id` inválido.
-- [ ] Instruções de remoção.
+- [x] Instruções de remoção.
 
 ## 10. Limpeza (após a correção)
 
@@ -100,5 +100,5 @@ Preencher `Desafio-1/luiz-henrique/README.md` com:
 
 ## Status
 
-- [ ] Em andamento
+- [x] Em andamento
 - [ ] Concluído

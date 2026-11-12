@@ -3,11 +3,13 @@ import { Construct } from 'constructs';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as path from 'path';
 
 export interface ToolsStackProps extends cdk.StackProps {
   stackPrefix: string;
   intencoesTable: dynamodb.Table;
   usuariosTable: dynamodb.Table;
+  catalogoTable: dynamodb.Table;
 }
 
 export interface ToolLambdaArns {
@@ -25,8 +27,9 @@ export class ToolsStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: ToolsStackProps) {
     super(scope, id, props);
 
-    const { stackPrefix, intencoesTable, usuariosTable } = props;
+    const { stackPrefix, intencoesTable, usuariosTable, catalogoTable } = props;
     const prefix = `${stackPrefix}-`;
+    const toolsDir = path.join(__dirname, '..', '..', 'tools');
 
     const commonEnv = {
       USUARIOS_TABLE: usuariosTable.tableName,
@@ -37,26 +40,18 @@ export class ToolsStack extends cdk.Stack {
       functionName: `${prefix}listar-catalogo`,
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'index.handler',
-      code: lambda.Code.fromInline(`
-        exports.handler = async () => ({
-          statusCode: 200,
-          body: JSON.stringify([
-            { id: 'prod-1', nome: 'Produto A', preco: 100.00 },
-            { id: 'prod-2', nome: 'Produto B', preco: 250.00 },
-            { id: 'prod-3', nome: 'Produto C', preco: 500.00 },
-          ]),
-        });
-      `),
-      environment: commonEnv,
+      code: lambda.Code.fromAsset(path.join(toolsDir, 'listar_catalogo')),
+      environment: {
+        ...commonEnv,
+        CATALOGO_TABLE: catalogoTable.tableName,
+      },
     });
 
     this.registrarIntencaoFn = new lambda.Function(this, 'RegistrarIntencaoFn', {
       functionName: `${prefix}registrar-intencao`,
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'index.handler',
-      code: lambda.Code.fromInline(`
-        exports.handler = async () => ({ statusCode: 200, body: JSON.stringify({ ok: true }) });
-      `),
+      code: lambda.Code.fromAsset(path.join(toolsDir, 'registrar_intencao')),
       environment: commonEnv,
     });
 
@@ -64,21 +59,32 @@ export class ToolsStack extends cdk.Stack {
       functionName: `${prefix}realizar-compra`,
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'index.handler',
-      code: lambda.Code.fromInline(`
-        exports.handler = async () => ({ statusCode: 200, body: JSON.stringify({ ok: true }) });
-      `),
+      code: lambda.Code.fromAsset(path.join(toolsDir, 'realizar_compra')),
       environment: commonEnv,
     });
 
     // Least-privilege IAM: DynamoDB conditional writes on own tables only
     const ddbWritePolicy = new iam.PolicyStatement({
-      actions: ['dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:GetItem', 'dynamodb:Query'],
-      resources: [intencoesTable.tableArn, intencoesTable.tableArn + '/index/*', usuariosTable.tableArn],
+      actions: [
+        'dynamodb:PutItem',
+        'dynamodb:UpdateItem',
+        'dynamodb:GetItem',
+        'dynamodb:Query',
+        'dynamodb:Scan',
+      ],
+      resources: [
+        intencoesTable.tableArn,
+        intencoesTable.tableArn + '/index/*',
+        usuariosTable.tableArn,
+        catalogoTable.tableArn,
+      ],
     });
 
-    [this.listarCatalogoFn, this.registrarIntencaoFn, this.realizarCompraFn].forEach((fn) => {
-      fn.addToRolePolicy(ddbWritePolicy);
-    });
+    [this.listarCatalogoFn, this.registrarIntencaoFn, this.realizarCompraFn].forEach(
+      (fn) => {
+        fn.addToRolePolicy(ddbWritePolicy);
+      },
+    );
 
     this.toolLambdaArns = {
       listarCatalogo: this.listarCatalogoFn.functionArn,

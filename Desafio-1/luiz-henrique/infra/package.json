@@ -23,15 +23,6 @@
   },
   "dependencies": {
     "aws-cdk-lib": "2.160.0",
-    "constructs": "^10.0.0",
-    "aws-cdk-lib/aws-apigateway": "2.160.0",
-    "aws-cdk-lib/aws-lambda": "2.160.0",
-    "aws-cdk-lib/aws-dynamodb": "2.160.0",
-    "aws-cdk-lib/aws-cognito": "2.160.0",
-    "aws-cdk-lib/aws-s3": "2.160.0",
-    "aws-cdk-lib/aws-cloudfront": "2.160.0",
-    "aws-cdk-lib/aws-cloudfront-origins": "2.160.0",
-    "aws-cdk-lib/aws-s3-deployment": "2.160.0",
-    "aws-cdk-lib/aws-ecr": "2.160.0"
+    "constructs": "^10.0.0"
   }
 }

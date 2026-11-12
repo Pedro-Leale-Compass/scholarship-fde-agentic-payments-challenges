@@ -24,6 +24,7 @@ export class Desafio1Stack extends cdk.Stack {
       stackPrefix,
       intencoesTable: database.intencoesTable,
       usuariosTable: database.usuariosTable,
+      catalogoTable: database.catalogoTable,
     });
 
     // 3. AgentCore Runtime + Strands agent (Bedrock Claude Haiku) + ECR image

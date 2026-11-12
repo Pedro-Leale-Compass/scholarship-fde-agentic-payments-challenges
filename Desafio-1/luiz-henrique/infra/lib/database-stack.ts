@@ -10,6 +10,7 @@ export class DatabaseStack extends cdk.Stack {
   public readonly usuariosTable: dynamodb.Table;
   public readonly conversasTable: dynamodb.Table;
   public readonly intencoesTable: dynamodb.Table;
+  public readonly catalogoTable: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props: DatabaseStackProps) {
     super(scope, id, props);
@@ -50,9 +51,17 @@ export class DatabaseStack extends cdk.Stack {
       sortKey: { name: 'status', type: dynamodb.AttributeType.STRING },
     });
 
+    this.catalogoTable = new dynamodb.Table(this, 'CatalogoTable', {
+      tableName: `${prefix}catalogo`,
+      partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
     // Outputs
     new cdk.CfnOutput(this, 'UsuariosTableName', { value: this.usuariosTable.tableName });
     new cdk.CfnOutput(this, 'ConversasTableName', { value: this.conversasTable.tableName });
     new cdk.CfnOutput(this, 'IntencoesTableName', { value: this.intencoesTable.tableName });
+    new cdk.CfnOutput(this, 'CatalogoTableName', { value: this.catalogoTable.tableName });
   }
 }
