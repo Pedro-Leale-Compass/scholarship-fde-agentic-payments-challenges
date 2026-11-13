@@ -67,6 +67,7 @@ export class AgenticPaymentsStack extends cdk.Stack {
     this.paymentTools = new PaymentTools(this, 'PaymentTools', {
       resourcePrefix: props.resourcePrefix,
       usuariosTable: this.database.usuariosTable,
+      intencoesTable: this.database.intencoesTable,
     });
 
     // Output inicial para confirmação de síntese do scaffolding

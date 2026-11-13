@@ -14,6 +14,10 @@ export interface PaymentToolsProps {
    * Tabela de usuários (`alvaro-usuarios`) usada para leitura de saldo/limite.
    */
   readonly usuariosTable: dynamodb.ITable;
+  /**
+   * Tabela de intenções (`alvaro-intencoes`) usada para registrar intenções PENDENTE.
+   */
+  readonly intencoesTable: dynamodb.ITable;
 }
 
 /**
@@ -24,11 +28,12 @@ export interface PaymentToolsProps {
  */
 export class PaymentTools extends Construct {
   public readonly consultarSaldoLambda: lambda.Function;
+  public readonly criarIntencaoLambda: lambda.Function;
 
   constructor(scope: Construct, id: string, props: PaymentToolsProps) {
     super(scope, id);
 
-    const { resourcePrefix, usuariosTable } = props;
+    const { resourcePrefix, usuariosTable, intencoesTable } = props;
     const toolsDir = path.join(__dirname, '../../tools');
 
     // TOOL-01: Consulta de Catálogo e Saldo do usuário autenticado
@@ -47,10 +52,32 @@ export class PaymentTools extends Construct {
     // Menor privilégio estrito: somente dynamodb:GetItem na tabela alvaro-usuarios.
     usuariosTable.grant(this.consultarSaldoLambda, 'dynamodb:GetItem');
 
+    // TOOL-02: Registro de Intenção de Compra (sem movimentação de saldo)
+    this.criarIntencaoLambda = new lambda.Function(this, 'CriarIntencaoHandler', {
+      functionName: `${resourcePrefix}tool-criar-intencao`,
+      runtime: lambda.Runtime.NODEJS_22_X,
+      handler: 'index.handler',
+      memorySize: 256,
+      timeout: cdk.Duration.seconds(15),
+      code: bundleNode22Lambda(path.join(toolsDir, 'criar-intencao/index.ts'), toolsDir),
+      environment: {
+        INTENCOES_TABLE_NAME: intencoesTable.tableName,
+      },
+    });
+
+    // Menor privilégio estrito: somente dynamodb:PutItem na tabela alvaro-intencoes.
+    intencoesTable.grant(this.criarIntencaoLambda, 'dynamodb:PutItem');
+
     new cdk.CfnOutput(this, 'ConsultarSaldoLambdaArnOutput', {
       value: this.consultarSaldoLambda.functionArn,
       description: 'ARN da Lambda TOOL-01 (Consulta de Catálogo e Saldo)',
       exportName: `${resourcePrefix}tool-consultar-saldo-arn`,
+    });
+
+    new cdk.CfnOutput(this, 'CriarIntencaoLambdaArnOutput', {
+      value: this.criarIntencaoLambda.functionArn,
+      description: 'ARN da Lambda TOOL-02 (Registro de Intenção de Compra)',
+      exportName: `${resourcePrefix}tool-criar-intencao-arn`,
     });
   }
 }
