@@ -12,3 +12,8 @@ build/
 .agents/
 frontend/out/
 frontend/*.tsbuildinfo
+infra/.venv/
+infra/cdk.out/
+__pycache__/
+*.pyc
+infra/.envrc
