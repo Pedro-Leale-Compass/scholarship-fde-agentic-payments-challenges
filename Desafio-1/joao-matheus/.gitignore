@@ -141,3 +141,23 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# CDK
+cdk.out/
+cdk.context.json
+cdk-outputs.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Frontend config local
+frontend/public/config.json
+
+# Terraform (preventivo, exigência do enunciado)
+.terraform/
+*.tfstate
+*.tfstate.*
+
