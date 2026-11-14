@@ -1,59 +1,65 @@
-// gemini-chat/src/services/api.ts
-import type { Content } from "../types";
-import type { Usuario, RespostaChat } from "../types";
+import type { Content, Usuario, RespostaChat } from "../types";
 import { carregarConfig } from "./config";
+import { obterAccessToken } from "./auth";
 
-export async function login(
-  username: string,
-  senha: string,
-): Promise<string> {
-  const { authUrl } = await carregarConfig();
-
-  const resp = await fetch(`${authUrl}/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, senha }),
-  });
-
-  if (!resp.ok) {
-    throw new Error("E-mail ou senha não conferem.");
+export class SessaoExpiradaError extends Error {
+  constructor() {
+    super("Sua sessão terminou. Entre novamente para continuar.");
+    this.name = "SessaoExpiradaError";
   }
-
-  const dados = await resp.json();
-  return dados.token as string;
 }
 
-export async function buscarPerfil(token: string): Promise<Usuario> {
-  const { authUrl } = await carregarConfig();
+async function requisicaoAutenticada(
+  caminho: string,
+  opcoes: RequestInit = {},
+): Promise<Response> {
+  const { apiUrl } = await carregarConfig();
 
-  const resp = await fetch(`${authUrl}/me`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (!resp.ok) {
-    throw new Error("Não conseguimos confirmar sua conta.");
+  if (!apiUrl) {
+    throw new Error("A API aguarda o deploy na AWS.");
   }
 
-  return resp.json();
+  const token = await obterAccessToken();
+  const headers = new Headers(opcoes.headers);
+
+  headers.set("Authorization", `Bearer ${token}`);
+
+  const resposta = await fetch(`${apiUrl}${caminho}`, {
+    ...opcoes,
+    headers,
+    cache: "no-store",
+  });
+
+  if (resposta.status === 401) {
+    throw new SessaoExpiradaError();
+  }
+
+  return resposta;
+}
+
+export async function buscarPerfil(): Promise<Usuario> {
+  const resposta = await requisicaoAutenticada("/me");
+
+  if (!resposta.ok) {
+    throw new Error("Não conseguimos carregar seus dados agora.");
+  }
+
+  return resposta.json();
 }
 
 export async function enviarMensagem(
-  token: string,
   historicoAtual: Content[],
   textoUsuario: string,
 ): Promise<RespostaChat> {
-  const { chatUrl } = await carregarConfig();
-
   const mensagens: Content[] = [
     ...historicoAtual,
     { role: "user", parts: [{ text: textoUsuario }] },
   ];
 
-  const resp = await fetch(chatUrl, {
+  const resposta = await requisicaoAutenticada("/chat", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
       messages: mensagens,
@@ -61,30 +67,9 @@ export async function enviarMensagem(
     }),
   });
 
-  if (!resp.ok) {
+  if (!resposta.ok) {
     throw new Error("Não conseguimos abrir sua conversa agora.");
   }
 
-  return resp.json();
-}
-
-export async function registrar(
-  username: string,
-  senha: string,
-): Promise<string> {
-  const { authUrl } = await carregarConfig();
-
-  const resp = await fetch(`${authUrl}/registrar`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, senha }),
-  });
-
-  if (!resp.ok) {
-    const dados = await resp.json().catch(() => ({}));
-    throw new Error(dados.mensagem || "Não foi possível criar sua conta.");
-  }
-
-  const dados = await resp.json();
-  return dados.token as string;
+  return resposta.json();
 }

@@ -1,6 +1,5 @@
 interface ConfigPublica {
-  authUrl: string;
-  chatUrl: string;
+  apiUrl: string;
   cognito: {
     region: string;
     userPoolId: string;
@@ -20,15 +19,17 @@ export function carregarConfig(): Promise<ConfigPublica> {
 
         const dados = await resposta.json();
 
-        for (const campo of ["authUrl", "chatUrl"]) {
-          if (typeof dados[campo] !== "string") {
-            throw new Error(`Configuração inválida: ${campo}.`);
-          }
+        if (typeof dados.apiUrl !== "string") {
+          throw new Error("Configuração inválida: apiUrl.");
+        }
 
-          const url = new URL(dados[campo]);
+        const apiUrl = dados.apiUrl.trim().replace(/\/+$/, "");
+
+        if (apiUrl) {
+          const url = new URL(apiUrl);
 
           if (!["http:", "https:"].includes(url.protocol)) {
-            throw new Error(`Protocolo inválido: ${campo}.`);
+            throw new Error("Protocolo inválido para a API.");
           }
         }
 
@@ -43,11 +44,7 @@ export function carregarConfig(): Promise<ConfigPublica> {
           throw new Error("Configuração do Cognito inválida.");
         }
 
-        return {
-          authUrl: dados.authUrl.replace(/\/+$/, ""),
-          chatUrl: dados.chatUrl,
-          cognito,
-        };
+        return { apiUrl, cognito };
       })
       .catch((erro) => {
         carregamento = undefined;
