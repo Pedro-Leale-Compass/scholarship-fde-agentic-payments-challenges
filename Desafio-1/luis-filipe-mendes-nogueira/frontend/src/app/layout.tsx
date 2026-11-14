@@ -1,4 +1,5 @@
 // gemini-chat/src/app/layout.tsx
+import "@aws-amplify/ui-react/styles.css";
 import "../styles/tokens.css";
 import "../styles/components.css";
 import "../styles/layout-extra.css";

@@ -1,6 +1,11 @@
 interface ConfigPublica {
   authUrl: string;
   chatUrl: string;
+  cognito: {
+    region: string;
+    userPoolId: string;
+    userPoolClientId: string;
+  };
 }
 
 let carregamento: Promise<ConfigPublica> | undefined;
@@ -22,14 +27,26 @@ export function carregarConfig(): Promise<ConfigPublica> {
 
           const url = new URL(dados[campo]);
 
-          if (url.protocol !== "http:" && url.protocol !== "https:") {
+          if (!["http:", "https:"].includes(url.protocol)) {
             throw new Error(`Protocolo inválido: ${campo}.`);
           }
+        }
+
+        const cognito = dados.cognito;
+
+        if (
+          !cognito ||
+          cognito.region !== "us-east-1" ||
+          typeof cognito.userPoolId !== "string" ||
+          typeof cognito.userPoolClientId !== "string"
+        ) {
+          throw new Error("Configuração do Cognito inválida.");
         }
 
         return {
           authUrl: dados.authUrl.replace(/\/+$/, ""),
           chatUrl: dados.chatUrl,
+          cognito,
         };
       })
       .catch((erro) => {

@@ -1,16 +1,5 @@
-// gemini-chat/src/app/login/page.tsx
-"use client";
-
-import { useRouter } from "next/navigation";
-import LoginForm from "../../components/LoginForm";
+import LoginCognito from "../../components/LoginCognito";
 
 export default function LoginPage() {
-  const router = useRouter();
-
-  function handleSucesso(token: string) {
-    localStorage.setItem("ingressos_token", token);
-    router.push("/");
-  }
-
-  return <LoginForm onSucesso={handleSucesso} />;
+  return <LoginCognito />;
 }
