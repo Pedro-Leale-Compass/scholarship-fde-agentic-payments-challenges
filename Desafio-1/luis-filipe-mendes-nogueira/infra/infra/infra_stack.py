@@ -52,9 +52,9 @@ class InfraStack(Stack):
             user_invitation=cognito.UserInvitationConfig(
                 email_subject="Convite para o Agente de Pagamentos",
                 email_body=(
-                    "Você recebeu acesso ao Agente de Pagamentos.\n"
-                    "Usuário: {username}\n"
-                    "Senha temporária: {####}\n"
+                    "Você recebeu acesso ao Agente de Pagamentos.<br><br>"
+                    "Usuário: {username}<br>"
+                    "Senha temporária: {####}<br><br>"
                     "Ao realizar o primeiro acesso, defina uma nova senha."
                 ),
             ),

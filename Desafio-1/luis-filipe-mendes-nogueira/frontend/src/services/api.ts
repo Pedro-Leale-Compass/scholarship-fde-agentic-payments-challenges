@@ -73,3 +73,17 @@ export async function enviarMensagem(
 
   return resposta.json();
 }
+
+export interface SessaoAutenticada {
+  usuario_id: string;
+}
+
+export async function buscarSessao(): Promise<SessaoAutenticada> {
+  const resposta = await requisicaoAutenticada("/sessao");
+
+  if (!resposta.ok) {
+    throw new Error("Não foi possível confirmar sua sessão.");
+  }
+
+  return resposta.json();
+}
