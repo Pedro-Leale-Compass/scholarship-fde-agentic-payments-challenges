@@ -3,6 +3,7 @@ import "@aws-amplify/ui-react/styles.css";
 import "../styles/tokens.css";
 import "../styles/components.css";
 import "../styles/layout-extra.css";
+import "../styles/login-cognito.css";
 
 export const metadata = { title: "Ingressos" };
 

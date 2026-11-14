@@ -1,0 +1,122 @@
+/* Personalização restrita à página de login Cognito. */
+
+.ig-login-cognito {
+  background: var(--c-superficie);
+  color: var(--c-tinta);
+}
+
+.ig-login-cognito__categorias {
+  margin-top: var(--e-5);
+  flex-wrap: wrap;
+}
+
+.ig-login-cognito .ig-tela-login__form-col {
+  box-sizing: border-box;
+  width: min(100%, 480px);
+  flex-shrink: 0;
+}
+
+.ig-login-cognito__introducao {
+  margin-bottom: var(--e-6);
+}
+
+.ig-login-cognito__introducao h1 {
+  margin: 0;
+  font: var(--t-t3);
+  letter-spacing: var(--track-titulo);
+}
+
+.ig-login-cognito__introducao p {
+  margin: var(--e-2) 0 0;
+  font: var(--t-corpo);
+  color: var(--c-acao);
+}
+
+/* Faz o formulário usar a tipografia do projeto. */
+
+.ig-login-cognito [data-amplify-authenticator] {
+  width: 100%;
+  font-family: var(--fonte);
+
+  --amplify-fonts-default-variable: var(--fonte);
+  --amplify-fonts-default-static: var(--fonte);
+  --amplify-colors-font-primary: var(--c-tinta);
+  --amplify-colors-background-primary: var(--c-superficie);
+}
+
+.ig-login-cognito [data-amplify-router] {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.ig-login-cognito [data-amplify-container] {
+  width: 100%;
+  max-width: 100%;
+}
+
+.ig-login-cognito [data-amplify-form] {
+  padding: 0;
+}
+
+.ig-login-cognito .amplify-label {
+  color: var(--c-tinta);
+  font-family: var(--fonte);
+  font-weight: 600;
+}
+
+.ig-login-cognito .amplify-input {
+  min-height: 48px;
+  background: var(--c-superficie);
+  color: var(--c-tinta);
+  font-family: var(--fonte);
+}
+
+.ig-login-cognito .amplify-input:focus-visible {
+  outline: 2px solid var(--c-acao);
+  outline-offset: 2px;
+}
+
+.ig-login-cognito .amplify-button--primary {
+  min-height: 48px;
+  background: var(--c-acao);
+  border-color: var(--c-acao);
+  color: var(--c-superficie);
+  font-family: var(--fonte);
+  font-weight: 600;
+}
+
+.ig-login-cognito .amplify-button--primary:hover:not(:disabled) {
+  background: var(--c-acao);
+  border-color: var(--c-acao);
+  filter: brightness(0.9);
+}
+
+.ig-login-cognito .amplify-button--link {
+  color: var(--c-acao);
+  font-family: var(--fonte);
+}
+
+.ig-login-cognito .amplify-button:focus-visible {
+  outline: 2px solid var(--c-acao);
+  outline-offset: 3px;
+}
+
+@media (max-width: 760px) {
+  .ig-login-cognito {
+    flex-direction: column;
+  }
+
+  .ig-login-cognito .ig-marca-painel {
+    flex: none;
+    width: 100%;
+    box-sizing: border-box;
+    padding: var(--e-6);
+  }
+
+  .ig-login-cognito .ig-tela-login__form-col {
+    width: 100%;
+    padding: var(--e-6);
+  }
+}
