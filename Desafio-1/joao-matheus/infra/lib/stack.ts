@@ -19,16 +19,19 @@ export class DesafioStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, 'FrontendUrl', {
       value: this.frontendHosting.urlFrontend,
-      description: 'URL pública do frontend via CloudFront',
+      description: 'URL do frontend (CloudFront ou localhost durante desenvolvimento)',
     });
     new cdk.CfnOutput(this, 'BucketName', {
       value: this.frontendHosting.bucket.bucketName,
       description: 'Nome do bucket privado do frontend',
     });
-    new cdk.CfnOutput(this, 'DistributionId', {
-      value: this.frontendHosting.distribution.distributionId,
-      description: 'ID da distribuição CloudFront',
-    });
+
+    if (this.frontendHosting.distribution) {
+      new cdk.CfnOutput(this, 'DistributionId', {
+        value: this.frontendHosting.distribution.distributionId,
+        description: 'ID da distribuição CloudFront',
+      });
+    }
 
     // =========================================================================
     // 2. Autenticação (Cognito User Pool e Client)

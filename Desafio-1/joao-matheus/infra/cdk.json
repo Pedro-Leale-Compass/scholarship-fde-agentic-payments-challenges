@@ -18,7 +18,7 @@
   },
   "context": {
     "modelId": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-    "permitirLocalhost": false
+    "permitirLocalhost": true,
+    "habilitarCloudFront": false
   }
 }
-
