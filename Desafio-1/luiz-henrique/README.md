@@ -14,16 +14,15 @@ Desafio-1/luiz-henrique/
 ├── api/        # API Gateway + Lambda do chat (autorizador JWT Cognito)
 ├── agent/      # Agente Strands no Bedrock AgentCore Runtime (Claude Haiku)
 ├── tools/      # Lambdas das tools: listar_catalogo, registrar_intencao, realizar_compra
-├── infra/      # IaC (único comando de deploy: backend, agente, frontend S3 + CloudFront)
-├── dev-tools/  # MiniStack + llama.cpp Qwen3.5 (Ambiente local, Bedrock emulator)
-├── docs/       # TODO.md, STACK.md, MIGRACAO-ANTERIOR.md, ministack-docker.md
+├── infra/      # IaC (CDK: backend, agente, frontend no Amplify Hosting)
+├── docs/       # TODO.md, STACK.md, MIGRACAO-ANTERIOR.md
 └── README.md   # este arquivo
 ```
 
 ## Diagrama implementado
 
 ```
-CloudFront + S3 (frontend estático, login Cognito, OAC, bucket privado)
+Amplify Hosting (frontend estático + login Cognito)
         │  HTTPS + Authorization: Bearer <JWT>
         ▼
 API Gateway (autorizador JWT Cognito · streaming/WebSocket)
@@ -35,49 +34,60 @@ Lambda do chat ───► Agente Strands no AgentCore Runtime (Bedrock · Clau
 
 ## Passo a passo de deploy
 
-Pré-requisitos: AWS CLI v2, perfil SSO `desafio-1` configurado, `aws sso login` feito, `export AWS_PROFILE=desafio-1`.
+Pré-requisitos: AWS CLI v2, perfil `desafio-1` configurado e sessão iniciada (`aws login` / `aws sso login`).
 
 ```bash
-# Confirmar conta
-aws sts get-caller-identity
+# Na raiz de Desafio-1/luiz-henrique
+npm install                      # dependências do CDK (uma vez)
 
-# Entrar na pasta de infra
-cd Desafio-1/luiz-henrique/infra
+# credenciais do perfil (o CDK/SDK não leem o login_session do AWS CLI)
+eval "$(scripts/aws-creds.sh)"
 
-# Rodar o único comando de deploy (backend, agente, build/upload frontend S3 + invalidação CloudFront)
-cdk deploy --require-approval never
+# usuário do instrutor criado no Cognito pelo CDK
+export TEST_EMAIL=<test-email>
+export TEST_PASSWORD='<senha-temporaria>'
+
+# cdk deploy + build e publicação do frontend no Amplify
+npm run deploy
 ```
 
-Verificar criação de: bucket S3, distribuição CloudFront, runtime do AgentCore, imagens no ECR, tabelas DynamoDB, logs CloudWatch.
+O `npm run deploy` executa `cdk deploy --require-approval never --outputs-file`
+e, em seguida, `scripts/deploy-frontend.sh`, que builda o Next.js, gera o
+`config.json` de runtime e publica no Amplify Hosting.
 
-Aplicação acessível via domínio do CloudFront.
+Saídas: `ApiUrl`, `FrontendUrl`, `CognitoUserPoolId`, `CognitoUserPoolClientId`, `AgentRuntimeArn`.
 
-## Ambiente de desenvolvimento local (MiniStack + LLM)
+**Nota sobre CloudFront:** esta conta tem uma SCP que nega
+`cloudfront:CreateDistribution`, `CreateOriginAccessControl` e
+`CreateCloudFrontOriginAccessIdentity`. Por isso o frontend usa **Amplify Hosting**
+(HTTPS + CDN) em vez de S3 + CloudFront + OAC. O bucket S3 privado + OAC continua
+como desenho documentado, mas não é implantável nesta conta.
 
-Para desenvolver sem custos na AWS, use o MiniStack (emulador AWS local) como provedor Bedrock, com llama.cpp (Qwen3.5 2B Q8) como modelo de linguagem:
+## Ambiente de desenvolvimento
+
+Fluxo remoto primeiro: a API, o agente e o banco rodam na AWS; localmente só o frontend.
 
 ```bash
-# 1. Subir MiniStack + llama-server (Docker, porta 4566)
-cd Desafio-1/luiz-henrique/dev-tools
-docker compose up -d
+# credenciais do perfil (o CDK/SDK não leem o login_session do AWS CLI)
+eval "$(scripts/aws-creds.sh)"
 
-# 2. Voltar para a raiz e fazer o deploy apontando para o MiniStack
-cd Desafio-1/luiz-henrique
-set -a && . .env.example && set +a   # AWS_PROFILE=local, endpoints :4566
-npm install                          # dependências do CDK
-cdk bootstrap && cdk deploy --require-approval never
+# deploy
+npm run deploy
+
+# frontend local apontando para a API publicada
+NEXT_PUBLIC_API_URL=<ApiUrl do output> npm run dev:frontend
 ```
 
-O `chatFn` do `api/` usa a variável `BEDROCK_ENDPOINT_URL`:
-- `AWS_PROFILE=local` → aponta para `http://localhost:4566` (MiniStack → llama.cpp/Qwen3.5)
-- `AWS_PROFILE=desafio-1` (ou outro) → Bedrock real us-east-1 (Claude Haiku)
-
-Detalhes: [`docs/ministack-docker.md`](./docs/ministack-docker.md)
+Para iterar no prompt do agente sem redeploy, `npm run dev:agent` roda o agente
+localmente (porta 3031) com Bedrock real e as tools em fallback em memória.
 
 ## Modelo usado
 
-- Amazon Bedrock — Claude Haiku
+- Amazon Bedrock — Claude Haiku (modelo alvo do desafio)
 - Agente Strands rodando no Bedrock AgentCore Runtime
+- Enquanto o acesso ao Claude Haiku não é liberado na conta, o agente usa
+  `global.amazon.nova-2-lite-v1:0`. Para trocar, basta definir `BEDROCK_MODEL_ID`
+  (local) ou ajustar `MODEL_ID` em `infra/lib/agent-stack.ts` (deploy).
 
 ## Modelagem do DynamoDB
 
@@ -96,7 +106,7 @@ Escritas condicionais para pagamento e limite (sem duplicidade). `usuario_id` ve
 - Lambdas das tools: escrita condicional nas tabelas DynamoDB correspondentes.
 - API Gateway: autorizador JWT Cognito.
 - AgentCore Runtime: execução do agente Strands com Bedrock.
-- CloudFront: OAC para acesso ao bucket S3 privado.
+- Amplify Hosting (substitui S3 + CloudFront, bloqueado por SCP nesta conta).
 - Nenhum segredo no Git.
 
 ## Evidências
@@ -126,8 +136,8 @@ Confirmar no console AWS que não restou: bucket S3, distribuição CloudFront, 
 ## Regras essenciais
 
 - Tudo em `us-east-1`.
-- Bucket S3 privado, servido só pelo CloudFront (OAC).
-- CORS da API aceita apenas o domínio do CloudFront.
+- Frontend em Amplify Hosting (HTTPS). S3 privado + CloudFront/OAC não é permitido pela SCP da conta.
+- CORS da API aceita apenas o domínio do Amplify.
 - Cognito sem auto cadastro (`AllowAdminCreateUserOnly`); usuários entram por convite.
 - `usuario_id` vem do `sub` do token, nunca do corpo nem do modelo.
 - Valor da compra vem da intenção salva; pagamento e limite usam escritas condicionais (sem duplicidade).
