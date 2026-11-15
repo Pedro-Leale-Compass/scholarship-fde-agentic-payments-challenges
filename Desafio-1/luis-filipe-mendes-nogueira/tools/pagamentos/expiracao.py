@@ -1,4 +1,4 @@
-def _expirar_intencao(
+def expirar_intencao(
     client,
     tabela_intencoes,
     tabela_catalogo,
@@ -106,7 +106,7 @@ def expirar_intencoes_vencidas(
         resposta = client.query(**parametros)
 
         for intencao in resposta.get("Items", []):
-            expirou = _expirar_intencao(
+            expirou = expirar_intencao(
                 client=client,
                 tabela_intencoes=tabela_intencoes,
                 tabela_catalogo=tabela_catalogo,
