@@ -5,7 +5,8 @@
   "scripts": {
     "build": "tsc --noEmit",
     "synth": "cdk synth",
-    "cdk": "cdk"
+    "cdk": "cdk",
+    "usuario": "node scripts/criar-usuario.mjs"
   },
   "dependencies": {
     "aws-cdk-lib": "^2.180.0",
