@@ -268,6 +268,163 @@ class InfraStack(Stack):
             timeout=Duration.seconds(5),
         )
 
+        def criar_lambda_tool(
+            identificador: str,
+            nome: str,
+            handler: str,
+            variaveis: dict[str, str],
+            permissoes: list[tuple[list[str], str]],
+        ) -> lambda_.Function:
+            nome_funcao = f"{prefixo}-{nome}"
+
+            grupo_logs = logs.LogGroup(
+                self,
+                f"{identificador}Logs",
+                log_group_name=f"/aws/lambda/{nome_funcao}",
+                retention=logs.RetentionDays.ONE_WEEK,
+                removal_policy=RemovalPolicy.DESTROY,
+            )
+
+            role = iam.Role(
+                self,
+                f"{identificador}Role",
+                role_name=f"{nome_funcao}-role",
+                assumed_by=iam.ServicePrincipal(
+                    "lambda.amazonaws.com"
+                ),
+            )
+
+            role.add_to_policy(
+                iam.PolicyStatement(
+                    actions=[
+                        "logs:CreateLogStream",
+                        "logs:PutLogEvents",
+                    ],
+                    resources=[
+                        self.format_arn(
+                            service="logs",
+                            resource="log-group",
+                            resource_name=(
+                                f"/aws/lambda/{nome_funcao}"
+                                ":log-stream:*"
+                            ),
+                            arn_format=ArnFormat.COLON_RESOURCE_NAME,
+                        )
+                    ],
+                )
+            )
+
+            for acoes, recurso in permissoes:
+                role.add_to_policy(
+                    iam.PolicyStatement(
+                        actions=acoes,
+                        resources=[recurso],
+                    )
+                )
+
+            return lambda_.Function(
+                self,
+                identificador,
+                function_name=nome_funcao,
+                runtime=lambda_.Runtime.PYTHON_3_13,
+                handler=handler,
+                code=lambda_.Code.from_asset(
+                    str(raiz_projeto / "tools" / "pagamentos"),
+                    exclude=[
+                        "__pycache__",
+                        "**/__pycache__/**",
+                        "*.pyc",
+                        "**/*.pyc",
+                    ],
+                ),
+                role=role,
+                log_group=grupo_logs,
+                environment=variaveis,
+                memory_size=128,
+                timeout=Duration.seconds(30),
+            )
+
+        indice_expiracao_arn = (
+            f"{tabela_intencoes.table_arn}"
+            "/index/por-status-expiracao"
+        )
+
+        variaveis_catalogo_intencoes = {
+            "CATALOGO_TABLE": tabela_catalogo.table_name,
+            "INTENCOES_TABLE": tabela_intencoes.table_name,
+        }
+
+        funcao_listar_catalogo = criar_lambda_tool(
+            identificador="ListarCatalogoFunction",
+            nome="listar-catalogo",
+            handler="listar_catalogo.handler",
+            variaveis=variaveis_catalogo_intencoes,
+            permissoes=[
+                (
+                    ["dynamodb:Scan", "dynamodb:UpdateItem"],
+                    tabela_catalogo.table_arn,
+                ),
+                (
+                    ["dynamodb:Query"],
+                    indice_expiracao_arn,
+                ),
+                (
+                    ["dynamodb:UpdateItem"],
+                    tabela_intencoes.table_arn,
+                ),
+            ],
+        )
+
+        funcao_registrar_intencao = criar_lambda_tool(
+            identificador="RegistrarIntencaoFunction",
+            nome="registrar-intencao",
+            handler="registrar_intencao.handler",
+            variaveis=variaveis_catalogo_intencoes,
+            permissoes=[
+                (
+                    ["dynamodb:GetItem", "dynamodb:UpdateItem"],
+                    tabela_catalogo.table_arn,
+                ),
+                (
+                    ["dynamodb:Query"],
+                    indice_expiracao_arn,
+                ),
+                (
+                    ["dynamodb:PutItem", "dynamodb:UpdateItem"],
+                    tabela_intencoes.table_arn,
+                ),
+            ],
+        )
+
+        funcao_realizar_compra = criar_lambda_tool(
+            identificador="RealizarCompraFunction",
+            nome="realizar-compra",
+            handler="realizar_compra.handler",
+            variaveis={
+                **variaveis_catalogo_intencoes,
+                "USUARIOS_TABLE": tabela_usuarios.table_name,
+                "TRANSACOES_TABLE": tabela_transacoes.table_name,
+            },
+            permissoes=[
+                (
+                    ["dynamodb:GetItem", "dynamodb:UpdateItem"],
+                    tabela_usuarios.table_arn,
+                ),
+                (
+                    ["dynamodb:GetItem", "dynamodb:UpdateItem"],
+                    tabela_intencoes.table_arn,
+                ),
+                (
+                    ["dynamodb:PutItem"],
+                    tabela_transacoes.table_arn,
+                ),
+                (
+                    ["dynamodb:UpdateItem"],
+                    tabela_catalogo.table_arn,
+                ),
+            ],
+        )
+
         autorizador = authorizers.HttpJwtAuthorizer(
             "CognitoAuthorizer",
             jwt_issuer=user_pool.user_pool_provider_url,
@@ -335,4 +492,10 @@ class InfraStack(Stack):
             self,
             "ApiUrl",
             value=http_api.api_endpoint,
+        )
+
+        CfnOutput(
+            self,
+            "CatalogoTableName",
+            value=tabela_catalogo.table_name,
         )
