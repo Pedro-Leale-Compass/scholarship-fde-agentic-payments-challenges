@@ -5,6 +5,7 @@ import { Auth } from './auth';
 import { FrontendHost } from './frontend-host';
 import { ChatApi } from './api';
 import { PaymentTools } from './tools';
+import { PaymentAgent } from './agent';
 
 export interface AgenticPaymentsStackProps extends cdk.StackProps {
   /**
@@ -30,6 +31,7 @@ export class AgenticPaymentsStack extends cdk.Stack {
   public readonly frontendHost: FrontendHost;
   public readonly chatApi: ChatApi;
   public readonly paymentTools: PaymentTools;
+  public readonly paymentAgent: PaymentAgent;
 
   constructor(scope: Construct, id: string, props: AgenticPaymentsStackProps) {
     super(scope, id, props);
@@ -68,6 +70,14 @@ export class AgenticPaymentsStack extends cdk.Stack {
       resourcePrefix: props.resourcePrefix,
       usuariosTable: this.database.usuariosTable,
       intencoesTable: this.database.intencoesTable,
+    });
+
+    // Runtime do Agente Strands (Bedrock AgentCore + Claude Haiku)
+    this.paymentAgent = new PaymentAgent(this, 'PaymentAgent', {
+      resourcePrefix: props.resourcePrefix,
+      consultarSaldoLambda: this.paymentTools.consultarSaldoLambda,
+      criarIntencaoLambda: this.paymentTools.criarIntencaoLambda,
+      confirmarPagamentoLambda: this.paymentTools.confirmarPagamentoLambda,
     });
 
     // Output inicial para confirmação de síntese do scaffolding
