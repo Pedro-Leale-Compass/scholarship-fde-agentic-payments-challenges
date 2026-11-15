@@ -2,6 +2,7 @@ import { Construct } from 'constructs';
 import * as cdk from 'aws-cdk-lib';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as apigw from 'aws-cdk-lib/aws-apigateway';
 import * as path from 'path';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
@@ -11,12 +12,13 @@ export interface ApiStackProps {
   stackPrefix: string;
   agentRuntimeArn: string;
   usuariosTable: dynamodb.Table;
+  frontendUrl: string;
 }
 
 export class ApiStack extends Construct {
   public readonly userPool: cognito.UserPool;
   public readonly userPoolClient: cognito.UserPoolClient;
-  public readonly chatFn: lambda.Function;
+  public readonly chatFn: nodejs.NodejsFunction;
   public readonly api: apigw.RestApi;
   public readonly apiUrl: string;
   public readonly apiDomain: string;
@@ -24,7 +26,7 @@ export class ApiStack extends Construct {
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id);
 
-    const { stackPrefix, agentRuntimeArn, usuariosTable } = props;
+    const { stackPrefix, agentRuntimeArn, usuariosTable, frontendUrl } = props;
     const prefix = `${stackPrefix}-`;
 
     this.userPool = new cognito.UserPool(this, 'UserPool', {
@@ -45,19 +47,22 @@ export class ApiStack extends Construct {
       generateSecret: false,
     });
 
-    const isLocalProfile = process.env.AWS_PROFILE === 'local';
-    const bedrockEndpoint = process.env.BEDROCK_ENDPOINT_URL || (isLocalProfile ? 'http://localhost:4566' : '');
-
-    this.chatFn = new lambda.Function(this, 'ChatFn', {
+    this.chatFn = new nodejs.NodejsFunction(this, 'ChatFn', {
       functionName: `${prefix}chat`,
+      entry: path.join(__dirname, '..', '..', 'api', 'index.ts'),
+      handler: 'handler',
       runtime: lambda.Runtime.NODEJS_20_X,
-      handler: 'index.handler',
-      code: lambda.Code.fromAsset(path.join(__dirname, '..', '..', 'api')),
+      timeout: cdk.Duration.minutes(2),
+      memorySize: 256,
       environment: {
         AGENT_RUNTIME_ARN: agentRuntimeArn,
         USUARIOS_TABLE: usuariosTable.tableName,
-        BEDROCK_ENDPOINT_URL: bedrockEndpoint,
-        BEDROCK_MODEL_ID: 'claude-3-haiku',
+        FRONTEND_URL: frontendUrl,
+      },
+      bundling: {
+        minify: true,
+        sourceMap: false,
+        externalModules: [],
       },
     });
 
@@ -65,7 +70,10 @@ export class ApiStack extends Construct {
     this.chatFn.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ['bedrock-agentcore:InvokeAgentRuntime'],
-        resources: [agentRuntimeArn],
+        resources: [
+          agentRuntimeArn,
+          `${agentRuntimeArn}/runtime-endpoint/*`,
+        ],
       })
     );
 
@@ -73,8 +81,8 @@ export class ApiStack extends Construct {
       restApiName: `${prefix}api`,
       description: 'Desafio 1 - API do chat de pagamentos',
       defaultCorsPreflightOptions: {
-        allowOrigins: ['*'],
-        allowMethods: ['GET', 'POST', 'OPTIONS'],
+        allowOrigins: [frontendUrl],
+        allowMethods: ['POST', 'OPTIONS'],
         allowHeaders: ['Content-Type', 'Authorization'],
       },
       deployOptions: {
@@ -92,6 +100,34 @@ export class ApiStack extends Construct {
     chatResource.addMethod('POST', new apigw.LambdaIntegration(this.chatFn), {
       authorizer,
       authorizationType: apigw.AuthorizationType.COGNITO,
+    });
+
+    // CORS também nas respostas de erro geradas pelo API Gateway (401/4xx/5xx)
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': `'${frontendUrl}'`,
+      'Access-Control-Allow-Headers': "'Content-Type,Authorization'",
+      'Access-Control-Allow-Methods': "'POST,OPTIONS'",
+    };
+
+    const gatewayResponseProps = {
+      responseHeaders: corsHeaders,
+    };
+
+    this.api.addGatewayResponse('Unauthorized', {
+      type: apigw.ResponseType.UNAUTHORIZED,
+      ...gatewayResponseProps,
+    });
+    this.api.addGatewayResponse('AccessDenied', {
+      type: apigw.ResponseType.ACCESS_DENIED,
+      ...gatewayResponseProps,
+    });
+    this.api.addGatewayResponse('Default4XX', {
+      type: apigw.ResponseType.DEFAULT_4XX,
+      ...gatewayResponseProps,
+    });
+    this.api.addGatewayResponse('Default5XX', {
+      type: apigw.ResponseType.DEFAULT_5XX,
+      ...gatewayResponseProps,
     });
 
     this.apiUrl = this.api.url;

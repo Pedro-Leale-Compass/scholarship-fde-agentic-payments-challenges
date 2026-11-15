@@ -1,5 +1,6 @@
 import { Construct } from 'constructs';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as path from 'path';
@@ -19,9 +20,9 @@ export interface ToolLambdaArns {
 
 export class ToolsStack extends Construct {
   public readonly toolLambdaArns: ToolLambdaArns;
-  public readonly listarCatalogoFn: lambda.Function;
-  public readonly registrarIntencaoFn: lambda.Function;
-  public readonly realizarCompraFn: lambda.Function;
+  public readonly listarCatalogoFn: nodejs.NodejsFunction;
+  public readonly registrarIntencaoFn: nodejs.NodejsFunction;
+  public readonly realizarCompraFn: nodejs.NodejsFunction;
 
   constructor(scope: Construct, id: string, props: ToolsStackProps) {
     super(scope, id);
@@ -35,32 +36,28 @@ export class ToolsStack extends Construct {
       INTENCOES_TABLE: intencoesTable.tableName,
     };
 
-    this.listarCatalogoFn = new lambda.Function(this, 'ListarCatalogoFn', {
-      functionName: `${prefix}listar-catalogo`,
-      runtime: lambda.Runtime.NODEJS_20_X,
-      handler: 'index.handler',
-      code: lambda.Code.fromAsset(path.join(toolsDir, 'listar_catalogo')),
-      environment: {
-        ...commonEnv,
-        CATALOGO_TABLE: catalogoTable.tableName,
-      },
+    const makeFn = (name: string, dir: string, environment: Record<string, string>) =>
+      new nodejs.NodejsFunction(this, name, {
+        functionName: `${prefix}${dir.replace(/_/g, '-')}`,
+        entry: path.join(toolsDir, dir, 'index.ts'),
+        handler: 'handler',
+        runtime: lambda.Runtime.NODEJS_20_X,
+        environment,
+        bundling: {
+          minify: true,
+          sourceMap: false,
+          externalModules: [],
+        },
+      });
+
+    this.listarCatalogoFn = makeFn('ListarCatalogoFn', 'listar_catalogo', {
+      ...commonEnv,
+      CATALOGO_TABLE: catalogoTable.tableName,
     });
 
-    this.registrarIntencaoFn = new lambda.Function(this, 'RegistrarIntencaoFn', {
-      functionName: `${prefix}registrar-intencao`,
-      runtime: lambda.Runtime.NODEJS_20_X,
-      handler: 'index.handler',
-      code: lambda.Code.fromAsset(path.join(toolsDir, 'registrar_intencao')),
-      environment: commonEnv,
-    });
+    this.registrarIntencaoFn = makeFn('RegistrarIntencaoFn', 'registrar_intencao', commonEnv);
 
-    this.realizarCompraFn = new lambda.Function(this, 'RealizarCompraFn', {
-      functionName: `${prefix}realizar-compra`,
-      runtime: lambda.Runtime.NODEJS_20_X,
-      handler: 'index.handler',
-      code: lambda.Code.fromAsset(path.join(toolsDir, 'realizar_compra')),
-      environment: commonEnv,
-    });
+    this.realizarCompraFn = makeFn('RealizarCompraFn', 'realizar_compra', commonEnv);
 
     const ddbWritePolicy = new iam.PolicyStatement({
       actions: [
@@ -79,9 +76,7 @@ export class ToolsStack extends Construct {
     });
 
     [this.listarCatalogoFn, this.registrarIntencaoFn, this.realizarCompraFn].forEach(
-      (fn) => {
-        fn.addToRolePolicy(ddbWritePolicy);
-      },
+      (fn) => fn.addToRolePolicy(ddbWritePolicy),
     );
 
     this.toolLambdaArns = {

@@ -5,16 +5,13 @@
   "description": "Desafio 1 - Agente de Pagamentos na AWS (luiz-henrique) - raiz do CDK",
   "scripts": {
     "build": "cd infra && npm run build",
-    "synth": "cdk synth",
-    "deploy:local": "cdk deploy --require-approval never",
-    "deploy:aws": "cdk deploy --require-approval never",
-    "diff": "cdk diff",
-    "destroy": "cdk destroy --force",
-    "test": "cd test && npm test",
-    "dev:agent": "cd agent && export AWS_PROFILE=local && export LOCAL_DEV=true && npx tsx index.ts",
-    "dev:api": "cd api/local && export LOCAL_DEV=true && export AWS_PROFILE=local && npx tsx index.ts",
-    "dev:frontend": "cd frontend && export NEXT_PUBLIC_API_URL=http://localhost:3032 && export NEXT_PUBLIC_LOCAL_DEV=true && npm run dev -- -p 3033",
-    "dev:local": "bash scripts/local-dev-setup.sh"
+    "synth": "cd infra && npx cdk synth",
+    "deploy": "eval \"$(bash scripts/aws-creds.sh)\" && cd infra && npx cdk deploy --require-approval never --outputs-file cdk-outputs.json && cd .. && bash scripts/deploy-frontend.sh",
+    "deploy:frontend": "eval \"$(bash scripts/aws-creds.sh)\" && bash scripts/deploy-frontend.sh",
+    "diff": "eval \"$(bash scripts/aws-creds.sh)\" && cd infra && npx cdk diff",
+    "destroy": "eval \"$(bash scripts/aws-creds.sh)\" && cd infra && npx cdk destroy --force",
+    "dev:agent": "eval \"$(bash scripts/aws-creds.sh)\" && cd agent && npx tsx index.ts",
+    "dev:frontend": "cd frontend && npm run dev"
   },
   "devDependencies": {
     "aws-cdk": "2.160.0",
