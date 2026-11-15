@@ -3,11 +3,13 @@ import { Construct } from 'constructs';
 import { FrontendHostingConstruct } from './constructs/frontend-hosting';
 import { AutenticacaoConstruct } from './constructs/autenticacao';
 import { DadosConstruct } from './constructs/dados';
+import { ToolsConstruct } from './constructs/tools';
 
 export class DesafioStack extends cdk.Stack {
   public readonly frontendHosting: FrontendHostingConstruct;
   public readonly autenticacao: AutenticacaoConstruct;
   public readonly dados: DadosConstruct;
+  public readonly tools: ToolsConstruct;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -73,6 +75,29 @@ export class DesafioStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'ConversasTableName', {
       value: this.dados.conversas.tableName,
       description: 'Nome da tabela de conversas',
+    });
+
+    // =========================================================================
+    // 4. Tools (Lambdas Python das Ferramentas)
+    // =========================================================================
+    this.tools = new ToolsConstruct(this, 'Tools', {
+      tabelaProdutos: this.dados.produtos,
+      tabelaUsuarios: this.dados.usuarios,
+      tabelaIntencoes: this.dados.intencoes,
+      tabelaTransacoes: this.dados.transacoes,
+    });
+
+    new cdk.CfnOutput(this, 'ToolListarCatalogoArn', {
+      value: this.tools.listarCatalogo.functionArn,
+      description: 'ARN da Lambda tool listar_catalogo',
+    });
+    new cdk.CfnOutput(this, 'ToolRegistrarIntencaoArn', {
+      value: this.tools.registrarIntencao.functionArn,
+      description: 'ARN da Lambda tool registrar_intencao',
+    });
+    new cdk.CfnOutput(this, 'ToolRealizarCompraArn', {
+      value: this.tools.realizarCompra.functionArn,
+      description: 'ARN da Lambda tool realizar_compra',
     });
   }
 }
