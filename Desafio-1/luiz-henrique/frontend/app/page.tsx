@@ -1,129 +1,143 @@
 'use client';
 
-import { useState } from 'react';
-import {
-  authenticateMock,
-  decodeMockJwt,
-  makeMockJwt,
-  getMockUsers,
-  isLocalDev,
-} from '@/lib/mock-auth';
+import { useEffect, useState } from 'react';
+import { Amplify } from 'aws-amplify';
+import { signIn, signOut, fetchAuthSession } from 'aws-amplify/auth';
 
-const API_URL = isLocalDev()
-  ? process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3032'
-  : process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4566';
+interface RuntimeConfig {
+  apiUrl: string;
+  userPoolId: string;
+  userPoolClientId: string;
+  region: string;
+}
 
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
 }
 
-interface MockUser {
-  email: string;
-  name: string;
-  sub: string;
-}
-
 export default function Page() {
-  const [user, setUser] = useState<MockUser | null>(null);
+  const [config, setConfig] = useState<RuntimeConfig | null>(null);
+  const [configError, setConfigError] = useState<string | null>(null);
+  const [user, setUser] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
 
-  // Verifica se já há um token válido no localStorage (reload da página)
-  if (typeof window !== 'undefined' && !user && !token) {
-    const stored = localStorage.getItem('desafio-1-token');
-    if (stored) {
-      const decoded = decodeMockJwt(stored);
-      if (decoded?.sub) {
-        const mockUser = getMockUsers().find((u) => u.sub === decoded.sub);
-        if (mockUser) {
-          setUser(mockUser);
-          setToken(stored);
-        }
-      }
-    }
-  }
+  useEffect(() => {
+    fetch('/config.json')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`config ${r.status}`))))
+      .then((cfg: RuntimeConfig) => {
+        Amplify.configure({
+          Auth: {
+            Cognito: {
+              userPoolId: cfg.userPoolId,
+              userPoolClientId: cfg.userPoolClientId,
+            },
+          },
+        });
+        setConfig(cfg);
+      })
+      .catch((err) => setConfigError(`Não foi possível carregar config.json: ${err.message}`));
+  }, []);
 
   async function handleLogin(email: string, password: string) {
     setLoginError(null);
-    const user = authenticateMock(email, password);
-    if (!user) {
-      setLoginError('E-mail ou senha inválidos');
-      return;
+    setLoading(true);
+    try {
+      const result = await signIn({ username: email, password });
+      if (!result.isSignedIn) {
+        setLoginError('Login incompleto (troca de senha necessária). Fale com o administrador.');
+        return;
+      }
+      const session = await fetchAuthSession();
+      const idToken = session.tokens?.idToken?.toString();
+      if (!idToken) {
+        setLoginError('Token não obtido do Cognito.');
+        return;
+      }
+      setUser(email);
+      setToken(idToken);
+    } catch (err) {
+      setLoginError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
     }
-    const jwt = makeMockJwt(user.sub, user.email);
-    setUser(user);
-    setToken(jwt);
-    localStorage.setItem('desafio-1-token', jwt);
   }
 
-  function handleLogout() {
+  async function handleLogout() {
+    try {
+      await signOut();
+    } catch (_) {
+      // ignora erro de logout
+    }
     setUser(null);
     setToken(null);
     setMessages([]);
-    localStorage.removeItem('desafio-1-token');
   }
 
   async function sendMessage() {
-    if (!input.trim()) return;
+    if (!input.trim() || !config || !token) return;
 
     const userMessage: ChatMessage = { role: 'user', content: input };
-    setMessages([...messages, userMessage]);
+    const nextMessages = [...messages, userMessage];
+    setMessages(nextMessages);
     setInput('');
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_URL}/chat`, {
+      const response = await fetch(`${config.apiUrl}/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          messages: [
-            ...messages,
-            { role: 'user', content: input },
-          ].map((m) => ({
+          messages: nextMessages.map((m) => ({
             role: m.role,
             content: [{ text: m.content }],
           })),
         }),
       });
 
+      if (response.status === 401) {
+        throw new Error('401 não autorizado — faça login novamente.');
+      }
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP ${response.status}`);
+        throw new Error(errorData.error || errorData.message || `HTTP ${response.status}`);
       }
 
       const data = await response.json();
-      const assistantMessage: ChatMessage = {
-        role: 'assistant',
-        content: data.reply || data.message || 'Sem resposta',
-      };
-      setMessages([...messages, userMessage, assistantMessage]);
+      setMessages([
+        ...nextMessages,
+        { role: 'assistant', content: data.reply || data.message || 'Sem resposta' },
+      ]);
     } catch (err) {
       setMessages([
-        ...messages,
-        userMessage,
-        {
-          role: 'assistant',
-          content: `Erro: ${err instanceof Error ? err.message : String(err)}`,
-        },
+        ...nextMessages,
+        { role: 'assistant', content: `Erro: ${err instanceof Error ? err.message : String(err)}` },
       ]);
     } finally {
       setLoading(false);
     }
   }
 
-  // Página de login (quando não autenticado)
+  if (configError) {
+    return <div style={{ padding: '2rem' }}>{configError}</div>;
+  }
+
+  if (!config) {
+    return <div style={{ padding: '2rem' }}>Carregando...</div>;
+  }
+
   if (!user || !token) {
     return (
       <div style={{ padding: '2rem', maxWidth: 400, margin: '0 auto' }}>
         <h1>Agente de Pagamentos</h1>
-        <p>Faça login para acessar o chat</p>
+        <p>Faça login com seu usuário Cognito</p>
 
         {loginError && (
           <div
@@ -145,106 +159,52 @@ export default function Page() {
           onSubmit={(e) => {
             e.preventDefault();
             const formData = new FormData(e.target as HTMLFormElement);
-            handleLogin(
-              formData.get('email') as string,
-              formData.get('password') as string,
-            );
+            handleLogin(formData.get('email') as string, formData.get('password') as string);
           }}
           style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}
         >
           <div>
-            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>
-              E-mail
-            </label>
+            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>E-mail</label>
             <input
               name="email"
               type="email"
               required
               autoComplete="email"
-              style={{
-                width: '100%',
-                padding: '0.5rem',
-                border: '1px solid #ccc',
-                borderRadius: '4px',
-                fontSize: '1rem',
-                boxSizing: 'border-box',
-              }}
+              style={{ width: '100%', padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px', fontSize: '1rem', boxSizing: 'border-box' }}
             />
           </div>
-
           <div>
-            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>
-              Senha
-            </label>
+            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Senha</label>
             <input
               name="password"
               type="password"
               required
               autoComplete="current-password"
-              style={{
-                width: '100%',
-                padding: '0.5rem',
-                border: '1px solid #ccc',
-                borderRadius: '4px',
-                fontSize: '1rem',
-                boxSizing: 'border-box',
-              }}
+              style={{ width: '100%', padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px', fontSize: '1rem', boxSizing: 'border-box' }}
             />
           </div>
-
           <button
             type="submit"
             disabled={loading}
-            style={{
-              padding: '0.5rem 1rem',
-              background: loading ? '#9ca3af' : '#2563eb',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              fontSize: '1rem',
-            }}
+            style={{ padding: '0.5rem 1rem', background: loading ? '#9ca3af' : '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', cursor: loading ? 'not-allowed' : 'pointer', fontSize: '1rem' }}
           >
             {loading ? 'Entrando...' : 'Entrar'}
           </button>
         </form>
-
-        <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid #eee', fontSize: '0.85rem', color: '#666' }}>
-          <p>Usuários de teste:</p>
-          <ul style={{ margin: '0.5rem 0', paddingLeft: '1.2rem' }}>
-            {getMockUsers().map((u) => (
-              <li key={u.email}>
-                {u.email} / {u.password}
-              </li>
-            ))}
-          </ul>
-          <p>
-            Modo local: JWT não é verificado (apenas o <code>sub</code> é lido).
-            Na AWS, o Cognito valida o token via API Gateway.
-          </p>
-        </div>
       </div>
     );
   }
 
-  // Página de chat (quando autenticado)
   return (
     <div style={{ padding: '2rem', maxWidth: 800, margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div>
           <h1>Agente de Pagamentos</h1>
-          <p>Bem-vindo, {user.name} ({user.email})</p>
+          <p>Bem-vindo, {user}</p>
         </div>
         <button
           onClick={handleLogout}
-          style={{
-            padding: '0.5rem 1rem',
-            background: '#dc2626',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-          }}
+          style={{ padding: '0.5rem 1rem', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
         >
           Sair
         </button>
@@ -270,6 +230,7 @@ export default function Page() {
               borderRadius: '6px',
               background: m.role === 'user' ? '#dbeafe' : '#ffffff',
               border: '1px solid #ccc',
+              whiteSpace: 'pre-wrap',
             }}
           >
             <strong>{m.role === 'user' ? 'Você' : 'Agente'}: </strong>
@@ -283,29 +244,15 @@ export default function Page() {
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+          onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
           placeholder="Digite sua mensagem (ex: listar produtos, comprar com cartão)"
           disabled={loading}
-          style={{
-            flex: 1,
-            padding: '0.75rem',
-            border: '1px solid #ccc',
-            borderRadius: '4px',
-            fontSize: '1rem',
-          }}
+          style={{ flex: 1, padding: '0.75rem', border: '1px solid #ccc', borderRadius: '4px', fontSize: '1rem' }}
         />
         <button
           onClick={sendMessage}
           disabled={loading || !input.trim()}
-          style={{
-            padding: '0.75rem 1.5rem',
-            background: loading ? '#9ca3af' : '#2563eb',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: loading || !input.trim() ? 'not-allowed' : 'pointer',
-            fontSize: '1rem',
-          }}
+          style={{ padding: '0.75rem 1.5rem', background: loading || !input.trim() ? '#9ca3af' : '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', cursor: loading || !input.trim() ? 'not-allowed' : 'pointer', fontSize: '1rem' }}
         >
           {loading ? 'Enviando...' : 'Enviar'}
         </button>
