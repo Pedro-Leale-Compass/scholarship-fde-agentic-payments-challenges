@@ -2,12 +2,7 @@
  * Lambda do chat — Desafio 1 (luiz-henrique).
  *
  * Chama o Agente Strands no AgentCore Runtime via InvokeAgentRuntime.
- * Suporta dois modos através de variável de ambiente / AWS profile:
- *
- *   Desenvolvimento local:  AWS_PROFILE=local
- *                           → aponta p/ http://localhost:4566 (MiniStack bedrock-agentcore-data-plane)
- *   Produção AWS:           AWS_PROFILE=desafio-1 (ou qualquer outro)
- *                           → Amazon Bedrock AgentCore Runtime real (us-east-1)
+ * O runtime executado é o Bedrock AgentCore Runtime de us-east-1.
  *
  * usuario_id vem exclusivamente do sub do token JWT Cognito (authorizer),
  * nunca do corpo da requisição nem do modelo.
@@ -18,27 +13,17 @@ import {
   InvokeAgentRuntimeCommand,
   type InvokeAgentRuntimeCommandInput,
 } from "@aws-sdk/client-bedrock-agentcore";
+import { randomUUID } from "crypto";
 
-const endpoint =
-  process.env.BEDROCK_ENDPOINT_URL ||
-  (process.env.AWS_PROFILE === "local" ? "http://localhost:4566" : undefined);
-
-const clientConfig: {
-  region: string;
-  endpoint?: string;
-  credentials?: { accessKeyId: string; secretAccessKey: string };
-} = {
+const bedrockAgentCore = new BedrockAgentCoreClient({
   region: process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "us-east-1",
-};
-if (endpoint) {
-  clientConfig.endpoint = endpoint;
-  clientConfig.credentials = {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || "test",
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "test",
-  };
-}
+});
 
-const bedrockAgentCore = new BedrockAgentCoreClient(clientConfig);
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": process.env.FRONTEND_URL || "",
+  "Access-Control-Allow-Headers": "Content-Type,Authorization",
+  "Access-Control-Allow-Methods": "POST,OPTIONS",
+};
 
 const agentRuntimeArn = process.env.AGENT_RUNTIME_ARN;
 if (!agentRuntimeArn) {
@@ -60,6 +45,7 @@ interface ChatEventBody {
 
 interface LambdaResponse {
   statusCode: number;
+  headers?: Record<string, string>;
   body: string;
 }
 
@@ -89,13 +75,16 @@ function extractUsuarioId(headers: Record<string, string> | undefined): string |
 exports.handler = async (event: {
   headers?: Record<string, string>;
   body?: string;
+  requestContext?: { authorizer?: { claims?: Record<string, string> } };
 }): Promise<LambdaResponse> => {
   const headers = event.headers || {};
-  const usuario_id = extractUsuarioId(headers);
+  const claims = event.requestContext?.authorizer?.claims;
+  const usuario_id = claims?.sub || extractUsuarioId(headers);
 
   if (!usuario_id) {
     return {
       statusCode: 401,
+      headers: CORS_HEADERS,
       body: JSON.stringify({ error: "missing or invalid token" }),
     };
   }
@@ -122,6 +111,9 @@ exports.handler = async (event: {
         messages,
       }),
     ),
+    runtimeSessionId: `desafio1-${usuario_id}-${randomUUID()}`.slice(0, 200),
+    contentType: "application/json",
+    accept: "application/json",
     qualifier: "DEFAULT",
   };
 
@@ -142,18 +134,21 @@ exports.handler = async (event: {
     if (typeof responseBody === "object" && responseBody !== null && "statusCode" in responseBody) {
       return {
         statusCode: (responseBody as { statusCode: number }).statusCode,
+        headers: CORS_HEADERS,
         body: JSON.stringify((responseBody as { body?: unknown }).body || responseBody),
       };
     }
 
     return {
       statusCode: 200,
+      headers: CORS_HEADERS,
       body: JSON.stringify(responseBody),
     };
   } catch (err) {
     console.error("agent runtime invoke error:", err);
     return {
       statusCode: 502,
+      headers: CORS_HEADERS,
       body: JSON.stringify({
         error: "agent_error",
         message: err instanceof Error ? err.message : String(err),

@@ -5,7 +5,7 @@
   "description": "API Gateway + Lambda do chat (Desafio 1 - luiz-henrique)",
   "scripts": {
     "build": "tsc",
-    "dev": "echo 'Rode o Lambda localmente com: BEDROCK_ENDPOINT_URL=http://localhost:4566 node index.js'",
+    "dev": "tsc && echo 'Lambda compilada em index.js (use npx tsx ../local/index.ts para a API local)'",
     "lint": "eslint index.ts"
   },
   "dependencies": {
