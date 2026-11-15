@@ -6,27 +6,9 @@ import {
 
 const CATALOGO_TABLE = process.env.CATALOGO_TABLE || "luiz-henrique-catalogo";
 
-const endpoint =
-  process.env.AWS_ENDPOINT_URL ||
-  process.env.BEDROCK_ENDPOINT_URL ||
-  (process.env.AWS_PROFILE === "local" ? "http://localhost:4566" : undefined);
-
-const clientConfig: {
-  region: string;
-  endpoint?: string;
-  credentials?: { accessKeyId: string; secretAccessKey: string };
-} = {
+const client = new DynamoDBClient({
   region: process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "us-east-1",
-};
-if (endpoint) {
-  clientConfig.endpoint = endpoint;
-  clientConfig.credentials = {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || "test",
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "test",
-  };
-}
-
-const client = new DynamoDBClient(clientConfig);
+});
 
 interface CatalogoItem {
   id: string;

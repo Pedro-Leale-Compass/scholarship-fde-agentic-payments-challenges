@@ -7,27 +7,31 @@ import { v4 as uuidv4 } from "uuid";
 
 const INTENCOES_TABLE = process.env.INTENCOES_TABLE || "luiz-henrique-intencoes";
 
-const endpoint =
-  process.env.AWS_ENDPOINT_URL ||
-  process.env.BEDROCK_ENDPOINT_URL ||
-  (process.env.AWS_PROFILE === "local" ? "http://localhost:4566" : undefined);
-
-const clientConfig: {
-  region: string;
-  endpoint?: string;
-  credentials?: { accessKeyId: string; secretAccessKey: string };
-} = {
+const client = new DynamoDBClient({
   region: process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "us-east-1",
-};
-if (endpoint) {
-  clientConfig.endpoint = endpoint;
-  clientConfig.credentials = {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || "test",
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "test",
-  };
+});
+
+interface RegistrarIntencaoEvent {
+  body?: string;
+  usuario_id?: string;
+  produtos?: Array<{ id: string; nome: string; preco: number }>;
+  valor?: number;
 }
 
-const client = new DynamoDBClient(clientConfig);
+/**
+ * A Lambda é invocada pelo agente (payload direto) e, em testes, pelo API Gateway
+ * (payload dentro de `body`). Aceita os dois formatos.
+ */
+function readPayload(event: RegistrarIntencaoEvent): RegistrarIntencaoBody {
+  if (typeof event.body === "string") {
+    try {
+      return JSON.parse(event.body || "{}");
+    } catch (_) {
+      return {};
+    }
+  }
+  return event;
+}
 
 interface RegistrarIntencaoBody {
   usuario_id?: string;
@@ -62,16 +66,8 @@ function dynamoList(
   };
 }
 
-exports.handler = async (event: {
-  body?: string;
-  headers?: Record<string, string>;
-}): Promise<LambdaResponse> => {
-  let body: RegistrarIntencaoBody = {};
-  try {
-    body = JSON.parse(event.body || "{}");
-  } catch (_) {
-    body = {};
-  }
+exports.handler = async (event: RegistrarIntencaoEvent): Promise<LambdaResponse> => {
+  const body = readPayload(event);
 
   const { usuario_id, produtos, valor } = body;
 

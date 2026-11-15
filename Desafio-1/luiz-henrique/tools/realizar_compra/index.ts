@@ -7,28 +7,33 @@ import {
 } from "@aws-sdk/client-dynamodb";
 
 const INTENCOES_TABLE = process.env.INTENCOES_TABLE || "luiz-henrique-intencoes";
+const USUARIOS_TABLE = process.env.USUARIOS_TABLE || "luiz-henrique-usuarios";
+const LIMITE_PADRAO = Number(process.env.LIMITE_COMPRA) || 500;
 
-const endpoint =
-  process.env.AWS_ENDPOINT_URL ||
-  process.env.BEDROCK_ENDPOINT_URL ||
-  (process.env.AWS_PROFILE === "local" ? "http://localhost:4566" : undefined);
-
-const clientConfig: {
-  region: string;
-  endpoint?: string;
-  credentials?: { accessKeyId: string; secretAccessKey: string };
-} = {
+const client = new DynamoDBClient({
   region: process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "us-east-1",
-};
-if (endpoint) {
-  clientConfig.endpoint = endpoint;
-  clientConfig.credentials = {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || "test",
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "test",
-  };
+});
+
+interface RealizarCompraEvent {
+  body?: string;
+  intencao_id?: string;
+  forma_pagamento?: "cartao" | "pix";
 }
 
-const client = new DynamoDBClient(clientConfig);
+/**
+ * A Lambda é invocada pelo agente (payload direto) e, em testes, pelo API Gateway
+ * (payload dentro de `body`). Aceita os dois formatos.
+ */
+function readPayload(event: RealizarCompraEvent): RealizarCompraBody {
+  if (typeof event.body === "string") {
+    try {
+      return JSON.parse(event.body || "{}");
+    } catch (_) {
+      return {};
+    }
+  }
+  return event;
+}
 
 interface RealizarCompraBody {
   intencao_id?: string;
@@ -58,16 +63,8 @@ function fromDynamoNumber(item: Record<string, unknown>, key: string): number | 
   return typeof v === "object" && v !== null && "N" in v ? Number((v as { N: string }).N) : undefined;
 }
 
-exports.handler = async (event: {
-  body?: string;
-  headers?: Record<string, string>;
-}): Promise<LambdaResponse> => {
-  let body: RealizarCompraBody = {};
-  try {
-    body = JSON.parse(event.body || "{}");
-  } catch (_) {
-    body = {};
-  }
+exports.handler = async (event: RealizarCompraEvent): Promise<LambdaResponse> => {
+  const body = readPayload(event);
 
   const { intencao_id, forma_pagamento } = body;
 
@@ -121,6 +118,24 @@ exports.handler = async (event: {
 
     const valor = fromDynamoNumber(item, "valor") || 0;
     const usuario_id = fromDynamoString(item, "usuario_id") || "";
+
+    const usuario = await client.send(
+      new GetItemCommand({
+        TableName: USUARIOS_TABLE,
+        Key: { usuario_id: dynamoString(usuario_id) },
+      })
+    );
+    const limite = fromDynamoNumber(usuario.Item || {}, "limite") ?? LIMITE_PADRAO;
+
+    if (valor > limite) {
+      return {
+        statusCode: 422,
+        body: JSON.stringify({
+          ok: false,
+          error: `limite excedido: valor R$ ${valor.toFixed(2)} acima do limite de R$ ${limite.toFixed(2)}`,
+        }),
+      };
+    }
 
     const updateInput: UpdateItemCommandInput = {
       TableName: INTENCOES_TABLE,
