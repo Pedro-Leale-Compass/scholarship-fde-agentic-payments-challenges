@@ -1,0 +1,9 @@
+node_modules/
+.next/
+out/
+cdk.out/
+agent/build/
+tools/build/
+api/build/
+infra/build/
+*.tsbuildinfo

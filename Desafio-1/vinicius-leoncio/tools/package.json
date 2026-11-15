@@ -1,0 +1,28 @@
+{
+  "name": "payment-tools",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Ferramentas AWS Lambda do agente de pagamentos",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "check": "tsx src/tools.check.ts && tsc --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.0.0",
+    "@aws-sdk/lib-dynamodb": "^3.0.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.0",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.8",
+    "@types/node": "^26.2.0",
+    "tsx": "^4.23.13",
+    "typescript": "^6.0.3"
+  }
+}
