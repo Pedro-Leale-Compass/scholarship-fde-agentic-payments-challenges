@@ -13,6 +13,7 @@ from aws_cdk import (
     aws_iam as iam,
     aws_lambda as lambda_,
     aws_logs as logs,
+    aws_dynamodb as dynamodb,
 )
 from constructs import Construct
 
@@ -26,6 +27,81 @@ class InfraStack(Stack):
         super().__init__(scope, construct_id, **kwargs)
 
         prefixo = "luis-filipe-mendes-nogueira"
+
+        def criar_tabela(
+            identificador: str,
+            nome: str,
+            chave_particao: str,
+            chave_ordenacao: str | None = None,
+        ) -> dynamodb.Table:
+            return dynamodb.Table(
+                self,
+                identificador,
+                table_name=f"{prefixo}-{nome}",
+                partition_key=dynamodb.Attribute(
+                    name=chave_particao,
+                    type=dynamodb.AttributeType.STRING,
+                ),
+                sort_key=(
+                    dynamodb.Attribute(
+                        name=chave_ordenacao,
+                        type=dynamodb.AttributeType.STRING,
+                    )
+                    if chave_ordenacao
+                    else None
+                ),
+                billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+                encryption=dynamodb.TableEncryption.AWS_MANAGED,
+                removal_policy=RemovalPolicy.DESTROY,
+            )
+
+        tabela_usuarios = criar_tabela(
+            "UsuariosTable",
+            "usuarios",
+            "usuario_id",
+        )
+
+        tabela_catalogo = criar_tabela(
+            "CatalogoTable",
+            "catalogo",
+            "evento_id",
+        )
+
+        tabela_intencoes = criar_tabela(
+            "IntencoesTable",
+            "intencoes",
+            "intencao_id",
+        )
+
+        tabela_transacoes = criar_tabela(
+            "TransacoesTable",
+            "transacoes",
+            "intencao_id",
+        )
+
+        tabela_conversas = criar_tabela(
+            "ConversasTable",
+            "conversas",
+            "usuario_id",
+            "registro_id",
+        )
+
+        tabela_intencoes.add_global_secondary_index(
+            index_name="por-status-expiracao",
+            partition_key=dynamodb.Attribute(
+                name="status",
+                type=dynamodb.AttributeType.STRING,
+            ),
+            sort_key=dynamodb.Attribute(
+                name="expira_em_epoch",
+                type=dynamodb.AttributeType.NUMBER,
+            ),
+            projection_type=dynamodb.ProjectionType.INCLUDE,
+            non_key_attributes=[
+                "evento_id",
+                "quantidade",
+            ],
+        )
 
         user_pool = cognito.UserPool(
             self,
@@ -128,6 +204,70 @@ class InfraStack(Stack):
             timeout=Duration.seconds(5),
         )
 
+        nome_perfil = f"{prefixo}-perfil"
+
+        logs_perfil = logs.LogGroup(
+            self,
+            "PerfilLogs",
+            log_group_name=f"/aws/lambda/{nome_perfil}",
+            retention=logs.RetentionDays.ONE_WEEK,
+            removal_policy=RemovalPolicy.DESTROY,
+        )
+
+        role_perfil = iam.Role(
+            self,
+            "PerfilRole",
+            role_name=f"{prefixo}-perfil-role",
+            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
+        )
+
+        role_perfil.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents",
+                ],
+                resources=[
+                    self.format_arn(
+                        service="logs",
+                        resource="log-group",
+                        resource_name=(
+                            f"/aws/lambda/{nome_perfil}:log-stream:*"
+                        ),
+                        arn_format=ArnFormat.COLON_RESOURCE_NAME,
+                    )
+                ],
+            )
+        )
+
+        role_perfil.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "dynamodb:GetItem",
+                    "dynamodb:PutItem",
+                ],
+                resources=[tabela_usuarios.table_arn],
+            )
+        )
+
+        funcao_perfil = lambda_.Function(
+            self,
+            "PerfilFunction",
+            function_name=nome_perfil,
+            runtime=lambda_.Runtime.PYTHON_3_13,
+            handler="handler.handler",
+            code=lambda_.Code.from_asset(
+                str(raiz_projeto / "api" / "perfil")
+            ),
+            role=role_perfil,
+            log_group=logs_perfil,
+            environment={
+                "USUARIOS_TABLE": tabela_usuarios.table_name,
+            },
+            memory_size=128,
+            timeout=Duration.seconds(5),
+        )
+
         autorizador = authorizers.HttpJwtAuthorizer(
             "CognitoAuthorizer",
             jwt_issuer=user_pool.user_pool_provider_url,
@@ -153,6 +293,19 @@ class InfraStack(Stack):
             integration=integrations.HttpLambdaIntegration(
                 "SessaoIntegration",
                 handler=funcao_sessao,
+            ),
+            authorizer=autorizador,
+            authorization_scopes=[
+                "aws.cognito.signin.user.admin",
+            ],
+        )
+
+        http_api.add_routes(
+            path="/me",
+            methods=[apigateway.HttpMethod.GET],
+            integration=integrations.HttpLambdaIntegration(
+                "PerfilIntegration",
+                handler=funcao_perfil,
             ),
             authorizer=autorizador,
             authorization_scopes=[

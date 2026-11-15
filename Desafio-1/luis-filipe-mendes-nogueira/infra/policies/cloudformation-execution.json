@@ -122,6 +122,28 @@
       "Effect": "Allow",
       "Action": "ssm:GetParameters",
       "Resource": "arn:aws:ssm:us-east-1:631570928305:parameter/cdk-bootstrap/luisfn001/version"
+    },
+    {
+      "Sid": "GerenciarTabelasDoProjeto",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:CreateTable",
+        "dynamodb:DescribeTable",
+        "dynamodb:UpdateTable",
+        "dynamodb:DeleteTable",
+        "dynamodb:DescribeTimeToLive",
+        "dynamodb:DescribeContinuousBackups",
+        "dynamodb:TagResource",
+        "dynamodb:UntagResource",
+        "dynamodb:ListTagsOfResource"
+      ],
+      "Resource": [
+        "arn:aws:dynamodb:us-east-1:631570928305:table/luis-filipe-mendes-nogueira-usuarios",
+        "arn:aws:dynamodb:us-east-1:631570928305:table/luis-filipe-mendes-nogueira-catalogo",
+        "arn:aws:dynamodb:us-east-1:631570928305:table/luis-filipe-mendes-nogueira-intencoes",
+        "arn:aws:dynamodb:us-east-1:631570928305:table/luis-filipe-mendes-nogueira-transacoes",
+        "arn:aws:dynamodb:us-east-1:631570928305:table/luis-filipe-mendes-nogueira-conversas"
+      ]
     }
   ]
 }
