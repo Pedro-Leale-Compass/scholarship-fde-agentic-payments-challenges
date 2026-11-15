@@ -29,6 +29,7 @@ export interface PaymentToolsProps {
 export class PaymentTools extends Construct {
   public readonly consultarSaldoLambda: lambda.Function;
   public readonly criarIntencaoLambda: lambda.Function;
+  public readonly confirmarPagamentoLambda: lambda.Function;
 
   constructor(scope: Construct, id: string, props: PaymentToolsProps) {
     super(scope, id);
@@ -68,6 +69,34 @@ export class PaymentTools extends Construct {
     // Menor privilégio estrito: somente dynamodb:PutItem na tabela alvaro-intencoes.
     intencoesTable.grant(this.criarIntencaoLambda, 'dynamodb:PutItem');
 
+    // TOOL-03: Liquidação Atômica e Idempotente de Pagamento
+    this.confirmarPagamentoLambda = new lambda.Function(this, 'ConfirmarPagamentoHandler', {
+      functionName: `${resourcePrefix}tool-confirmar-pagamento`,
+      runtime: lambda.Runtime.NODEJS_22_X,
+      handler: 'index.handler',
+      memorySize: 256,
+      timeout: cdk.Duration.seconds(15),
+      code: bundleNode22Lambda(path.join(toolsDir, 'confirmar-pagamento/index.ts'), toolsDir),
+      environment: {
+        USUARIOS_TABLE_NAME: usuariosTable.tableName,
+        INTENCOES_TABLE_NAME: intencoesTable.tableName,
+      },
+    });
+
+    // Menor privilégio estrito: apenas leitura/atualização condicional em alvaro-intencoes e alvaro-usuarios.
+    intencoesTable.grant(
+      this.confirmarPagamentoLambda,
+      'dynamodb:GetItem',
+      'dynamodb:UpdateItem',
+      'dynamodb:ConditionCheckItem',
+    );
+    usuariosTable.grant(
+      this.confirmarPagamentoLambda,
+      'dynamodb:GetItem',
+      'dynamodb:UpdateItem',
+      'dynamodb:ConditionCheckItem',
+    );
+
     new cdk.CfnOutput(this, 'ConsultarSaldoLambdaArnOutput', {
       value: this.consultarSaldoLambda.functionArn,
       description: 'ARN da Lambda TOOL-01 (Consulta de Catálogo e Saldo)',
@@ -78,6 +107,12 @@ export class PaymentTools extends Construct {
       value: this.criarIntencaoLambda.functionArn,
       description: 'ARN da Lambda TOOL-02 (Registro de Intenção de Compra)',
       exportName: `${resourcePrefix}tool-criar-intencao-arn`,
+    });
+
+    new cdk.CfnOutput(this, 'ConfirmarPagamentoLambdaArnOutput', {
+      value: this.confirmarPagamentoLambda.functionArn,
+      description: 'ARN da Lambda TOOL-03 (Liquidação Atômica e Idempotente)',
+      exportName: `${resourcePrefix}tool-confirmar-pagamento-arn`,
     });
   }
 }
