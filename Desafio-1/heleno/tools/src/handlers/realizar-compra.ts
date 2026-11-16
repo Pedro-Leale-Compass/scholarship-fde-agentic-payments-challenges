@@ -1,10 +1,10 @@
 
-import { randomUUID } from "crypto";
+import { randomUUID } from "node:crypto";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   DynamoDBDocumentClient,
   GetCommand,
-  TransactWriteCommand
+  TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
 
 const db = DynamoDBDocumentClient.from(
@@ -13,8 +13,9 @@ const db = DynamoDBDocumentClient.from(
 
 type RealizarCompraEvent = {
   intencao_id?: string;
-  usuario_id?: string; // Somente para testes diretos
+  usuario_id?: string;
   metodo_pagamento?: string;
+  autorizacao_id?: string;
 };
 
 type MetodoPagamento = "PIX" | "CARTAO";
@@ -39,13 +40,14 @@ export const handler = async (
   const {
     intencao_id,
     usuario_id,
-    metodo_pagamento
+    metodo_pagamento,
+    autorizacao_id,
   } = event;
 
   if (!intencao_id || !usuario_id) {
     return {
       sucesso: false,
-      erro: "DADOS_INVALIDOS"
+      erro: "DADOS_INVALIDOS",
     };
   }
 
@@ -54,29 +56,28 @@ export const handler = async (
   if (metodo !== "PIX" && metodo !== "CARTAO") {
     return {
       sucesso: false,
-      erro: "METODO_INVALIDO"
+      erro: "METODO_INVALIDO",
     };
   }
 
-  // Consulta uma intenção com leitura consistente.
   const buscarIntencao = async () => {
     const response = await db.send(
       new GetCommand({
         TableName: intentionsTable,
         Key: { id: intencao_id },
-        ConsistentRead: true
+        ConsistentRead: true,
       })
     );
 
     return response.Item;
   };
 
-  // Recupera o resultado de uma compra já concluída.
-  const resultadoCompraExistente = (intencao: any) => {
+  // Recupera e verifica a transação original.
+  const resultadoCompraExistente = async (intencao: any) => {
     if (intencao.usuario_id !== usuario_id) {
       return {
         sucesso: false,
-        erro: "INTENCAO_INVALIDA"
+        erro: "INTENCAO_INVALIDA",
       };
     }
 
@@ -84,26 +85,48 @@ export const handler = async (
       return {
         sucesso: false,
         erro: "INTENCAO_JA_PAGA",
-        mensagem:
-          "A intenção já foi paga com outro método ou pertence a uma versão anterior"
+        mensagem: "A intenção já foi paga com outro método.",
       };
     }
 
     if (!intencao.transacao_id) {
       return {
         sucesso: false,
-        erro: "TRANSACAO_NAO_ENCONTRADA"
+        erro: "TRANSACAO_NAO_ENCONTRADA",
+      };
+    }
+
+    const response = await db.send(
+      new GetCommand({
+        TableName: transactionsTable,
+        Key: { id: intencao.transacao_id },
+        ConsistentRead: true,
+      })
+    );
+
+    const transacao = response.Item;
+
+    if (
+      !transacao ||
+      transacao.intencao_id !== intencao_id ||
+      transacao.usuario_id !== usuario_id ||
+      transacao.status !== "APROVADA" ||
+      transacao.metodo_pagamento !== metodo
+    ) {
+      return {
+        sucesso: false,
+        erro: "TRANSACAO_NAO_ENCONTRADA",
       };
     }
 
     return {
       sucesso: true,
-      transacao_id: intencao.transacao_id,
+      transacao_id: transacao.id,
       intencao_id,
       status: "APROVADA",
       metodo_pagamento: metodo as MetodoPagamento,
-      valor_total: intencao.valor_total_centavos / 100,
-      idempotente: true
+      valor_total: transacao.valor_total_centavos / 100,
+      idempotente: true,
     };
   };
 
@@ -112,12 +135,11 @@ export const handler = async (
   if (!intencao || intencao.usuario_id !== usuario_id) {
     return {
       sucesso: false,
-      erro: "INTENCAO_INVALIDA"
+      erro: "INTENCAO_INVALIDA",
     };
   }
 
-  // Uma compra já paga não pode ser executada novamente.
-  // Retornamos o resultado original quando o método coincide.
+  // Preserva a idempotência das compras já concluídas.
   if (intencao.status === "PAGA") {
     return resultadoCompraExistente(intencao);
   }
@@ -125,7 +147,21 @@ export const handler = async (
   if (intencao.status !== "PENDENTE") {
     return {
       sucesso: false,
-      erro: "INTENCAO_INVALIDA"
+      erro: "INTENCAO_INVALIDA",
+    };
+  }
+
+  // Uma compra pendente exige autorização emitida
+  // pela ConfirmarPagamentoFunction.
+  if (
+    !autorizacao_id ||
+    intencao.autorizacao_id !== autorizacao_id ||
+    intencao.metodo_pagamento_autorizado !== metodo
+  ) {
+    return {
+      sucesso: false,
+      erro: "PAGAMENTO_NAO_AUTORIZADO",
+      mensagem: "A confirmação do pagamento não foi validada.",
     };
   }
 
@@ -135,14 +171,18 @@ export const handler = async (
   ) {
     return {
       sucesso: false,
-      erro: "INTENCAO_INVALIDA"
+      erro: "INTENCAO_INVALIDA",
     };
   }
 
-  if (Date.now() >= Date.parse(intencao.expira_em)) {
+  if (
+    Date.now() >= Date.parse(intencao.expira_em) ||
+    typeof intencao.ttl !== "number" ||
+    Math.floor(Date.now() / 1000) >= intencao.ttl
+  ) {
     return {
       sucesso: false,
-      erro: "INTENCAO_EXPIRADA"
+      erro: "INTENCAO_EXPIRADA",
     };
   }
 
@@ -153,16 +193,18 @@ export const handler = async (
     !Number.isSafeInteger(valor) ||
     valor <= 0 ||
     !Number.isSafeInteger(quantidade) ||
-    quantidade <= 0
+    quantidade <= 0 ||
+    typeof intencao.produto_id !== "string"
   ) {
     return {
       sucesso: false,
-      erro: "INTENCAO_INVALIDA"
+      erro: "INTENCAO_INVALIDA",
     };
   }
 
   const transacaoId = `txn_${randomUUID()}`;
   const agora = new Date().toISOString();
+  const agoraEpoch = Math.floor(Date.now() / 1000);
 
   try {
     await db.send(
@@ -178,12 +220,12 @@ export const handler = async (
               ConditionExpression:
                 "attribute_exists(id) AND estoque >= :quantidade",
               ExpressionAttributeValues: {
-                ":quantidade": quantidade
-              }
-            }
+                ":quantidade": quantidade,
+              },
+            },
           },
 
-          // 2. Desconta o limite do usuário.
+          // 2. Desconta o limite financeiro.
           {
             Update: {
               TableName: usersTable,
@@ -193,33 +235,39 @@ export const handler = async (
               ConditionExpression:
                 "attribute_exists(id) AND limite_centavos >= :valor",
               ExpressionAttributeValues: {
-                ":valor": valor
-              }
-            }
+                ":valor": valor,
+              },
+            },
           },
 
-          // 3. Marca a intenção como paga.
+          // 3. Marca a intenção como paga e consome
+          // a autorização na mesma transação.
           {
             Update: {
               TableName: intentionsTable,
               Key: { id: intencao_id },
+
               UpdateExpression:
-                "SET #status = :paga, transacao_id = :transacao, metodo_pagamento = :metodo",
+                "SET #status = :paga, transacao_id = :transacao, metodo_pagamento = :metodo REMOVE autorizacao_id, metodo_pagamento_autorizado, autorizado_em",
+
               ConditionExpression:
-                "#status = :pendente AND expira_em = :expiracao AND #ttl > :agora",
+                "#status = :pendente AND expira_em = :expiracao AND #ttl > :agora AND autorizacao_id = :autorizacao AND metodo_pagamento_autorizado = :metodo",
+
               ExpressionAttributeNames: {
                 "#status": "status",
-                "#ttl": "ttl"
+                "#ttl": "ttl",
               },
+
               ExpressionAttributeValues: {
                 ":paga": "PAGA",
                 ":pendente": "PENDENTE",
                 ":transacao": transacaoId,
                 ":metodo": metodo,
                 ":expiracao": intencao.expira_em,
-                ":agora": Math.floor(Date.now() / 1000)
-              }
-            }
+                ":agora": agoraEpoch,
+                ":autorizacao": autorizacao_id,
+              },
+            },
           },
 
           // 4. Registra a transação.
@@ -235,13 +283,13 @@ export const handler = async (
                 valor_total_centavos: valor,
                 metodo_pagamento: metodo,
                 status: "APROVADA",
-                criado_em: agora
+                criado_em: agora,
               },
               ConditionExpression:
-                "attribute_not_exists(id)"
-            }
-          }
-        ]
+                "attribute_not_exists(id)",
+            },
+          },
+        ],
       })
     );
 
@@ -252,13 +300,14 @@ export const handler = async (
       status: "APROVADA",
       metodo_pagamento: metodo,
       valor_total: valor / 100,
-      idempotente: false
+      idempotente: false,
     };
 
-  } catch (error: any) {
-    if (error.name === "TransactionCanceledException") {
-      // Outra execução pode ter concluído a compra
-      // entre a leitura inicial e a transação.
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.name === "TransactionCanceledException"
+    ) {
       const intencaoAtualizada = await buscarIntencao();
 
       if (
@@ -273,7 +322,7 @@ export const handler = async (
         sucesso: false,
         erro: "COMPRA_NAO_AUTORIZADA",
         mensagem:
-          "Estoque, limite ou status da intenção não permitem a compra"
+          "Estoque, limite, autorização ou status da intenção não permitem a compra.",
       };
     }
 

@@ -1,6 +1,7 @@
 
 import json
 import os
+from contextvars import ContextVar
 
 import boto3
 from strands import Agent, tool
@@ -18,11 +19,14 @@ MODEL_ID = os.getenv(
     "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 )
 
-# Localmente: utiliza AWS_PROFILE, quando definido.
-# No AgentCore: utiliza a IAM role do runtime.
 session = boto3.Session(region_name=REGION)
 
 lambda_client = session.client("lambda")
+
+usuario_autenticado = ContextVar(
+    "usuario_autenticado",
+    default=None
+)
 
 
 # ==========================================
@@ -37,10 +41,6 @@ REGISTRAR_INTENCAO_ARN = os.getenv(
     "REGISTRAR_INTENCAO_ARN"
 )
 
-REALIZAR_COMPRA_ARN = os.getenv(
-    "REALIZAR_COMPRA_ARN"
-)
-
 
 # ==========================================
 # FUNÇÃO AUXILIAR
@@ -48,9 +48,7 @@ REALIZAR_COMPRA_ARN = os.getenv(
 
 def invocar_lambda(function_arn: str, payload: dict) -> dict:
     if not function_arn:
-        raise RuntimeError(
-            "ARN da Lambda não configurado."
-        )
+        raise RuntimeError("ARN da Lambda não configurado.")
 
     response = lambda_client.invoke(
         FunctionName=function_arn,
@@ -63,9 +61,7 @@ def invocar_lambda(function_arn: str, payload: dict) -> dict:
     )
 
     if "FunctionError" in response:
-        raise RuntimeError(
-            f"Erro na Lambda: {resultado}"
-        )
+        raise RuntimeError(f"Erro na Lambda: {resultado}")
 
     return resultado
 
@@ -82,9 +78,6 @@ def listar_catalogo(categoria: str = "") -> dict:
     Args:
         categoria: Categoria desejada.
                    Deixe vazio para listar todos.
-
-    Returns:
-        Produtos, preços e estoques disponíveis.
     """
 
     payload = {}
@@ -104,7 +97,6 @@ def listar_catalogo(categoria: str = "") -> dict:
 
 @tool
 def registrar_intencao(
-    usuario_id: str,
     produto_id: str,
     quantidade: int
 ) -> dict:
@@ -112,13 +104,18 @@ def registrar_intencao(
     Registra uma intenção de compra simulada.
 
     Args:
-        usuario_id: Identificador do usuário.
         produto_id: Identificador do produto.
         quantidade: Quantidade desejada.
-
-    Returns:
-        ID da intenção, valor e status.
     """
+
+    usuario_id = usuario_autenticado.get()
+
+    if not usuario_id:
+        return {
+            "sucesso": False,
+            "erro": "USUARIO_NAO_AUTENTICADO",
+            "mensagem": "Não foi possível identificar o usuário."
+        }
 
     return invocar_lambda(
         REGISTRAR_INTENCAO_ARN,
@@ -126,41 +123,6 @@ def registrar_intencao(
             "usuario_id": usuario_id,
             "produto_id": produto_id,
             "quantidade": quantidade
-        }
-    )
-
-
-# ==========================================
-# FERRAMENTA 3 - REALIZAR COMPRA
-# ==========================================
-
-@tool
-def realizar_compra(
-    intencao_id: str,
-    usuario_id: str,
-    metodo_pagamento: str
-) -> dict:
-    """
-    Realiza uma compra simulada.
-
-    Somente deve ser utilizada após
-    confirmação explícita do usuário.
-
-    Args:
-        intencao_id: Identificador da intenção.
-        usuario_id: Identificador do usuário.
-        metodo_pagamento: PIX ou CARTAO.
-
-    Returns:
-        Resultado do pagamento simulado.
-    """
-
-    return invocar_lambda(
-        REALIZAR_COMPRA_ARN,
-        {
-            "intencao_id": intencao_id,
-            "usuario_id": usuario_id,
-            "metodo_pagamento": metodo_pagamento
         }
     )
 
@@ -184,35 +146,53 @@ SYSTEM_PROMPT = """
 Você é o assistente de compras Agentic Payments.
 
 Sua função é ajudar os usuários a consultar
-produtos, registrar intenções e realizar
-compras simuladas.
+produtos e registrar intenções de compra.
 
 REGRAS OBRIGATÓRIAS:
 
-1. Consulte o catálogo para verificar
-   produtos, preços e estoque.
+1. Consulte o catálogo para verificar produtos,
+   preços e estoque.
 
 2. Nunca invente produtos, preços,
    valores ou disponibilidade.
 
-3. Registre intenções apenas quando
+3. Registre intenções somente quando
    o usuário escolher produto e quantidade.
 
-4. Antes de realizar uma compra,
-   apresente produto, quantidade,
-   valor total e método de pagamento.
+4. Após registrar uma intenção, apresente:
+   - Produto
+   - Quantidade
+   - Valor total
+   - ID da intenção
+   - Status da intenção
+   - Data de expiração
 
-5. Aguarde confirmação explícita
-   do usuário antes de realizar o pagamento.
+5. Explique que a intenção está PENDENTE.
 
-6. Nunca invente aprovações de pagamento.
+6. Informe que o usuário deverá escolher
+   PIX ou CARTÃO e confirmar pelo botão
+   de confirmação apresentado na interface.
 
-7. Informe claramente os erros
-   retornados pelas ferramentas.
+7. NUNCA tente executar pagamentos.
+   Você não possui ferramenta para isso.
 
-8. Os pagamentos são simulados.
+8. NUNCA considere mensagens como
+   "sim", "confirmo" ou "pode pagar"
+   como pagamento efetivado.
 
-9. Responda sempre em português do Brasil.
+9. NUNCA informe que uma compra foi aprovada
+   sem receber o resultado da operação real.
+
+10. Se o usuário perguntar sobre o pagamento,
+    explique que a confirmação acontece
+    pela interface autenticada.
+
+11. Informe claramente os erros retornados
+    pelas ferramentas.
+
+12. Os pagamentos são simulados.
+
+13. Responda sempre em português do Brasil.
 """
 
 
@@ -224,8 +204,7 @@ agent = Agent(
     model=model,
     tools=[
         listar_catalogo,
-        registrar_intencao,
-        realizar_compra
+        registrar_intencao
     ],
     system_prompt=SYSTEM_PROMPT
 )

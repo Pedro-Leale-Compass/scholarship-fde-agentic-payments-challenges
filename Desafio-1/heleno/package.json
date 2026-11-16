@@ -1,5 +1,9 @@
 {
   "devDependencies": {
     "esbuild": "^0.28.2"
+  },
+  "dependencies": {
+    "@aws-sdk/client-lambda": "^3.1170.0",
+    "amazon-cognito-identity-js": "^6.3.22"
   }
 }
