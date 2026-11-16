@@ -95,7 +95,7 @@ Resources:
         InviteMessageTemplate:
           EmailSubject: "Convite: Chatbot de Pagamentos da Ana"
           EmailMessage: >-
-            Olá! 👋<br><br>
+            Olá!<br><br>
             Você foi convidado(a) para testar o <b>Chatbot de Pagamentos da Ana</b>,
             um assistente de compras com IA desenvolvido no desafio de AWS.<br><br>
             <b>Usuário:</b> {username}<br>
