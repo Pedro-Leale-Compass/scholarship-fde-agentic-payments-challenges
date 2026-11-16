@@ -2,7 +2,7 @@
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "CognitoDaAplicacao",
+      "Sid": "Cognito",
       "Effect": "Allow",
       "Action": [
         "cognito-idp:CreateUserPool",
@@ -21,7 +21,7 @@
       "Resource": "arn:aws:cognito-idp:us-east-1:631570928305:userpool/*"
     },
     {
-      "Sid": "LambdaDoProjeto",
+      "Sid": "Lambda",
       "Effect": "Allow",
       "Action": [
         "lambda:CreateFunction",
@@ -40,7 +40,7 @@
       "Resource": "arn:aws:lambda:us-east-1:631570928305:function:luis-filipe-mendes-nogueira-*"
     },
     {
-      "Sid": "LogsDoProjeto",
+      "Sid": "Logs",
       "Effect": "Allow",
       "Action": [
         "logs:CreateLogGroup",
@@ -51,10 +51,13 @@
         "logs:TagResource",
         "logs:UntagResource"
       ],
-      "Resource": "arn:aws:logs:us-east-1:631570928305:log-group:/aws/lambda/luis-filipe-mendes-nogueira-*"
+      "Resource": [
+        "arn:aws:logs:us-east-1:631570928305:log-group:/aws/lambda/luis-filipe-mendes-nogueira-*",
+        "arn:aws:logs:us-east-1:631570928305:log-group:/aws/bedrock-agentcore/runtimes/luis_filipe_mendes_nogueira_agent-*"
+      ]
     },
     {
-      "Sid": "GerenciarHttpApi",
+      "Sid": "HttpApi",
       "Effect": "Allow",
       "Action": [
         "apigateway:GET",
@@ -71,7 +74,7 @@
       ]
     },
     {
-      "Sid": "RolesDoProjeto",
+      "Sid": "Roles",
       "Effect": "Allow",
       "Action": [
         "iam:CreateRole",
@@ -89,7 +92,7 @@
       "Resource": "arn:aws:iam::631570928305:role/luis-filipe-mendes-nogueira-*"
     },
     {
-      "Sid": "PassarRoleSomenteParaLambda",
+      "Sid": "PassRoleLambda",
       "Effect": "Allow",
       "Action": "iam:PassRole",
       "Resource": "arn:aws:iam::631570928305:role/luis-filipe-mendes-nogueira-*",
@@ -100,7 +103,102 @@
       }
     },
     {
-      "Sid": "ConsultarBucketDePacotes",
+      "Sid": "CriarRuntimeDoProjeto",
+      "Effect": "Allow",
+      "Action": "bedrock-agentcore:CreateAgentRuntime",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-1",
+          "aws:RequestTag/Projeto": "luis-filipe-mendes-nogueira"
+        }
+      }
+    },
+    {
+      "Sid": "DependenciasDaCriacaoDoRuntime",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock-agentcore:CreateAgentRuntimeEndpoint",
+        "bedrock-agentcore:TagResource"
+      ],
+      "Resource": "arn:aws:bedrock-agentcore:us-east-1:631570928305:runtime/*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-1",
+          "aws:RequestTag/Projeto": "luis-filipe-mendes-nogueira"
+        }
+      }
+    },
+    {
+      "Sid": "GerenciarRuntimeDoProjeto",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock-agentcore:GetAgentRuntime",
+        "bedrock-agentcore:UpdateAgentRuntime",
+        "bedrock-agentcore:DeleteAgentRuntime",
+        "bedrock-agentcore:CreateAgentRuntimeEndpoint",
+        "bedrock-agentcore:GetAgentRuntimeEndpoint",
+        "bedrock-agentcore:UpdateAgentRuntimeEndpoint",
+        "bedrock-agentcore:DeleteAgentRuntimeEndpoint",
+        "bedrock-agentcore:TagResource",
+        "bedrock-agentcore:UntagResource",
+        "bedrock-agentcore:ListTagsForResource"
+      ],
+      "Resource": "arn:aws:bedrock-agentcore:us-east-1:631570928305:runtime/luis_filipe_mendes_nogueira_agent-*"
+    },
+    {
+      "Sid": "IdentidadeDoRuntimeDoProjeto",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock-agentcore:CreateWorkloadIdentity",
+        "bedrock-agentcore:DeleteWorkloadIdentity"
+      ],
+      "Resource": [
+        "arn:aws:bedrock-agentcore:us-east-1:631570928305:workload-identity-directory/default",
+        "arn:aws:bedrock-agentcore:us-east-1:631570928305:workload-identity-directory/default/workload-identity/luis_filipe_mendes_nogueira_agent*"
+      ]
+    },
+    {
+      "Sid": "EtiquetarIdentidadeDoRuntime",
+      "Effect": "Allow",
+      "Action": "bedrock-agentcore:TagResource",
+      "Resource": "arn:aws:bedrock-agentcore:us-east-1:631570928305:workload-identity-directory/default/workload-identity/luis_filipe_mendes_nogueira_agent*"
+    },
+    {
+      "Sid": "TagsDiretorioNaCriacao",
+      "Effect": "Allow",
+      "Action": "bedrock-agentcore:TagResource",
+      "Resource": "arn:aws:bedrock-agentcore:us-east-1:631570928305:workload-identity-directory/default",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/Projeto": "luis-filipe-mendes-nogueira"
+        }
+      }
+    },
+    {
+      "Sid": "PassarRoleDoAgentCore",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::631570928305:role/luis-filipe-mendes-nogueira-agentcore-role",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "bedrock-agentcore.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "CriarRoleDeServicoDeIdentidadeAgentCore",
+      "Effect": "Allow",
+      "Action": "iam:CreateServiceLinkedRole",
+      "Resource": "arn:aws:iam::631570928305:role/aws-service-role/runtime-identity.bedrock-agentcore.amazonaws.com/AWSServiceRoleForBedrockAgentCoreRuntimeIdentity",
+      "Condition": {
+        "StringEquals": {
+          "iam:AWSServiceName": "runtime-identity.bedrock-agentcore.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "S3Bucket",
       "Effect": "Allow",
       "Action": [
         "s3:GetBucketLocation",
@@ -109,7 +207,7 @@
       "Resource": "arn:aws:s3:::cdk-luisfn001-assets-631570928305-us-east-1"
     },
     {
-      "Sid": "LerPacotesDoDeploy",
+      "Sid": "S3Pacotes",
       "Effect": "Allow",
       "Action": [
         "s3:GetObject",
@@ -118,13 +216,13 @@
       "Resource": "arn:aws:s3:::cdk-luisfn001-assets-631570928305-us-east-1/*"
     },
     {
-      "Sid": "ConsultarVersaoDoBootstrap",
+      "Sid": "SSM",
       "Effect": "Allow",
       "Action": "ssm:GetParameters",
       "Resource": "arn:aws:ssm:us-east-1:631570928305:parameter/cdk-bootstrap/luisfn001/version"
     },
     {
-      "Sid": "GerenciarTabelasDoProjeto",
+      "Sid": "DynamoDB",
       "Effect": "Allow",
       "Action": [
         "dynamodb:CreateTable",

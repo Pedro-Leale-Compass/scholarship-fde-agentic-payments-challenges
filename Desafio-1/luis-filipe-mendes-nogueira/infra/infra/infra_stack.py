@@ -16,6 +16,7 @@ from aws_cdk import (
     aws_dynamodb as dynamodb,
 )
 from constructs import Construct
+from .agentcore import criar_runtime
 
 class InfraStack(Stack):
     def __init__(
@@ -423,6 +424,25 @@ class InfraStack(Stack):
                     tabela_catalogo.table_arn,
                 ),
             ],
+        )
+
+        criar_runtime(
+            stack=self,
+            prefixo=prefixo,
+            pacote=(
+                raiz_projeto / "agent" / "dist" / "agentcore.zip"
+            ),
+            funcoes={
+                "listar_catalogo": (
+                    funcao_listar_catalogo.function_arn
+                ),
+                "registrar_intencao": (
+                    funcao_registrar_intencao.function_arn
+                ),
+                "realizar_compra": (
+                    funcao_realizar_compra.function_arn
+                ),
+            },
         )
 
         autorizador = authorizers.HttpJwtAuthorizer(
