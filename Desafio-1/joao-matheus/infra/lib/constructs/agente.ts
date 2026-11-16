@@ -70,7 +70,7 @@ export class AgenteConstruct extends Construct {
           'bedrock:InvokeModelWithResponseStream',
         ],
         resources: [
-          `arn:aws:bedrock:${stack.region}:${stack.account}:inference-profile/${modelId}`,
+          `arn:aws:bedrock:*:${stack.account}:inference-profile/${modelId}`,
           'arn:aws:bedrock:*::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0',
         ],
       })

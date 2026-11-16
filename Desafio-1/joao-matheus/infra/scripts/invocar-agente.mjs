@@ -68,11 +68,15 @@ if (!runtimeArn) {
   process.exit(1);
 }
 
-// 2. Parse do histórico se fornecido
+// 2. Parse do histórico se fornecido (como JSON string ou caminho para arquivo .json)
 let historico = [];
 if (historicoJson) {
   try {
-    historico = JSON.parse(historicoJson);
+    if (fs.existsSync(historicoJson)) {
+      historico = JSON.parse(fs.readFileSync(historicoJson, 'utf8'));
+    } else {
+      historico = JSON.parse(historicoJson);
+    }
   } catch (e) {
     console.error(`Erro ao parsear --historico: ${e.message}`);
     process.exit(1);
