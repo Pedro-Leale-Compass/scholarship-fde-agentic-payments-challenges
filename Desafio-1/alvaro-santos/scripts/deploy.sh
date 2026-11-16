@@ -3,12 +3,14 @@
 # Pipeline de Deploy em Comando Único e Teardown — Desafio 1 (AWS Cloud)
 #
 # Executa o ciclo completo da infraestrutura CDK em us-east-1 (conta 006739439488):
-#   - Modo padrão: compila o frontend React, compila a stack CDK, faz deploy
-#     completo (incluindo S3 privado + CloudFront OAC + BucketDeployment) e
-#     invalida o cache do CloudFront em /*.
+#   - Modo padrão: compila o frontend React, provisiona a stack CDK, extrai os
+#     outputs reais (API Gateway + Cognito) para frontend/.env.local, recompila
+#     o frontend com esses valores e atualiza o BucketDeployment + invalidação
+#     do cache do CloudFront em /*.
 #   - Modo --skip-frontend: ativa -c skipFrontendHost=true para deploy apenas
 #     do backend com CORS liberado para http://localhost:5173 (contorno temporário
-#     caso cloudfront:* esteja bloqueado na conta compartilhada).
+#     caso cloudfront:* esteja bloqueado na conta compartilhada) e gera
+#     frontend/.env.local para execução local da SPA.
 #   - Modo --destroy: executa cdk destroy --all e exibe o checklist de teardown.
 #
 # Uso:
@@ -20,6 +22,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 INFRA_DIR="${PROJECT_ROOT}/infra"
 FRONTEND_DIR="${PROJECT_ROOT}/frontend"
+OUTPUTS_FILE="${INFRA_DIR}/cdk-outputs.json"
+FRONTEND_ENV_FILE="${FRONTEND_DIR}/.env.local"
 
 AWS_PROFILE="${AWS_PROFILE:-alvaro-fellowship}"
 SKIP_FRONTEND=false
@@ -44,7 +48,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     -h|--help)
-      sed -n '2,18p' "${BASH_SOURCE[0]}"
+      sed -n '2,20p' "${BASH_SOURCE[0]}"
       exit 0
       ;;
     *)
@@ -60,6 +64,36 @@ CDK_CONTEXT_ARGS=()
 if [[ "${SKIP_FRONTEND}" == "true" ]]; then
   CDK_CONTEXT_ARGS+=(-c "skipFrontendHost=true")
 fi
+
+write_frontend_env_from_outputs() {
+  node -e '
+    const fs = require("fs");
+    const outputsPath = process.argv[1];
+    const targetEnvPath = process.argv[2];
+    const raw = JSON.parse(fs.readFileSync(outputsPath, "utf8"));
+    const stack = raw["alvaro-agentic-payments-stack"] || Object.values(raw)[0] || {};
+    const findByPrefix = (prefix) => {
+      const entry = Object.entries(stack).find(([k]) => k.startsWith(prefix));
+      return entry ? String(entry[1]).trim() : "";
+    };
+    const apiUrl = findByPrefix("ChatApiChatApiUrlOutput").replace(/\/+$/, "");
+    const poolId = findByPrefix("AuthUserPoolIdOutput");
+    const clientId = findByPrefix("AuthUserPoolClientIdOutput");
+    if (!apiUrl || !poolId || !clientId) {
+      console.error("Outputs esperados ausentes em cdk-outputs.json:", Object.keys(stack));
+      process.exit(1);
+    }
+    const content = [
+      `VITE_API_URL=${apiUrl}`,
+      `VITE_COGNITO_USER_POOL_ID=${poolId}`,
+      `VITE_COGNITO_CLIENT_ID=${clientId}`,
+      "VITE_COGNITO_REGION=us-east-1",
+      "VITE_USE_MOCKS=false",
+      "",
+    ].join("\n");
+    fs.writeFileSync(targetEnvPath, content, "utf8");
+  ' "${OUTPUTS_FILE}" "${FRONTEND_ENV_FILE}"
+}
 
 echo "== Perfil AWS CLI: ${AWS_PROFILE} | Região: ${AWS_DEFAULT_REGION}"
 
@@ -81,21 +115,35 @@ if [[ "${DESTROY_MODE}" == "true" ]]; then
 fi
 
 if [[ "${SKIP_FRONTEND}" == "false" ]]; then
-  echo "== [1/3] Compilando frontend React (Vite)..."
+  echo "== [1/4] Preparando build inicial do frontend React (Vite)..."
   npm --prefix "${FRONTEND_DIR}" run build
 else
-  echo "== [1/3] Pulando build/hospedagem do frontend (--skip-frontend ativo; CORS para http://localhost:5173)."
+  echo "== [1/4] Modo --skip-frontend ativo (CORS liberado para http://localhost:5173)."
 fi
 
-echo "== [2/3] Validando tipos TypeScript da infraestrutura (infra/)..."
+echo "== [2/4] Validando tipos TypeScript da infraestrutura (infra/)..."
 npm --prefix "${INFRA_DIR}" run build
 
-echo "== [3/3] Executando cdk deploy --all em us-east-1..."
+echo "== [3/4] Executando cdk deploy --all em us-east-1..."
 cd "${INFRA_DIR}"
 npx cdk deploy --all \
   "${CDK_CONTEXT_ARGS[@]}" \
   --require-approval never \
-  --outputs-file cdk-outputs.json \
+  --outputs-file "${OUTPUTS_FILE}" \
   --profile "${AWS_PROFILE}"
+
+echo "== [4/4] Gerando frontend/.env.local a partir dos outputs reais do CDK..."
+write_frontend_env_from_outputs
+
+if [[ "${SKIP_FRONTEND}" == "false" ]]; then
+  echo "== Recompilando frontend com os outputs reais e publicando no S3 + CloudFront..."
+  npm --prefix "${FRONTEND_DIR}" run build
+  npx cdk deploy --all \
+    --require-approval never \
+    --outputs-file "${OUTPUTS_FILE}" \
+    --profile "${AWS_PROFILE}"
+else
+  echo "== Ambiente backend pronto. Para iniciar o frontend local: npm --prefix frontend run dev"
+fi
 
 echo "== Deploy concluído. Outputs salvos em infra/cdk-outputs.json."
