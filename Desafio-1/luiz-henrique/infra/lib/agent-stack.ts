@@ -9,7 +9,7 @@ import * as path from 'path';
 
 // Carrega variáveis de ambiente do .env (ignorado pelo git) se existir.
 import dotenv from 'dotenv';
-dotenv.config();
+dotenv.config({ override: true });
 
 // Modelo temporário até a liberação do Claude Haiku na conta.
 const MODEL_ID = process.env.BEDROCK_MODEL_ID || 'global.amazon.nova-2-lite-v1:0';

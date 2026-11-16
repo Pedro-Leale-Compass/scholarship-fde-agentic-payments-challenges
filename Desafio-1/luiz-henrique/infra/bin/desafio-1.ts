@@ -4,7 +4,7 @@ import { Desafio1Stack } from '../lib/desafio-1-stack';
 
 // Carrega variáveis de ambiente do .env (ignorado pelo git) se existir.
 import dotenv from 'dotenv';
-dotenv.config();
+dotenv.config({ override: true });
 
 const app = new cdk.App();
 

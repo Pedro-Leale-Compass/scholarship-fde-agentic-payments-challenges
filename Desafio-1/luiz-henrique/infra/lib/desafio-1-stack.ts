@@ -15,6 +15,10 @@ const CATALOGO = [
   { id: 'p2', nome: 'Teclado Mecânico', preco: 349.9 },
   { id: 'p3', nome: 'Mouse Gamer', preco: 129.9 },
   { id: 'p4', nome: 'Monitor 27"', preco: 1299.0 },
+  { id: 'p5', nome: 'Webcam Full HD', preco: 299.0 },
+  { id: 'p6', nome: 'Cadeira Gamer', preco: 1499.0 },
+  { id: 'p7', nome: 'Headset com Microfone', preco: 249.9 },
+  { id: 'p8', nome: 'Suporte para Monitor', preco: 149.0 },
 ];
 
 export class Desafio1Stack extends cdk.Stack {
