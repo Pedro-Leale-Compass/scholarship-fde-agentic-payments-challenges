@@ -1,15 +1,22 @@
-import { Routes, Route } from 'react-router-dom';
-import Login from './Login';
+import { Authenticator } from '@aws-amplify/ui-react';
 import Chat from './Chat';
+import type { AppConfig } from './config';
 import './App.css';
 
-function App() {
-  return (
-    <Routes>
-      <Route path="/" element={<Login />} />
-      <Route path="/chat" element={<Chat />} />
-    </Routes>
-  );
+interface AppProps {
+  config: AppConfig;
 }
 
-export default App;
+export default function App({ config }: AppProps) {
+  return (
+    <Authenticator hideSignUp loginMechanisms={['email']}>
+      {({ signOut, user }) => (
+        <Chat
+          config={config}
+          onSair={signOut!}
+          email={user?.signInDetails?.loginId || user?.username}
+        />
+      )}
+    </Authenticator>
+  );
+}
