@@ -329,4 +329,79 @@ describe('Chat API Lambda (#17 [API-01])', () => {
       else g.awslambda = previousAwslambda;
     }
   });
+
+  it('createChatHandler ignora HttpResponseStream.from mesmo quando globalThis.awslambda existe', async () => {
+    process.env.CONVERSAS_TABLE_NAME = 'alvaro-conversas';
+    process.env.AGENT_RUNTIME_ARN = 'arn:aws:bedrock-agentcore:us-east-1:006739439488:runtime/abc';
+
+    const { store } = createFakeStore();
+    const g = globalThis as Record<string, unknown>;
+    const previousAwslambda = g.awslambda;
+    g.awslambda = {
+      HttpResponseStream: {
+        from() {
+          throw new TypeError('underlyingStream.setContentType is not a function');
+        },
+      },
+    };
+
+    try {
+      const handler = createChatHandler({
+        conversationsStore: store,
+        agentInvoker: {
+          async invokeAgent() {
+            return { response: 'Resposta em buffer sem erro de stream!', tools: [] };
+          },
+        },
+      });
+
+      const res = await handler({
+        body: JSON.stringify({ prompt: 'Olá' }),
+        requestContext: { authorizer: { claims: { sub: 'sub-buffer-1' } } },
+      });
+
+      assert.equal(res.statusCode, 200);
+      assert.equal(res.headers['Content-Type'], 'application/x-ndjson; charset=utf-8');
+      const lines = res.body
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+      assert.deepEqual(lines, [
+        { message: { role: 'assistant', content: 'Resposta em buffer sem erro de stream!' } },
+        { done: true },
+      ]);
+    } finally {
+      if (previousAwslambda === undefined) delete g.awslambda;
+      else g.awslambda = previousAwslambda;
+    }
+  });
+
+  it('envolve o handler com globalThis.awslambda.streamifyResponse quando disponível no runtime AWS', () => {
+    const g = globalThis as Record<string, unknown>;
+    const previousAwslambda = g.awslambda;
+    let streamifiedFn: unknown;
+    const sentinelHandler = () => 'streamified-handler';
+
+    g.awslambda = {
+      streamifyResponse(fn: unknown) {
+        streamifiedFn = fn;
+        return sentinelHandler;
+      },
+    };
+
+    const resolved = require.resolve('./index');
+    const previousCache = require.cache[resolved];
+    try {
+      delete require.cache[resolved];
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mod = require('./index') as { handler: unknown };
+      assert.equal(typeof streamifiedFn, 'function');
+      assert.equal(mod.handler, sentinelHandler);
+    } finally {
+      if (previousCache) require.cache[resolved] = previousCache;
+      else delete require.cache[resolved];
+      if (previousAwslambda === undefined) delete g.awslambda;
+      else g.awslambda = previousAwslambda;
+    }
+  });
 });

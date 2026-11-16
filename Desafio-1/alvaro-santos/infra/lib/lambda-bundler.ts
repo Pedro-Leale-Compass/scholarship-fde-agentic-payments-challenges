@@ -1,4 +1,5 @@
 import * as path from 'path';
+import * as cdk from 'aws-cdk-lib';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as esbuild from 'esbuild';
 
@@ -9,6 +10,10 @@ import * as esbuild from 'esbuild';
  */
 export function bundleNode22Lambda(entryFile: string, assetRootDir: string): lambda.Code {
   return lambda.Code.fromAsset(assetRootDir, {
+    // Combina o fingerprint de todo o diretório raiz com o entrypoint relativo para gerar um hash
+    // único por Lambda antes do bundling, evitando deduplicação indevida e o rename() que falha no Windows.
+    assetHashType: cdk.AssetHashType.CUSTOM,
+    assetHash: `${cdk.FileSystem.fingerprint(assetRootDir)}:${path.relative(assetRootDir, entryFile)}`,
     bundling: {
       image: lambda.Runtime.NODEJS_22_X.bundlingImage,
       local: {

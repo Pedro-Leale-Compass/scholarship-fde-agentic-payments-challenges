@@ -258,7 +258,10 @@ export function createStreamingChatHandler(
         statusCode,
         headers: { ...corsHeaders, 'Content-Type': contentType, 'Cache-Control': 'no-cache' },
       };
-      onMetadata?.(meta);
+      if (onMetadata) {
+        onMetadata(meta);
+        return responseStream;
+      }
       return getAwsLambdaGlobal()?.HttpResponseStream?.from(responseStream, meta) ?? responseStream;
     };
 
@@ -365,5 +368,5 @@ export function createChatHandler(deps?: ChatHandlerDependencies) {
   };
 }
 
-const lambdaStreamify = getAwsLambdaGlobal()?.awslambda?.streamifyResponse;
+const lambdaStreamify = getAwsLambdaGlobal()?.streamifyResponse;
 export const handler = lambdaStreamify ? lambdaStreamify(createStreamingChatHandler()) : createChatHandler();
