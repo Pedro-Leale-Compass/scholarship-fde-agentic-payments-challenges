@@ -2,10 +2,11 @@ import { useCallback, useEffect, useRef, useState, type UIEvent } from 'react'
 import type { ChatMessage } from '../types/chat'
 import type { ToolEvent } from '../types/tools'
 import { sendChatMessage } from '../services/chatService'
+import { syncUserBalance } from '../services/authService'
 import { useAuth } from './useAuth'
 import { useToast } from '../context/toast'
 import { createMessageId } from '../utils/id'
-import { isApproved } from '../utils/guards'
+import { isApproved, isRecord } from '../utils/guards'
 import { ApiError } from '../types/api'
 const toolActivity: Record<string, string> = {
   listar_catalogo: 'Consultando catálogo',
@@ -22,6 +23,7 @@ export function useChat() {
   const [pendingTool, setPendingTool] = useState<string | null>(null)
   const [hasNewContent, setHasNewContent] = useState(false)
   const messageRef = useRef<ChatMessage[]>([])
+  const sessionIdRef = useRef<string>(createMessageId())
   const streamRef = useRef<AbortController | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
@@ -82,6 +84,7 @@ export function useChat() {
                 !message.interrupted,
             )
             .map(({ role, content }) => ({ role, content })),
+          sessionId: sessionIdRef.current,
           token,
           signal: controller.signal,
           onEvent: (event) => {
@@ -111,13 +114,24 @@ export function useChat() {
                   createdAt: new Date().toISOString(),
                 },
               ])
-              if (event.tool.name === 'realizar_compra' && isApproved(event.tool.result))
+              if (
+                event.tool.name === 'listar_catalogo' &&
+                isRecord(event.tool.result) &&
+                typeof event.tool.result.saldo_disponivel === 'number' &&
+                Number.isFinite(event.tool.result.saldo_disponivel)
+              ) {
+                syncUserBalance(event.tool.result.saldo_disponivel)
+                void refreshUser().catch(() => undefined)
+              }
+              if (event.tool.name === 'realizar_compra' && isApproved(event.tool.result)) {
+                syncUserBalance(event.tool.result.limite_restante)
                 void refreshUser().catch(() =>
                   notify(
                     'Compra aprovada, mas não foi possível atualizar seu limite. Tente atualizar o perfil.',
                     'error',
                   ),
                 )
+              }
             }
             if ('done' in event) setPendingTool(null)
           },
@@ -155,6 +169,7 @@ export function useChat() {
   const clearChat = useCallback(() => {
     streamRef.current?.abort()
     streamRef.current = null
+    sessionIdRef.current = createMessageId()
     updateMessages([])
     setToolEvents([])
     setError(null)

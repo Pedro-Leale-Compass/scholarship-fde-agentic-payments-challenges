@@ -6,6 +6,7 @@ import { consumeNdjson } from './ndjson'
 
 export async function sendChatMessage({
   messages,
+  sessionId,
   token,
   onEvent,
   signal,
@@ -19,7 +20,7 @@ export async function sendChatMessage({
         Accept: 'application/x-ndjson',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ messages }),
+      body: JSON.stringify(sessionId ? { messages, sessionId } : { messages }),
       signal: requestSignal(signal, 180000),
     })
   } catch (cause) {

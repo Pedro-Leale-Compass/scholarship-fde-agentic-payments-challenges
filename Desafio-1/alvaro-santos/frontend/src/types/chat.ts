@@ -19,6 +19,7 @@ export type ChatStreamEvent =
   | { error: string }
 export interface SendChatOptions {
   messages: RequestMessage[]
+  sessionId?: string
   token: string
   onEvent: (event: ChatStreamEvent) => void
   signal?: AbortSignal
