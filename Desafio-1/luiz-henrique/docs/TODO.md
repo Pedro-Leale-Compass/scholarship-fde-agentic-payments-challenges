@@ -73,7 +73,14 @@ Região: `us-east-1`. Prefixo dos recursos: `luiz-henrique`.
 - [x] `frontend/lib/mock-auth.ts` removido.
 - [x] API URL lida de `config.json` publicado no deploy (sem rebuild por ambiente).
 - [x] Build estático (`next build`, `output: 'export'`) gerando `frontend/out`.
-- [x] Build e publicação no Amplify Hosting via `scripts/deploy-frontend.sh`.
+- [ ] Render markdown nas respostas do agente (apenas texto bruto atualmente).
+- [ ] Mostrar nome/email do usuário após "Bem-vindo" (mostrando userId atualmente).
+- [ ] Chat box ocupar quase toda a altura vertical (atualmente fixo em 400px).
+- [ ] Catálogo menor, alinhado com repo anterior (https://github.com/luiztosk/squad-03-desafio-MCP-agentic).
+- [ ] Link para repo anterior no README.md.
+- [ ] Verificar BEDROCK_MODEL_ID lido do .env (não do .env.example) — console ainda mostra nova-2-lite.
+- [ ] Build estático (`next build`, `output: 'export'`) gerando `frontend/out`.
+- [ ] Build e publicação no Amplify Hosting via `scripts/deploy-frontend.sh`.
 
 ## 6. Infraestrutura (infra/)
 
