@@ -39,9 +39,23 @@ export class Api extends constructs.Construct {
       arquivo: string,
       environment: Record<string, string>,
       timeout: cdk.Duration,
-    ) =>
-      new nodejs.NodejsFunction(this, idLambda, {
+    ) => {
+      const logGroup = new logs.LogGroup(this, `${idLambda}Logs`, {
+        logGroupName: `/aws/lambda/${props.prefixo}-${nome}`,
+        retention: logs.RetentionDays.ONE_WEEK,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      })
+      const role = new iam.Role(this, `${idLambda}Role`, {
+        roleName: `${props.prefixo}-${nome}-lambda`,
+        description: `Execução da Lambda ${nome} da API`,
+        assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+      })
+      logGroup.grantWrite(role)
+
+      return new nodejs.NodejsFunction(this, idLambda, {
         functionName: `${props.prefixo}-${nome}`,
+        role,
+        logGroup,
         entry: path.join(PASTA_API, 'src', arquivo),
         handler: 'handler',
         runtime: lambda.Runtime.NODEJS_22_X,
@@ -56,12 +70,8 @@ export class Api extends constructs.Construct {
           minify: true,
           sourceMap: false,
         },
-        logGroup: new logs.LogGroup(this, `${idLambda}Logs`, {
-          logGroupName: `/aws/lambda/${props.prefixo}-${nome}`,
-          retention: logs.RetentionDays.ONE_WEEK,
-          removalPolicy: cdk.RemovalPolicy.DESTROY,
-        }),
       })
+    }
 
     this.chat = createLambdaApi(
       'Chat',

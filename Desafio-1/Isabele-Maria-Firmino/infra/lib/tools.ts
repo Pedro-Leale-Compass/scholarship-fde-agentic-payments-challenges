@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import * as path from 'node:path'
 import * as cdk from 'aws-cdk-lib'
+import * as iam from 'aws-cdk-lib/aws-iam'
 import * as lambda from 'aws-cdk-lib/aws-lambda'
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs'
 import * as logs from 'aws-cdk-lib/aws-logs'
@@ -32,9 +33,23 @@ export class Tools extends constructs.Construct {
       arquivo: string,
       environment: Record<string, string>,
       timeout: cdk.Duration,
-    ) =>
-      new nodejs.NodejsFunction(this, idTool, {
+    ) => {
+      const logGroup = new logs.LogGroup(this, `${idTool}Logs`, {
+        logGroupName: `/aws/lambda/${props.prefixo}-${nome}`,
+        retention: logs.RetentionDays.ONE_WEEK,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      })
+      const role = new iam.Role(this, `${idTool}Role`, {
+        roleName: `${props.prefixo}-${nome}-lambda`,
+        description: `Execução da tool ${nome}`,
+        assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+      })
+      logGroup.grantWrite(role)
+
+      return new nodejs.NodejsFunction(this, idTool, {
         functionName: `${props.prefixo}-${nome}`,
+        role,
+        logGroup,
         entry: path.join(PASTA_TOOLS, 'src', arquivo),
         handler: 'handler',
         runtime: lambda.Runtime.NODEJS_22_X,
@@ -49,12 +64,8 @@ export class Tools extends constructs.Construct {
           minify: true,
           sourceMap: false,
         },
-        logGroup: new logs.LogGroup(this, `${idTool}Logs`, {
-          logGroupName: `/aws/lambda/${props.prefixo}-${nome}`,
-          retention: logs.RetentionDays.ONE_WEEK,
-          removalPolicy: cdk.RemovalPolicy.DESTROY,
-        }),
       })
+    }
 
     this.listarCatalogo = createTool(
       'ListarCatalogo',
