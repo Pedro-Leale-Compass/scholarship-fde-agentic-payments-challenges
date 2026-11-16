@@ -1,3 +1,8 @@
+# Environment & local config
+.env.*
+!.env.example
+public/config.json
+
 # Logs
 logs
 *.log
