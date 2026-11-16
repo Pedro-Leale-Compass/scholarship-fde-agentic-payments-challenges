@@ -2,11 +2,13 @@
 
 Migração do chatbot de pagamentos da Nexus Store (Fase 1 local) para infraestrutura serverless na AWS (`us-east-1`), definida com AWS CDK v2 em TypeScript.
 
+Conforme diretriz oficial da coordenação em 16/11/2026, o backend completo e a autenticação (Amazon Cognito, API Gateway REST com streaming, Lambda `/chat`, Bedrock AgentCore Runtime, 3 Tool Lambdas e DynamoDB) executam na AWS, enquanto o frontend React executa localmente (`http://localhost:5173`), deixando o provisionamento no CloudFront para os próximos workshops e desafios. O construto `FrontendHost` (`infra/lib/frontend-host.ts` — S3 privado + CloudFront OAC + `BucketDeployment`) permanece implementado no repositório pronto para ativação via `-c skipFrontendHost=false`.
+
 ## 1. Arquitetura Implementada
 
 ```mermaid
 graph TD
-    U["Frontend SPA (React + Vite)<br/>S3 Privado + CloudFront OAC"] -->|"1. Login JWT"| C["Amazon Cognito<br/>alvaro-user-pool"]
+    U["Frontend SPA Local (React + Vite)<br/>http://localhost:5173"] -->|"1. Login JWT"| C["Amazon Cognito<br/>alvaro-user-pool"]
     U -->|"2. POST /chat + Bearer IdToken"| APIGW["Amazon API Gateway REST<br/>alvaro-chat-api (STREAM)"]
     APIGW -->|"3. Valida assinatura e exp JWT"| C
     APIGW -->|"4. Proxy streaming NDJSON"| LCHAT["Lambda /chat<br/>alvaro-chat-api-handler"]
@@ -30,29 +32,33 @@ graph TD
 
 | Pasta | Papel |
 | :--- | :--- |
-| `frontend/` | SPA React 19 + TypeScript + Vite (24 testes Vitest) |
-| `infra/` | Stack CDK `alvaro-agentic-payments-stack` e construtos |
-| `api/` | Handler streaming NDJSON `POST /chat` (8 testes) |
+| `frontend/` | SPA React 19 + TypeScript + Vite rodando localmente em `http://localhost:5173` (24 testes Vitest) |
+| `infra/` | Stack CDK `alvaro-agentic-payments-stack` e construtos (`FrontendHost` opcional via `-c skipFrontendHost=false`) |
+| `api/` | Handler streaming NDJSON `POST /chat` e `POST /api/chat` (8 testes) |
 | `agent/` | Container `linux/arm64` com `@strands-agents/sdk` + Express `:8080` (14 testes) |
 | `tools/` | 3 Lambdas determinísticas (`consultar-saldo`, `criar-intencao`, `confirmar-pagamento`) |
-| `scripts/` | Script unificado de deploy e teardown (`deploy.sh`) |
+| `scripts/` | Script unificado de deploy na AWS, geração de `frontend/.env.local` e teardown (`deploy.sh`) |
 | `docs/` | ADRs ([`adr/`](docs/fase-2-desafio-1-aws/adr/)) e [evidências](docs/fase-2-desafio-1-aws/evidencias.md) |
 | `backend/`, `mcp-tools/` | Referência local mantida da Fase 1 (não implantada na AWS) |
 
 ---
 
-## 2. Deploy Passo a Passo
+## 2. Deploy na AWS e Execução Local do Frontend
 
 ### Pré-requisitos
 
-- Node.js 22+, npm e Docker Desktop em execução (para build `linux/arm64` do `PaymentAgent`).
-- AWS CLI v2 autenticada via SSO na conta `006739439488` em `us-east-1`.
-- Acesso ao modelo `us.anthropic.claude-haiku-4-5-20251001-v1:0` habilitado no Bedrock em `us-east-1` (formulário de uso da Anthropic enviado na conta).
+- **Node.js 22+** e **npm** instalados.
+- **Docker Desktop** em execução (necessário para construir a imagem `linux/arm64` do `PaymentAgent`).
+- **AWS CLI v2** autenticada via SSO na conta `006739439488`, região **`us-east-1`**.
+- Acesso ao modelo `us.anthropic.claude-haiku-4-5-20251001-v1:0` habilitado no Amazon Bedrock em `us-east-1` (formulário de caso de uso da Anthropic enviado na conta).
 
-### Instalação e bootstrap
+### Passo 1: Autenticação AWS, bootstrap do CDK e dependências
 
 ```bash
 aws sso login --profile alvaro-fellowship
+aws sts get-caller-identity --profile alvaro-fellowship
+
+# Necessário apenas na primeira vez em que a conta/região receber stacks CDK
 npx --prefix infra cdk bootstrap aws://006739439488/us-east-1 --profile alvaro-fellowship
 
 npm --prefix frontend ci
@@ -60,32 +66,30 @@ npm --prefix infra ci
 npm --prefix agent ci
 ```
 
-### Deploy completo em comando único
+### Passo 2: Subir o backend e a autenticação na AWS (comando único)
 
-Execute em `Desafio-1/alvaro-santos/`:
+A partir da raiz `Desafio-1/alvaro-santos/`:
 
 ```bash
 bash scripts/deploy.sh --profile alvaro-fellowship
 ```
 
-O script compila a SPA, valida os tipos da stack CDK, cria/atualiza os recursos via `cdk deploy --all`, extrai os outputs de `infra/cdk-outputs.json` para `frontend/.env.local` (sem valores fixos no código), recompila o frontend com os IDs reais e publica no S3 privado com invalidação `/*` no CloudFront. *(No PowerShell em `infra/`: `npm run deploy -- --profile alvaro-fellowship`.)*
+O script executa o provisionamento completo em `us-east-1`:
+1. Valida os tipos TypeScript em `infra/`.
+2. Implanta via `cdk deploy --all` as 3 tabelas DynamoDB (`alvaro-usuarios`, `alvaro-intencoes`, `alvaro-conversas`), o User Pool fechado no Cognito (`alvaro-user-pool` + `alvaro-spa-client`), as 3 Tool Lambdas, o AgentCore Runtime (`alvaro_payment_agent`) e o API Gateway REST (`alvaro-chat-api`) com CORS liberado para `http://localhost:5173`.
+3. Lê os outputs reais gerados em `infra/cdk-outputs.json` e cria automaticamente o arquivo `frontend/.env.local` (ignorado pelo Git, sem hardcode de URLs ou IDs no código fonte).
 
-### Contorno para bloqueio temporário de `cloudfront:*`
+*(Alternativa no PowerShell dentro de `infra/`: `npm run deploy -- --profile alvaro-fellowship`. Caso deseje ativar o deploy completo com S3 + CloudFront no futuro, execute `bash scripts/deploy.sh --with-cloudfront --profile alvaro-fellowship`.)*
 
-Quando a conta compartilhada restringir `cloudfront:*`, use a flag `--skip-frontend` (`-c skipFrontendHost=true`). Ela implanta todo o backend na AWS, libera CORS para `http://localhost:5173` e gera `frontend/.env.local`:
+### Passo 3: Criar um usuário no Cognito e provisionar saldo no DynamoDB
 
-```bash
-bash scripts/deploy.sh --skip-frontend --profile alvaro-fellowship
-npm --prefix frontend run dev
-```
-
-*(No PowerShell em `infra/`: `npm run deploy:backend-only -- --profile alvaro-fellowship`.)*
-
-### Cadastro do usuário avaliador e saldo inicial
+Como o auto cadastro é bloqueado (`selfSignUpEnabled: false`), crie o usuário administrativamente e grave o saldo inicial na tabela `alvaro-usuarios` usando a claim `sub` gerada pelo Cognito:
 
 ```bash
+# Substitua <AuthUserPoolIdOutput> pelo valor gerado em infra/cdk-outputs.json
 POOL_ID="<AuthUserPoolIdOutput>"
 
+# 1. Cria o usuário por convite (ou use --message-action SUPPRESS + admin-set-user-password para testes)
 aws cognito-idp admin-create-user \
   --user-pool-id "$POOL_ID" \
   --username avaliador \
@@ -93,6 +97,16 @@ aws cognito-idp admin-create-user \
   --region us-east-1 \
   --profile alvaro-fellowship
 
+# (Opcional para teste sem e-mail: definir senha permanente de 8+ chars com minúscula e número)
+aws cognito-idp admin-set-user-password \
+  --user-pool-id "$POOL_ID" \
+  --username avaliador \
+  --password "<SenhaForte123>" \
+  --permanent \
+  --region us-east-1 \
+  --profile alvaro-fellowship
+
+# 2. Captura o UUID (sub) criado no Cognito
 USER_SUB=$(aws cognito-idp admin-get-user \
   --user-pool-id "$POOL_ID" \
   --username avaliador \
@@ -101,12 +115,39 @@ USER_SUB=$(aws cognito-idp admin-get-user \
   --region us-east-1 \
   --profile alvaro-fellowship)
 
+# 3. Grava saldo e limite inicial (ex.: R$ 5.000,00) no DynamoDB
 aws dynamodb put-item \
   --table-name alvaro-usuarios \
   --item "{\"usuario_id\":{\"S\":\"$USER_SUB\"},\"nome\":{\"S\":\"Avaliador\"},\"saldo_disponivel\":{\"N\":\"5000\"},\"limite_total\":{\"N\":\"5000\"}}" \
   --region us-east-1 \
   --profile alvaro-fellowship
 ```
+
+### Passo 4: Como rodar o Frontend localmente conectado à AWS
+
+1. Confira se `Desafio-1/alvaro-santos/frontend/.env.local` foi gerado pelo Passo 2 (caso tenha feito o deploy diretamente pelo `infra/`, copie `.env.example` para `.env.local` e preencha com os valores de `infra/cdk-outputs.json`):
+   ```env
+   VITE_API_URL=https://<api-id>.execute-api.us-east-1.amazonaws.com/prod
+   VITE_COGNITO_USER_POOL_ID=us-east-1_<pool-id>
+   VITE_COGNITO_CLIENT_ID=<spa-client-id>
+   VITE_COGNITO_REGION=us-east-1
+   VITE_USE_MOCKS=false
+   ```
+2. Inicie o servidor de desenvolvimento do Vite a partir de `Desafio-1/alvaro-santos/`:
+   ```bash
+   npm --prefix frontend run dev
+   ```
+3. Acesse **`http://localhost:5173`** no navegador *(use `localhost`, e não `127.0.0.1`, pois o CORS do API Gateway está restrito exatamente à origem `http://localhost:5173`)*.
+4. Faça login com o usuário e senha criados no Passo 3 e teste os fluxos no chat:
+   - Consultar catálogo e saldo disponível (`listar_catalogo`).
+   - Escolher produto e quantidade para registrar intenção (`registrar_intencao`).
+   - Confirmar pagamento via **Pix** ou **Cartão** (`realizar_compra`).
+5. Comandos locais de validação do frontend:
+   ```bash
+   npm --prefix frontend test       # 24 testes unitários (Vitest)
+   npm --prefix frontend run lint   # Verificação ESLint
+   npm --prefix frontend run build  # Checagem de tipos (tsc -b) e bundle Vite
+   ```
 
 ---
 
@@ -143,7 +184,7 @@ Nenhuma role usa `"Action": "*"` com `"Resource": "*"` nem `AdministratorAccess`
 | Lambda `TOOL-01` (`alvaro-tool-consultar-saldo`) | `dynamodb:GetItem` em `alvaro-usuarios`. | Sem escrita e sem acesso às demais tabelas. |
 | Lambda `TOOL-02` (`alvaro-tool-criar-intencao`) | `dynamodb:PutItem` em `alvaro-intencoes`. | Sem acesso a `alvaro-usuarios` nem atualização de itens. |
 | Lambda `TOOL-03` (`alvaro-tool-confirmar-pagamento`) | `dynamodb:GetItem`, `UpdateItem`, `ConditionCheckItem` em `alvaro-intencoes` e `alvaro-usuarios`. | Sem `DeleteItem` e sem acesso a `alvaro-conversas`. |
-| Bucket `alvaro-frontend-bucket-*` | `s3:GetObject` apenas para `cloudfront.amazonaws.com` com condição `AWS:SourceArn` (OAC). | `BlockPublicAccess.BLOCK_ALL` e static website hosting desativados. |
+| `FrontendHost` (`infra/lib/frontend-host.ts`, opcional `--with-cloudfront`) | `BlockPublicAccess.BLOCK_ALL`; `s3:GetObject` apenas para `cloudfront.amazonaws.com` com `AWS:SourceArn` (OAC). | Desativado por padrão conforme diretriz de frontend local; sem acesso público. |
 
 ---
 
@@ -164,13 +205,13 @@ O relatório visual completo com as capturas de tela está em **[`docs/fase-2-de
 ## 7. Remoção dos Recursos (Teardown)
 
 ```bash
-# Stack completa:
+# Padrão (backend e Cognito na AWS):
 bash scripts/deploy.sh --destroy --profile alvaro-fellowship
 
-# Stack implantada com --skip-frontend:
-bash scripts/deploy.sh --destroy --skip-frontend --profile alvaro-fellowship
+# Caso tenha implantado com --with-cloudfront:
+bash scripts/deploy.sh --destroy --with-cloudfront --profile alvaro-fellowship
 ```
 
-*(No PowerShell em `infra/`: `npm run destroy -- --profile alvaro-fellowship` ou `npm run destroy:backend-only -- --profile alvaro-fellowship`.)*
+*(No PowerShell dentro de `infra/`: `npm run destroy -- --profile alvaro-fellowship`.)*
 
-Após o comando, confira no Console AWS (`us-east-1`) que não restaram recursos em: CloudFormation (`alvaro-agentic-payments-stack`), S3 (`alvaro-frontend-bucket-*`) e CloudFront, DynamoDB (`alvaro-*`), Cognito (`alvaro-user-pool`), API Gateway (`alvaro-chat-api`), Lambda (`alvaro-*`), Bedrock AgentCore (`alvaro_payment_agent`), imagens no ECR e grupos de log no CloudWatch.
+Após o comando, confira no Console AWS (`us-east-1`) que não restaram recursos em: CloudFormation (`alvaro-agentic-payments-stack`), DynamoDB (`alvaro-*`), Cognito (`alvaro-user-pool`), API Gateway (`alvaro-chat-api`), Lambda (`alvaro-*`), Bedrock AgentCore (`alvaro_payment_agent`), imagens no ECR, grupos de log no CloudWatch e (se `--with-cloudfront` foi usado) bucket `alvaro-frontend-bucket-*` + distribuição CloudFront.

@@ -2,7 +2,7 @@
 
 Registro das validações executadas contra a infraestrutura provisionada em `us-east-1` (conta `006739439488`, stack `alvaro-agentic-payments-stack`).
 
-> Nota de ambiente: durante a coleta inicial, a conta compartilhada estava com restrição temporária para `cloudfront:*`. O backend (Cognito, API Gateway, Lambda `/chat`, Bedrock AgentCore, Tool Lambdas e DynamoDB) rodou integralmente na AWS e o frontend React operou localmente apontando para os endpoints reais via `--skip-frontend`.
+> Nota de ambiente: conforme diretriz oficial da coordenação (16/11/2026), o backend e a autenticação (Cognito, API Gateway, Lambda `/chat`, Bedrock AgentCore, Tool Lambdas e DynamoDB) executam integralmente na AWS (`us-east-1`), enquanto o frontend React opera localmente (`http://localhost:5173`), postergando o CloudFront para os próximos workshops.
 
 ---
 

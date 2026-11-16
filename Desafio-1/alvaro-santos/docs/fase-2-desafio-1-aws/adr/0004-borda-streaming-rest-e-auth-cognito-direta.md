@@ -28,9 +28,9 @@ Durante a implementação da borda (`infra/lib/api.ts`, `api/index.ts` e `fronte
    - O login em `frontend/src/services/authService.ts` envia `AWSCognitoIdentityProviderService.InitiateAuth` diretamente para `cognito-idp.<region>.amazonaws.com`, recebe o `IdToken` JWT (contendo a claim `sub`) e valida a expiração localmente em `me()`.
    - Os valores `VITE_API_URL`, `VITE_COGNITO_USER_POOL_ID` e `VITE_COGNITO_CLIENT_ID` não ficam fixos no código fonte (`frontend/src/config/env.ts`); são extraídos de `infra/cdk-outputs.json` para `frontend/.env.local` durante a execução de `scripts/deploy.sh`.
 
-3. **Isolamento de `sessionId` e flag `-c skipFrontendHost=true`:**
+3. **Isolamento de `sessionId` e padrão `skipFrontendHost = true`:**
    - Cada sessão e cada ação de "Nova conversa" no React gera um `sessionId` UUID próprio enviado no body de `POST /api/chat`, evitando colisão de histórico na chave `:default` em `alvaro-conversas`.
-   - O parâmetro de contexto `-c skipFrontendHost=true` (`scripts/deploy.sh --skip-frontend`) permite omitir `FrontendHost` e liberar CORS estritamente para `http://localhost:5173` enquanto `cloudfront:*` estiver restrito na conta compartilhada.
+   - Em alinhamento à diretriz oficial da coordenação (16/11/2026) de manter o frontend local e postergar o CloudFront para próximos workshops/desafios, `AgenticPaymentsStack` usa `skipFrontendHost = true` por padrão, liberando CORS para `http://localhost:5173`. O construto `FrontendHost` permanece preservado no código e pode ser ativado a qualquer momento via `-c skipFrontendHost=false` (`scripts/deploy.sh --with-cloudfront`).
 
 ## 3. Alternativas Consideradas e Trade-offs
 
@@ -40,4 +40,4 @@ Durante a implementação da borda (`infra/lib/api.ts`, `api/index.ts` e `fronte
 ## 4. Consequências
 
 - **Positivas:** streaming NDJSON nativo validado ponta a ponta em produção (`HTTP/1.1 200 OK`, `Transfer-Encoding: chunked`), rejeição `401` na borda antes da invocação da Lambda, zero segredos ou IDs de infraestrutura fixos no código e compatibilidade integral com os 24 testes existentes do frontend.
-- **Negativas / Mitigações:** enquanto o deploy usar `--skip-frontend`, o frontend roda localmente conectado ao backend AWS. Ao liberar `cloudfront:*`, basta rodar `bash scripts/deploy.sh --profile alvaro-fellowship` sem flags para publicar o build no S3 privado com CloudFront OAC.
+- **Negativas / Mitigações:** o frontend roda localmente em `http://localhost:5173` conectado ao backend e Cognito na AWS, conforme documentado no `README.md`. Quando o CloudFront for utilizado em desafios futuros, basta executar `bash scripts/deploy.sh --with-cloudfront --profile alvaro-fellowship` para publicar o build no S3 privado com OAC.
