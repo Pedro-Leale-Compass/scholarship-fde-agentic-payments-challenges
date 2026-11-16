@@ -1,7 +1,7 @@
 /**
- * Modelo padrão no Amazon Bedrock (perfil cross-region US para Claude 3 Haiku em us-east-1).
+ * Modelo padrão no Amazon Bedrock (perfil cross-region US para Claude Haiku 4.5 em us-east-1).
  */
-export const DEFAULT_BEDROCK_MODEL_ID = 'us.anthropic.claude-3-haiku-20240307-v1:0';
+export const DEFAULT_BEDROCK_MODEL_ID = 'us.anthropic.claude-haiku-4-5-20251001-v1:0';
 
 /**
  * Região AWS exclusiva do Desafio 1.

@@ -16,8 +16,8 @@ export interface PaymentAgentProps {
   readonly confirmarPagamentoLambda: lambda.IFunction;
 }
 
-const BEDROCK_MODEL_ID = 'us.anthropic.claude-3-haiku-20240307-v1:0';
-const BEDROCK_FOUNDATION_MODEL_ID = 'anthropic.claude-3-haiku-20240307-v1:0';
+const BEDROCK_MODEL_ID = 'us.anthropic.claude-haiku-4-5-20251001-v1:0';
+const BEDROCK_FOUNDATION_MODEL_ID = 'anthropic.claude-haiku-4-5-20251001-v1:0';
 
 /**
  * Construto do Amazon Bedrock AgentCore Runtime para o assistente da Nexus Store.

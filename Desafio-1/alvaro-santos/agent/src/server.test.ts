@@ -36,8 +36,8 @@ async function withServer(
 }
 
 describe('Nexus Store Agent Config & Prompt', () => {
-  it('configura Claude 3 Haiku na região us-east-1 como padrão', () => {
-    assert.equal(DEFAULT_BEDROCK_MODEL_ID, 'us.anthropic.claude-3-haiku-20240307-v1:0');
+  it('configura Claude Haiku 4.5 na região us-east-1 como padrão', () => {
+    assert.equal(DEFAULT_BEDROCK_MODEL_ID, 'us.anthropic.claude-haiku-4-5-20251001-v1:0');
     assert.equal(DEFAULT_AWS_REGION, 'us-east-1');
   });
 
