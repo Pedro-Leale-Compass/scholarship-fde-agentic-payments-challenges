@@ -1,488 +1,566 @@
-# Fase 2 — Frontend estático e autenticação Cognito
+# Fase 2 — Migração do agente de pagamentos para AWS
 
-## Estado atual — 14/11/2026
+## Estado consolidado — 16/11/2026
 
-A preparação do frontend estático e a integração inicial de autenticação foram realizadas. O frontend continua local, em **http://localhost:3001**, servido pelo Docker Compose. Cognito, API Gateway e a Lambda de sessão foram implantados em **us-east-1** com AWS CDK em Python.
+Os oito passos do plano técnico foram implementados, implantados e validados no escopo combinado: frontend estático local em **http://localhost:3001**, autenticação Cognito e backend na AWS. O usuário apresentou os resultados dos testes e confirmou o funcionamento visual do histórico, do streaming, do painel de pedidos e do saldo.
 
-Foram confirmados pelo usuário: login por convite, definição da nova senha, verificação de e-mail, chamada autenticada ao endpoint de sessão e logout com redirecionamento ao login. Chamadas sem token e com token inválido retornaram `401`.
+A publicação do frontend em **S3 privado com CloudFront e OAC permanece adiada até a liberação do orientador**. Essa etapa continua sendo um requisito da entrega final. O S3 do bootstrap armazena pacotes de deploy e não hospeda a interface.
 
-A tela principal é temporariamente uma confirmação de sessão. **O chat AWS, o perfil com limite e o banco ainda não estão implementados.** S3 e CloudFront para o frontend permanecem adiados por orientação do projeto. O S3 criado pelo bootstrap tem outra finalidade: armazenar pacotes de deploy.
+A revisão de custos é preliminar: a consulta apresentada cobre somente 01/11 a 15/11/2026. Ainda não inclui o consumo das implantações e dos testes de 16/11. A configuração do alerta AWS Budgets não foi comprovada.
 
-As seções sobre a preparação inicial abaixo preservam o histórico da separação do frontend. A seção **Autenticação — Cognito com frontend local** descreve a configuração vigente e substitui o fluxo antigo de login.
+Este documento consolida a implementação atual e substitui a descrição anterior, que registrava apenas a preparação do frontend e a autenticação de 14/11. A atualização deste arquivo não executou novamente testes, deploys, compras ou limpeza na AWS.
 
-## Histórico — objetivo da preparação inicial do frontend
+### Plano executado
 
-Separar a interface da aplicação da Fase 1 e gerar arquivos estáticos que possam ser hospedados em um bucket S3 privado, servido pelo CloudFront. A hospedagem AWS ainda não foi criada.
+| Passo | Implementação e validação |
+|---|---|
+| 1. Revisar a Fase 1 | Catálogo, contratos das ferramentas, limite, reserva de cinco minutos, métodos e códigos de erro revisados |
+| 2. Modelar o DynamoDB | Cinco tabelas para usuários, catálogo, intenções, transações e conversas; condições e transações para concorrência |
+| 3. Implementar persistência e perfil | Tabelas no CDK e `GET /me` protegido, com identidade obtida do `sub` do Cognito |
+| 4. Migrar as ferramentas | Três ferramentas em Lambda, testes unitários e integração com DynamoDB real |
+| 5. Construir o agente | Strands Python com Claude Haiku no Bedrock e ferramentas vinculadas à identidade do backend |
+| 6. Preparar o AgentCore | Runtime, pacote ARM64, publicação e permissões definidos em código; runtime validado na AWS |
+| 7. Integrar o chat | API de chat, histórico completo, SSE, recuperação de conversas e frontend reconectado |
+| 8. Implantar e validar | Deploy concluído, testes reais de cartão/Pix, erros, concorrência e expiração; custos disponíveis consultados |
 
-Ao concluir a preparação inicial, o frontend tinha pasta própria, exportação estática, configuração pública de URLs e execução pelo Docker Compose. Naquele momento, autenticação e chat ainda usavam os serviços locais da Fase 1; a autenticação foi posteriormente substituída pelo Cognito, conforme registrado adiante.
+A conclusão desse plano técnico permite avançar para o fechamento da entrega. As pendências de hospedagem pública, documentação de entrada, orçamento e evidências estão listadas ao final.
 
-## Histórico — arquitetura local antes do Cognito
+## Arquitetura realmente utilizada
 
 ```mermaid
 flowchart TD
-    B[Navegador]
-    F[Frontend estático — Nginx\nlocalhost:3001]
-    A[Autenticação da Fase 1\nlocalhost:4000]
-    C[Backend do chat da Fase 1\nlocalhost:3000/api/chat]
-    G[Gemini]
-    T[Ferramentas MCP locais]
+    U[Navegador]
+    F[Frontend estático local\nlocalhost:3001]
+    C[Cognito User Pool\nLogin por convite]
+    H[API Gateway HTTP API\nGET /sessao e GET /me]
+    P[Lambdas de sessão e perfil\nPython]
+    R[API Gateway REST API\n/chat e /conversas]
+    L[Lambda do chat\nNode.js 24 e SSE]
+    D[(DynamoDB\nUsuários, catálogo, intenções,\ntransações e conversas)]
+    A[Bedrock AgentCore Runtime\nStrands Python]
+    B[Amazon Bedrock\nClaude Haiku 4.5]
+    T[Três ferramentas Lambda\nPython]
+    W[CloudWatch Logs]
 
-    B -->|HTML, CSS, JavaScript e config.json| F
-    B -->|Login e perfil| A
-    B -->|Mensagem e JWT| C
-    C --> G
-    C --> T
+    U -->|Arquivos estáticos e config.json| F
+    U -->|Login e renovação via Amplify| C
+    U -->|Access token Cognito| H
+    H -->|Claims validadas| P
+    P --> D
+    U -->|Access token Cognito| R
+    R -->|Claims validadas| L
+    L -->|Histórico e estado da conversa| D
+    L -->|IAM e identidade autenticada| A
+    A --> B
+    A -->|Argumentos e contexto separado| T
+    T --> D
+    A -->|Streaming| L
+    L -->|SSE pelo API Gateway| U
+    L --> W
+    P --> W
+    T --> W
+    A --> W
 ```
 
-O navegador faz as chamadas HTTP ao backend. O Nginx entrega os arquivos estáticos; ele não executa o agente nem encaminha as chamadas da API por proxy.
+O tráfego de chat do navegador passa pelo API Gateway. O navegador não recebe credenciais IAM e não invoca diretamente o runtime nem as ferramentas.
 
-| Porta | Serviço | Uso |
+O frontend migrou do fluxo local legado para Cognito e APIs AWS. As pastas antigas da Fase 1 permanecem como referência; o fluxo atual não depende de Gemini, do login local nem do banco SQLite.
+
+### Duas APIs e escolha do streaming
+
+A HTTP API existente atende sessão e perfil. Para o chat foi criada uma REST API regional com autorizador Cognito e integração Lambda proxy configurada como `STREAM`.
+
+Essa escolha permite SSE pelo API Gateway. O suporte de response streaming usado nesta implementação é da REST API, não da HTTP API. A Lambda Node.js usa `awslambda.streamifyResponse`; o agente continua em Python no AgentCore.
+
+A integração e a Lambda do chat têm timeout de 120 segundos. A chamada ao runtime tem prazo de 90 segundos, com tentativa de encerramento da sessão ao terminar. A API REST limita a taxa a duas requisições por segundo, com burst de quatro.
+
+## Ambiente e recursos implantados
+
+Os valores abaixo correspondem aos outputs apresentados após o deploy. Podem mudar quando os recursos forem recriados; o frontend recebe os valores gerados pelo deploy.
+
+| Item | Valor observado |
+|---|---|
+| Conta AWS | `631570928305` |
+| Perfil CLI | `luisfilipe` |
+| Região da stack | `us-east-1` |
+| Stack da aplicação | `luis-filipe-mendes-nogueira-desafio-1` |
+| Stack do bootstrap | `luis-filipe-mendes-nogueira-bootstrap` |
+| Qualifier CDK | `luisfn001` |
+| HTTP API de perfil/sessão | `https://yl0xg78oei.execute-api.us-east-1.amazonaws.com` |
+| REST API de chat | `https://dvesqild85.execute-api.us-east-1.amazonaws.com/prod` |
+| User Pool | `us-east-1_tYHumks4h` |
+| App Client público | `6ccdai8km5lhfo6cbllud51t6b` |
+| AgentCore Runtime ID | `luis_filipe_mendes_nogueira_agent-Guuy8W6O51` |
+| Prefixo dos recursos | `luis-filipe-mendes-nogueira` |
+
+URLs, nomes de recursos e identificadores Cognito são dados públicos de configuração. Senhas, tokens e credenciais não devem ser incluídos em código, documentação ou evidências.
+
+## Organização da implementação
+
+Os caminhos desta tabela são relativos à raiz da pasta individual.
+
+| Caminho | Responsabilidade |
+|---|---|
+| `frontend/` | SPA Next.js exportada, Amplify, streaming, conversas e painel de pedidos |
+| `api/sessao/handler.py` | Confirma a identidade lida das claims da HTTP API |
+| `api/perfil/handler.py` | Perfil e criação condicional do limite inicial |
+| `api/chat/src/autenticacao.mjs` | Identidade e normalização da expiração recebida do autorizador REST |
+| `api/chat/src/aplicacao.mjs` | Rotas, validação, coordenação do histórico e eventos SSE |
+| `api/chat/src/repositorio.mjs` | Persistência, bloqueio por conversa, requisições e transações DynamoDB |
+| `api/chat/src/index.mjs` | Entrada da Lambda, SDKs AWS, streaming e encerramento do runtime |
+| `api/chat/src/sse.mjs` | Leitura dos eventos SSE devolvidos pelo AgentCore |
+| `agent/agente.py` | Criação do agente Strands e configuração do Bedrock |
+| `agent/ferramentas.py` | Ferramentas com identidade vinculada pelo backend |
+| `agent/prompt.py` | Instruções do agente e confirmação de compras simuladas |
+| `agent/runtime.py` | Entrada JSON e streaming do AgentCore |
+| `tools/pagamentos/` | Catálogo, intenção, compra, expiração e erros de negócio |
+| `infra/infra/infra_stack.py` | Tabelas, Cognito, Lambdas e HTTP API |
+| `infra/infra/agentcore.py` | Runtime, pacote e role do agente |
+| `infra/infra/chat.py` | Lambda do chat, REST API, autorizador, CORS e permissões |
+| `infra/scripts/empacotar_agent.py` | ZIP do agente e dependências para Python 3.13/ARM64 |
+| `infra/scripts/configurar_frontend.py` | Configuração pública a partir dos outputs do deploy |
+| `infra/scripts/testar_chat_navegador.mjs` | Validação real da API autenticada pelo navegador |
+| `infra/policies/` | Políticas de preparação e execução do CloudFormation |
+| `infra/deploy.sh` | Build, publicação, carga condicional e geração do frontend local |
+
+## Autenticação e identidade
+
+O Cognito usa login por e-mail, User Pool Lite e autocadastro desabilitado no próprio serviço (`AllowAdminCreateUserOnly: true`). O frontend também esconde cadastro com `Authenticator` e `hideSignUp`.
+
+O convite personalizado contém usuário e senha temporária. Foram confirmados o recebimento do convite, a definição de nova senha no primeiro acesso e a verificação do e-mail. A senha exige pelo menos 12 caracteres, com maiúsculas, minúsculas, números e símbolos; a senha temporária tem validade de sete dias.
+
+O App Client é público, sem segredo, com SRP e renovação de sessão. Access token e ID token têm validade de uma hora; o refresh token, sete dias. A renovação é administrada pelo Amplify com `fetchAuthSession()`.
+
+As chamadas usam `Authorization: Bearer <access token>`. Ambas as APIs exigem o scope `aws.cognito.signin.user.admin`. A HTTP API usa autorizador JWT; a REST API usa autorizador Cognito User Pools. CORS permite a origem local `http://localhost:3001` nesta etapa.
+
+O backend obtém a identidade exclusivamente das claims validadas:
+
+- HTTP API: `requestContext.authorizer.jwt.claims.sub`.
+- REST API: `requestContext.authorizer.claims.sub`.
+
+A Lambda do chat também confere `client_id`, `token_use` e expiração. O `usuario_id` não é aceito do corpo do navegador nem como argumento escolhido pelo modelo. A role da Lambda permite a invocação do AgentCore com IAM; o contexto de identidade é montado pelo backend depois da validação Cognito.
+
+Chamadas sem token e com token inválido foram recusadas com 401 na AWS. A rejeição de um token realmente expirado pelo autorizador e a renovação após expiração real ainda precisam de evidência específica; os testes locais cobrem a checagem de expiração da Lambda. Logout não deve ser descrito como prova de revogação imediata de toda cópia de JWT já emitida.
+
+### Correção do 401 e do ciclo de navegação
+
+Depois do primeiro deploy do chat, a HTTP API retornava 200 e a REST API retornava 401 com o erro `SESSAO_INVALIDA` da própria Lambda. O navegador alternava entre a tela de carregamento do perfil e o chat: o tratamento de 401 encaminhava ao login e o Authenticator, reconhecendo a sessão, voltava à página inicial.
+
+O tratamento foi alterado para manter a recusa visível e oferecer saída da conta, sem redirecionamento automático nesse erro. A validação de identidade foi extraída para `api/chat/src/autenticacao.mjs`.
+
+A checagem anterior convertia `exp` apenas com `Number(...)`. O autorizador REST pode entregar a expiração como data UTC, por exemplo `Mon Nov 16 16:00:00 UTC 2026`. A implementação passou a aceitar epoch numérico, string numérica e esse formato UTC, recusando formatos inválidos, datas impossíveis e sessões expiradas. Foram preservadas as demais validações de identidade.
+
+Após os testes e o deploy da correção, as duas APIs retornaram 200 com a sessão válida. O diagnóstico aceitou tanto Bearer quanto JWT puro; a aplicação mantém o formato Bearer.
+
+## Persistência e regras de negócio
+
+As tabelas usam o prefixo do projeto, cobrança por demanda (`PAY_PER_REQUEST`) e criptografia em repouso. A configuração atual da stack permite sua remoção por `DESTROY`; excluir a stack implica perda desses dados.
+
+| Tabela | Chaves e índices | Conteúdo |
 |---|---|---|
-| 3001 | `frontend` | Interface nova; endereço usado nos testes desta etapa |
-| 3000 | `app` | Aplicação antiga, mantida como backend do chat |
-| 4000 | `auth` | Login e perfil da aplicação antiga |
+| `usuarios` | PK `usuario_id` | Identidade Cognito e `limite_centavos` |
+| `catalogo` | PK `evento_id` | Nome, categoria, moeda, preço e vagas |
+| `intencoes` | PK `intencao_id`; GSI `por-status-expiracao`, PK `status`, SK `expira_em_epoch` | Proprietário, evento, quantidade, total, prazo e estado da reserva |
+| `transacoes` | PK `intencao_id` | Transação, proprietário, valor, método e data |
+| `conversas` | PK `usuario_id`, SK `registro_id` | Metadados, turnos, requisições e progresso |
 
-A porta 3000 ainda apresenta a interface antiga porque `gemini-chat/` continua sendo uma aplicação Next.js completa. Isso é temporário. O frontend novo deve ser acessado em **http://localhost:3001**.
+Os nomes completos têm o formato `luis-filipe-mendes-nogueira-<nome-da-tabela>`. O índice de expiração projeta também `evento_id` e `quantidade`. Intenções não usam TTL como mecanismo de devolução de estoque: a expiração exige a atualização transacional da reserva e do catálogo.
 
-## Alterações realizadas
+### Perfil
 
-### Separação da interface
+`GET /me` cria o perfil no primeiro acesso usando escrita condicional. O limite inicial é **50.000 centavos (R$ 500)**. Se o perfil já existir, o saldo é preservado. Uma disputa entre duas criações é resolvida relendo o perfil que venceu.
 
-Foi criada a pasta `frontend/`, aproveitando telas, componentes React, estilos e utilitários de apresentação da Fase 1.
+O frontend carrega `/me` antes de abrir o chat e consulta novamente o perfil para atualizar o saldo após os turnos. Valores monetários persistidos usam centavos; as respostas de apresentação convertem para reais.
 
-Não foram copiados para ela a rota `/api/chat`, o agente Gemini, o cliente MCP ou a validação de JWT do servidor. A aplicação antiga permanece em `gemini-chat/` como referência e backend local durante a transição.
+### Catálogo e carga inicial
 
-Estrutura principal:
+O catálogo inicial contém seis eventos, com preços de R$ 25 a R$ 1.150. A carga em `seed_catalogo.py` cria somente itens ausentes, com condição `attribute_not_exists(evento_id)`.
+
+Executar o deploy novamente preserva preços e estoques já existentes. No deploy apresentado após a migração do chat, a carga retornou `{"criados": 0, "existentes": 6}`. Isso não restaura vagas consumidas nos testes.
+
+### Ferramentas em Lambda
+
+| Ferramenta | Comportamento |
+|---|---|
+| `listar_catalogo` | Expira reservas vencidas, consulta todas as páginas, aceita filtro de categoria e devolve os produtos |
+| `registrar_intencao` | Valida quantidade, consulta preço/estoque no backend e reserva vagas junto com a intenção em uma transação |
+| `realizar_compra` | Valida intenção, proprietário, prazo, método e limite; confirma compra, débito e transação atomicamente |
+
+A intenção vale **300 segundos**. O total vem do preço consultado pelo backend e é salvo na intenção. O pagamento utiliza esse valor persistido, sem aceitar preço enviado pelo modelo.
+
+A transação de pagamento atualiza a intenção pendente para paga, debita o limite com condição sobre o saldo lido e cria a transação somente se ainda não houver uma para aquela intenção. Disputas têm tentativas limitadas e releitura do estado; não há repetição ilimitada.
+
+A expiração altera o status e devolve as vagas na mesma transação. Uma reserva já paga ou já expirada não devolve vagas novamente. Essa limpeza é executada nas operações previstas pelas ferramentas, sem um agendador periódico nesta implementação.
+
+Foram preservados os códigos `INTENCAO_INVALIDA`, `INTENCAO_EXPIRADA`, `INTENCAO_JA_PAGA`, `LIMITE_EXCEDIDO` e `METODO_INVALIDO`, além das recusas de estoque e do erro interno padronizado. A interface apresenta as mensagens de negócio, sem stack traces.
+
+## Agente Strands e modelo Bedrock
+
+O agente utiliza Strands Python, `BedrockModel` e o perfil:
 
 ```text
-frontend/
-├── public/
-│   └── config.json
-├── src/
-│   ├── app/
-│   ├── components/
-│   ├── services/
-│   │   ├── api.ts
-│   │   └── config.ts
-│   ├── styles/
-│   ├── utils/
-│   ├── types/
-│   └── types.ts
-├── .dockerignore
-├── Dockerfile
-├── nginx.conf
-├── next.config.js
-├── package.json
-└── package-lock.json
+us.anthropic.claude-haiku-4-5-20251001-v1:0
 ```
 
-### Exportação estática e dependências
-
-O `frontend/next.config.js` usa:
-
-```js
-output: "export",
-trailingSlash: true,
-```
-
-O comando `npm run build` gera a pasta `frontend/out/`, com HTML, CSS, JavaScript e arquivos públicos. A rota de login é exportada como `login/index.html`.
-
-O frontend foi atualizado para Next.js 16.4.6 e React 19. O Next.js também ajustou o TypeScript para o runtime JSX automático e incluiu seus tipos de desenvolvimento no `tsconfig.json`.
-
-Foram removidos os pacotes `@modelcontextprotocol/sdk` e `@google/generative-ai` do frontend. O tipo `Content` e as partes das mensagens passaram a ser definidos localmente em `src/types.ts`.
-
-O formato das mensagens existente foi preservado nesta etapa para manter a compatibilidade com o backend antigo. Remover o SDK não significa que o contrato HTTP já foi adaptado ao Strands ou ao Bedrock.
-
-### Configuração pública do backend
-
-Os endereços foram retirados de `src/services/api.ts` e colocados em `public/config.json`:
+As ferramentas são criadas por requisição. Seus schemas expõem apenas argumentos de negócio; a identidade é capturada pelo backend e inserida separadamente no contexto da invocação Lambda:
 
 ```json
 {
-  "authUrl": "http://localhost:4000",
-  "chatUrl": "http://localhost:3000/api/chat"
-}
-```
-
-O módulo `src/services/config.ts` carrega esse arquivo no navegador, valida os campos e protocolos HTTP/HTTPS e compartilha a Promise de carregamento entre as chamadas. Se o carregamento falhar, uma chamada posterior pode tentar novamente.
-
-Na preparação inicial, as funções de login, perfil, cadastro e chat usavam essa configuração. Não havia chave Gemini, senha ou token no arquivo público. Os campos `authUrl` e `chatUrl` foram depois substituídos por `apiUrl` e `cognito`, conforme a seção de autenticação.
-
-As URLs usam `localhost` porque são acessadas pelo navegador no computador do usuário. Nomes internos dos serviços Docker, como `auth` e `app`, não substituem essas URLs públicas para o navegador.
-
-Na entrega final, o IaC deverá gerar a configuração com os endereços e identificadores reais. Nesta etapa, os outputs do deploy foram copiados manualmente para o arquivo público.
-
-### CORS para desenvolvimento local
-
-O backend `gemini-chat/` passou a enviar, na rota `/api/chat`, os cabeçalhos que permitem:
-
-- Origem `http://localhost:3001`.
-- Métodos `POST` e `OPTIONS`.
-- Cabeçalhos `Authorization` e `Content-Type`.
-
-Foi adicionado um handler `OPTIONS` que responde com status `204`, atendendo à verificação prévia do navegador. O serviço `auth/` já permitia CORS na implementação existente.
-
-Esses ajustes ficam no backend. O frontend estático não executa handlers de API. Na AWS, o CORS deverá permitir somente a origem da distribuição CloudFront, conforme o enunciado.
-
-### Execução pelo Docker Compose
-
-O `frontend/Dockerfile` tem dois estágios:
-
-1. Node 24 instala as dependências com `npm ci` e gera `out/`.
-2. Nginx recebe somente os arquivos exportados e a configuração do servidor.
-
-O Node é usado durante a construção da imagem, sem executar o frontend em produção dentro desse container. A imagem final serve arquivos estáticos.
-
-O Nginx escuta na porta 80 do container, publicada na porta 3001 do computador. A configuração usa `try_files` para localizar arquivos e diretórios e envia `Cache-Control: no-store` para `config.json`.
-
-O `.dockerignore` exclui dependências, builds, arquivos de ambiente e logs locais do contexto de construção. O `.gitignore` do projeto exclui `frontend/out/` e os arquivos incrementais `frontend/*.tsbuildinfo`.
-
-O serviço `frontend` foi incluído no Compose com dependência de inicialização do serviço `app`. Essa dependência ordena a inicialização; não é uma verificação de saúde do backend.
-
-## Histórico — execução da aplicação local completa
-
-Pré-requisitos: Docker com Compose funcionando, portas 3000, 3001 e 4000 disponíveis e o `.env` local necessário aos serviços antigos, com `JWT_SECRET` e a configuração Gemini. Não versionar o `.env`.
-
-Na raiz da pasta individual do desafio:
-
-```bash
-docker compose up -d --build
-docker compose ps
-```
-
-Acessar **http://localhost:3001**.
-
-Para reconstruir somente o frontend após alterações:
-
-```bash
-docker compose up -d --build frontend
-```
-
-Para acompanhar os logs:
-
-```bash
-docker compose logs -f frontend app auth
-```
-
-Para parar os serviços preservando os volumes:
-
-```bash
-docker compose down
-```
-
-Como alternativa local ao Compose, dentro de `frontend/`:
-
-```bash
-npm ci
-npm run build
-npm start
-```
-
-O script `start` usa Python 3 para servir `out/` na porta 3001. Ele exige Python 3 instalado e não inicia os backends. O fluxo principal é o Compose; não executar os dois servidores do frontend simultaneamente na mesma porta.
-
-## Histórico — validações da preparação inicial
-
-Durante a execução guiada, o usuário apresentou os seguintes resultados:
-
-- Build estático concluído, incluindo as rotas `/`, `/login` e a página de erro.
-- Último `npm audit` apresentado com zero vulnerabilidades conhecidas.
-- Busca no código sem ocorrências dos SDKs Gemini/MCP, `next/server` ou da constante antiga `AUTH_URL`.
-- Arquivo `out/config.json` gerado.
-
-O usuário também confirmou o funcionamento dos testes locais de navegação, login e CORS e passou a acessar o frontend pelo serviço do Compose. Esses resultados são evidências locais da etapa; não representam testes de serviços AWS. O resultado do audit é referente à execução apresentada e deve ser verificado novamente quando as dependências mudarem.
-
-Verificação de CORS que não chama o modelo:
-
-```bash
-curl -i -X OPTIONS http://localhost:3000/api/chat \
-  -H "Origin: http://localhost:3001" \
-  -H "Access-Control-Request-Method: POST" \
-  -H "Access-Control-Request-Headers: authorization,content-type"
-```
-
-Resultado esperado: status `204` e `Access-Control-Allow-Origin: http://localhost:3001`.
-
-Na preparação inicial, builds e containers foram locais. O chat legado pode consumir a API Gemini se for usado; isso é separado da autenticação Cognito descrita a seguir.
-
-## Autenticação — Cognito com frontend local
-
-### Arquitetura implementada
-
-```mermaid
-flowchart TD
-    N[Navegador]
-    F[Frontend estático — Nginx / Compose\nlocalhost:3001]
-    C[Cognito User Pool + App Client público\nus-east-1]
-    A[API Gateway HTTP API\nGET /sessao + autorizador JWT]
-    L[Lambda Python — sessão\nlê sub das claims validadas]
-    G[CloudWatch Logs\nretenção de 7 dias]
-    N -->|Arquivos estáticos e config.json| F
-    N -->|Amplify: login, senha e sessão| C
-    N -->|HTTPS + Bearer access token| A
-    A -->|Evento com claims autenticadas| L
-    L --> G
-    L -->|usuario_id| A
-    A -->|Resposta JSON| N
-```
-
-O frontend local chama diretamente os serviços AWS pelo navegador. Não usa o login do `auth/` nem envia o token Cognito ao backend legado. Os serviços antigos continuam no Compose como referência; a dependência `frontend -> app -> auth` ainda pode iniciá-los, embora não participem da validação atual de sessão.
-
-### Organização do código
-
-| Arquivo | Responsabilidade |
-|---|---|
-| `infra/app.py` | Conta, região, stack e synthesizer com qualifier próprio |
-| `infra/infra/infra_stack.py` | Cognito, Lambda, logs, role, API, autorizador, CORS e outputs |
-| `infra/policies/cloudformation-execution.json` | Política versionada para execução do deploy |
-| `api/sessao/handler.py` | Obtém o `sub` validado e retorna `usuario_id` |
-| `frontend/src/services/config.ts` | Carrega e valida a configuração pública |
-| `frontend/src/services/auth.ts` | Configura Amplify, obtém access token e executa logout |
-| `frontend/src/components/LoginCognito.tsx` | Formulário Authenticator e redirecionamento após login |
-| `frontend/src/app/login/page.tsx` | Renderiza o componente de login Cognito |
-| `frontend/src/services/api.ts` | Centraliza Bearer token nas chamadas e oferece `buscarSessao()` |
-| `frontend/src/app/page.tsx` | Confirma a sessão na API e oferece logout |
-
-### Configuração do Cognito
-
-- User Pool Lite, com login por e-mail e atributo de e-mail obrigatório.
-- Autocadastro desabilitado no backend: `self_sign_up_enabled=False`, sintetizado como `AllowAdminCreateUserOnly: true`.
-- Convites enviados pelo administrador, usando CLI ou console; não há área administrativa de convites no frontend.
-- Convite com os placeholders `{username}` e `{####}`. Foram usadas tags HTML `<br>` para as quebras de linha, em vez de `\n`.
-- Senha com no mínimo 12 caracteres, incluindo maiúsculas, minúsculas, números e símbolos; senha temporária válida por 7 dias.
-- Recuperação de conta por e-mail verificado. Adiar com `Skip` não verifica o contato; a etapa pode reaparecer até concluir `Verify` com o código recebido.
-- App Client público, sem segredo, com autenticação SRP e renovação de sessão. Não foram criados Identity Pool, domínio de login hospedado ou Amplify Hosting.
-- Access token e ID token com validade de 1 hora; refresh token com validade de 7 dias; revogação de token habilitada.
-
-O `Authenticator`, de `@aws-amplify/ui-react`, usa `hideSignUp` e login por e-mail. A restrição de cadastro também está no Cognito; esconder a opção na tela não seria suficiente. O componente conduz a troca da senha temporária e a verificação do contato.
-
-### Sessão no frontend
-
-Foram instalados `aws-amplify` e `@aws-amplify/ui-react`, incluindo os estilos da biblioteca no layout. O visual de login vem do Amplify UI e pode ser personalizado sem substituir o Cognito.
-
-`configurarAutenticacao()` compartilha a preparação do Amplify, verifica os identificadores e a região do User Pool. `obterAccessToken()` chama `fetchAuthSession()` antes das requisições; o Amplify administra a renovação quando o token expira e existe refresh token válido. Não se força renovação a cada chamada.
-
-O frontend deixou de ler/gravar manualmente a chave antiga `ingressos_token`. O componente `LoginForm.tsx` e as funções antigas `login` e `registrar` foram removidos. O logout usa `signOut()`; depois dele, acessar `/` sem sessão encaminha ao login. Isso não equivale a garantir revogação imediata de um JWT já emitido perante o autorizador JWT da API.
-
-O serviço de API acrescenta `Authorization: Bearer <access token>` e trata respostas `401` com `SessaoExpiradaError`. Senhas, códigos de verificação e tokens não devem ser incluídos em logs, documentação ou commits.
-
-### Endpoint de teste e identidade
-
-Foi criada uma HTTP API, com stage `$default`, integração Lambda e rota **`GET /sessao`**. O autorizador usa o issuer do User Pool, o App Client como audience e o header `Authorization` como origem do token. A rota exige o scope `aws.cognito.signin.user.admin`, usado pelo fluxo SRP configurado, evitando aceitar ID tokens apenas pela correspondência do audience.
-
-A Lambda Python 3.13 usa 128 MB e timeout de 5 segundos. Lê exclusivamente:
-
-```python
-event["requestContext"]["authorizer"]["jwt"]["claims"]["sub"]
-```
-
-Não usa `usuario_id` do corpo nem de argumentos de modelo. A resposta autenticada tem este contrato:
-
-```json
-{
-  "usuario_id": "<sub-do-usuario-autenticado>"
-}
-```
-
-A Lambda também devolve `401` se receber um evento sem `sub`. Nas chamadas HTTP sem token válido, a rejeição acontece no autorizador, antes da integração.
-
-CORS permite apenas `http://localhost:3001`, método `GET` e header `Authorization`, com cache de preflight de 5 minutos. A origem deverá ser adaptada ao CloudFront quando sua publicação for liberada. CORS não substitui autenticação e não impede clientes como `curl` de chamar a API.
-
-### Configuração pública após o deploy
-
-O deploy concluído em 14/11/2026 retornou os seguintes valores, copiados para `frontend/public/config.json`:
-
-```json
-{
-  "apiUrl": "https://yl0xg78oei.execute-api.us-east-1.amazonaws.com",
-  "cognito": {
-    "region": "us-east-1",
-    "userPoolId": "us-east-1_tYHumks4h",
-    "userPoolClientId": "6ccdai8km5lhfo6cbllud51t6b"
+  "argumentos": {
+    "intencao_id": "<intencao-criada-pelo-backend>",
+    "metodo_pagamento": "pix"
+  },
+  "contexto": {
+    "usuario_id": "<sub-autenticado>"
   }
 }
 ```
 
-São identificadores públicos, não credenciais. Podem mudar após destruir e recriar a stack. Os outputs `ApiUrl`, `UserPoolId`, `UserPoolClientId` e `Region` são definidos no IaC; o arquivo `cdk.out/outputs.json` também recebe esses valores. Não há geração/upload automático da configuração do frontend nesta etapa.
+O prompt exige apresentar evento, quantidade e total antes do pagamento, obter confirmação e método, não inventar resultados e não repetir automaticamente uma compra inconclusiva. Os pagamentos são simulados e não solicitam dados reais de cartão.
 
-### Preparação do CDK e bootstrap individual
+Cada execução recebe uma cópia do histórico completo. O agente usa `NullConversationManager`, sem truncamento automático do histórico, e não compartilha listas de mensagens ou identidade entre usuários. Clientes são fechados ao final, inclusive em falhas.
 
-Foi escolhido CDK Python. A pasta `infra/infra/` é o pacote Python da stack, não um segundo projeto. Os pré-requisitos usados são AWS CLI com SSO, Node 24, CDK CLI, Python e ambiente virtual com `infra/requirements.txt`. O Node 26 apresentou aviso de versão não testada pelo JSII; a versão de trabalho recomendada nesta configuração é Node 24.
+### Região e escolha do acesso ao modelo
 
-Acesso usado: perfil CLI `luisfilipe`, conta `631570928305`, região `us-east-1`. A role SSO foi consultada e ações importantes de criação foram simuladas com resultado `allowed`; isso não substitui a validação real do deploy.
+A stack e o endpoint de chamada ficam em `us-east-1`. Entretanto, o perfil Bedrock `us.` permite inferência em `us-east-1`, `us-east-2` e `us-west-2`. Portanto, não se deve afirmar que toda inferência está restrita a uma única região.
 
-Não existiam a stack `CDKToolkit` nem o parâmetro padrão `/cdk-bootstrap/hnb659fds/version`. Foi criado um bootstrap individual:
+A tentativa inicial de Haiku pelo endpoint regional Bedrock Mantle retornou 403 de indisponibilidade para a conta, mesmo após a autorização e o acordo do modelo aparecerem disponíveis. A chamada `converse` pelo perfil de inferência funcionou, e a configuração foi alterada para o provider Bedrock nativo do Strands, mantendo Claude Haiku.
 
-| Item | Valor |
-|---|---|
-| Stack da aplicação | `luis-filipe-mendes-nogueira-desafio-1` |
-| Stack de bootstrap | `luis-filipe-mendes-nogueira-bootstrap` |
-| Qualifier | `luisfn001` |
-| Bucket de pacotes | `cdk-luisfn001-assets-631570928305-us-east-1` |
-| Parâmetro de versão | `/cdk-bootstrap/luisfn001/version` |
-| Política de execução | `arn:aws:iam::631570928305:policy/luis-filipe-mendes-nogueira-cfn-execution` |
+Essa variação precisa acompanhar a documentação da entrega e ser alinhada com o orientador diante da exigência de região do enunciado. As dependências Anthropic ainda presentes no pacote não significam que o fluxo atual esteja usando Mantle.
 
-O bootstrap fornece bucket de pacotes, repositório ECR, roles e parâmetro SSM. Ele não hospeda o frontend. É uma preparação inicial, reutilizada nos deploys; não precisa ser recriado a cada alteração. O `DefaultStackSynthesizer` em `app.py` usa o mesmo qualifier.
+## AgentCore Runtime e publicação
 
-A política foi escrita em JSON, validada com `python -m json.tool` e analisada pelo IAM Access Analyzer. A sugestão de ARN redundante nos logs foi corrigida; a análise seguinte retornou `[]`. Esse resultado não é certificação de menor privilégio nem garantia de todas as permissões necessárias.
+O runtime foi definido em CDK por `AWS::BedrockAgentCore::Runtime`, com:
 
-Na primeira preparação, dentro de `infra/`, foram usados estes comandos; **não devem ser repetidos se a política e o bootstrap já existirem**:
+- Pacote ZIP Python 3.13 para ARM64, armazenado como asset do CDK.
+- Entrada `runtime.py`, protocolo HTTP e autenticação de entrada IAM.
+- Rede pública, sessão ociosa de até 60 segundos e vida máxima de 900 segundos.
+- ARNs das três ferramentas recebidos por variáveis de ambiente.
+- Grupo de logs próprio, com retenção de sete dias.
 
-```bash
-aws iam create-policy \
-  --profile luisfilipe \
-  --policy-name luis-filipe-mendes-nogueira-cfn-execution \
-  --description "Permissoes de deploy da stack do desafio 1" \
-  --policy-document file://policies/cloudformation-execution.json
+O empacotador seleciona wheels compatíveis, verifica bibliotecas ELF da arquitetura e inclui os quatro módulos de produção do agente e suas dependências. O pacote apresentado tinha aproximadamente 31,5 MB compactados e 71,08 MB descompactados. O arquivo `agent/dist/dependencias.json` registra as versões resolvidas; ainda não há lockfile completo das dependências transitivas Python.
 
-cdk bootstrap aws://631570928305/us-east-1 \
-  --profile luisfilipe \
-  --toolkit-stack-name luis-filipe-mendes-nogueira-bootstrap \
-  --qualifier luisfn001 \
-  --cloudformation-execution-policies arn:aws:iam::631570928305:policy/luis-filipe-mendes-nogueira-cfn-execution
+A entrada JSON continua disponível. Quando o backend solicita `stream: true`, o runtime emite eventos de texto, mensagens nativas e resultado final como SSE. Testes cobrem envio de delta antes do término, falhas, cancelamento e ausência de resultado final.
+
+### Diagnóstico da criação do runtime
+
+A criação inicialmente falhou com `AccessDenied`. A mensagem útil estava em `CloudTrail.responseElements.message`, e não no campo `errorMessage` usado nas primeiras consultas.
+
+O serviço verificava permissões dependentes de criação de endpoint, tags e workload identity. Algumas verificações de criação usam o ARN regional antes de existir o identificador final. Simular apenas um ARN hipotético com o prefixo do runtime não reproduzia essas verificações.
+
+As correções foram limitadas às ações, ARNs e condições necessários. A explicação detalhada está em [infra/policies/README.md](../../infra/policies/README.md). Depois das correções, o runtime foi criado, invocado e validado na AWS.
+
+## API do chat, histórico e idempotência
+
+### Endpoints
+
+| API | Método e caminho | Responsabilidade |
+|---|---|---|
+| HTTP | `GET /sessao` | Confirmação da identidade |
+| HTTP | `GET /me` | Perfil e limite disponível |
+| REST | `POST /conversas` | Criação de conversa |
+| REST | `GET /conversas` | Listagem das conversas do usuário |
+| REST | `GET /conversas/{conversa_id}` | Histórico e estado persistidos |
+| REST | `POST /chat` | Envio de mensagem e resposta SSE |
+
+A consulta de uma conversa aceita o parâmetro opcional `requisicao_id` para informar se uma requisição foi concluída, está processando, está incerta ou ainda não foi registrada. Essa consulta faz somente leitura e não executa o agente.
+
+O corpo do chat contém apenas:
+
+```json
+{
+  "conversa_id": "<uuid-da-conversa>",
+  "requisicao_id": "<uuid-desta-mensagem>",
+  "mensagem": "Quais eventos estão disponíveis?"
+}
 ```
 
-A política existe fora da stack da aplicação. Seu código está versionado, mas sua publicação foi feita por CLI. Sua criação e atualizações ainda precisam ser incorporadas ao script de preparação/deploy da entrega final.
+Identidade, histórico, preço ou outros campos extras enviados nesse corpo são recusados. O backend carrega o histórico do DynamoDB e monta a chamada ao runtime com o `sub` autenticado.
 
-### Permissões implementadas e limites da revisão
+### Registros na tabela de conversas
 
-| Componente | Permissões |
+| Prefixo da sort key | Finalidade |
 |---|---|
-| Lambda de sessão | `logs:CreateLogStream` e `logs:PutLogEvents` apenas nos streams do seu grupo de logs; sem acesso ao Cognito, banco ou modelo |
-| Invocação da Lambda | Permitida ao API Gateway com `SourceArn` delimitado à API e ao caminho `/sessao`; o CDK gera padrões para stage e método |
-| Role de execução do CloudFormation | Política própria para Cognito, HTTP API, Lambdas, logs, roles da aplicação, leitura dos pacotes S3 e versão do bootstrap SSM |
-| Roles de publicação/deploy do bootstrap | Políticas do template oficial do CDK; a política personalizada de execução não substitui todas essas políticas |
+| `CONVERSA#` | Estado, versão e datas da conversa |
+| `TURNO#` | Mensagens nativas de cada turno concluído, ordenadas por versão |
+| `REQUISICAO#` | Mensagem recebida, hash, sessão do runtime, estado e resposta salva |
+| `PROGRESSO#` | Mensagens recebidas durante a execução, para auditoria em falhas |
 
-Não foi associada `AdministratorAccess` à role de execução. A política própria usa padrões de ARN: Lambda, logs e roles são delimitados pelo prefixo; Cognito e HTTP API ainda têm alcance mais amplo na região, em razão dos recursos de criação/IDs gerados. Portanto, **a revisão de menor privilégio e da exigência sobre curingas continua pendente**, incluindo as roles do bootstrap; não foi comprovada ausência de `*` em todas as políticas.
+Todas as consultas usam a partição do usuário autenticado. Uma conversa de outro usuário retorna 404, assim como uma conversa inexistente.
 
-### Comandos de deploy e execução atual
+Uma transação inicia a requisição e bloqueia a conversa. Outra salva o turno, conclui a requisição e libera a conversa. O resultado final só é informado como concluído depois dessa persistência.
 
-Antes de comandos que criam ou alteram recursos, conferir custos e a conta/perfil usados. O login SSO não utiliza chaves estáticas no repositório. No WSL, houve falha ao abrir/retornar do navegador; o fluxo por código foi utilizado como alternativa:
+O histórico preserva mensagens, chamadas e retornos das ferramentas, identificadores e metadados nativos. As consultas percorrem todas as páginas, inclusive páginas vazias com chave de continuação. Antes de gravar o resultado, o backend confirma que o prefixo do histórico anterior não foi alterado.
+
+O limite explícito do histórico é de 1.000.000 bytes de JSON. Há também limites por turno, mensagem de progresso e resposta. Não se apaga silenciosamente o início da conversa para continuar: quando o limite impede a execução, é necessário abrir outra conversa e verificar o estado do turno anterior.
+
+### Duplicidade, concorrência e falhas
+
+- Mesmo ID de requisição e mesma mensagem concluída: devolve a resposta salva, sem executar novamente o agente.
+- Mesmo ID com mensagem diferente: recusa com conflito.
+- Requisição em processamento ou incerta: impede repetição automática.
+- Requisições concorrentes na mesma conversa: disputam o bloqueio e a versão por condições transacionais.
+- Streaming sem resultado final ou falha após o início: tenta registrar estado `incerta` e mantém o progresso disponível para auditoria.
+
+Uma interrupção abrupta pode deixar o estado `processando`. Não há liberação automática por prazo que permita repetir uma compra potencialmente realizada. A reconciliação de uma execução incerta continua sendo uma verificação explícita; não foi criada uma operação automática de estorno ou recuperação financeira.
+
+A idempotência da requisição do chat complementa a proteção de pagamento por intenção. Ela não substitui as condições e transações das ferramentas.
+
+## Frontend e recuperação da conversa
+
+O frontend usa Next.js com exportação estática, React, Amplify e arquivos públicos de configuração. A API de perfil e a API de chat têm URLs separadas em `config.json`.
+
+A interface foi reconectada aos serviços AWS, com:
+
+- Listagem, criação, seleção e recuperação de conversas.
+- Leitura progressiva de SSE, incluindo UTF-8 dividido entre pacotes.
+- Apresentação das mensagens textuais sem exibir retornos de ferramentas como falas do usuário.
+- Conversão do histórico nativo somente para apresentação; o navegador não envia histórico ao agente.
+- Painel derivado dos resultados reais das ferramentas, respeitando a ordem dos turnos.
+- Prazo visível da reserva e bloqueio do botão de pagamento após expiração ou durante processamento.
+- Confirmação explícita da compra, quantidade, total, intenção e método.
+- Atualização do saldo pelo perfil, sem inventar limite disponível.
+- Mensagens de compra simulada e transação, sem prometer envio de ingresso por e-mail.
+
+O `sessionStorage` administrado pelo chat guarda a conversa selecionada e dados da requisição pendente. Esse código não grava tokens nem o histórico completo; o Amplify mantém seu próprio gerenciamento de sessão.
+
+Após uma interrupção, **Verificar resultado** faz somente GET. Uma requisição só pode ser reenviada pelo botão específico quando a consulta informa que não foi recebida e a conversa está livre; o reenvio conserva o mesmo ID. Não há reenvio automático do lote de compras.
+
+### Execução local usada na validação final
+
+O Docker Compose tinha uma imagem antiga ocupando a porta 3001. Ela entregava `config.json` sem `chatApiUrl` e não tinha o módulo de testes. O container `frontend` foi parado, e a validação final utilizou a exportação atual pelo servidor Python:
 
 ```bash
-aws sso login --profile luisfilipe --use-device-code --no-browser
+npm --prefix frontend start
 ```
 
-Dentro de `infra/`, com as dependências instaladas e o bootstrap preparado:
+Esse comando serve `frontend/out/` em `127.0.0.1:3001`. O navegador acessa `http://localhost:3001`. O servidor deve permanecer aberto durante o uso local.
+
+O Compose ainda contém dependências dos serviços antigos `app` e `auth`. Voltar ao fluxo local pelo Compose exige atualizar a imagem do frontend e revisar essas dependências. Não executar dois servidores na mesma porta. O frontend local não fica disponível remotamente para o instrutor apenas porque o backend foi implantado na AWS.
+
+## Deploy e configuração pública
+
+### Pré-requisitos
+
+- AWS CLI e SSO configurados para o perfil autorizado.
+- Python 3.13 e ambientes virtuais separados em `infra/.venv` e `agent/.venv`.
+- Dependências de infraestrutura e de desenvolvimento de `infra/` instaladas; dependências do agente em `agent/` para testes locais.
+- Node.js 24, NVM e CDK CLI disponíveis.
+- `package-lock.json` de `api/chat/` e `frontend/` versionados.
+- Acesso ao modelo Bedrock liberado para a conta.
+- Bootstrap individual e políticas de execução preparados.
+
+Os ambientes virtuais locais usam direnv. Arquivos `.envrc`, ambientes virtuais, dependências e artefatos de build não são versionados.
+
+### Preparação inicial de infraestrutura
+
+O bootstrap usa `luisfn001` e recursos de apoio próprios, incluindo o bucket `cdk-luisfn001-assets-631570928305-us-east-1`, roles, ECR e o parâmetro SSM de versão. Ele não precisa ser recriado em cada deploy.
+
+A política gerenciada de execução do CloudFormation foi preparada separadamente; a última versão confirmada na correção do runtime foi `v9`. A política complementar `infra/policies/cloudformation-chat.json` foi publicada como política inline `luis-filipe-mendes-nogueira-chat-deploy` na role de execução do CloudFormation, para as operações de API REST em `us-east-1`.
+
+Editar os JSONs locais não publica automaticamente essas políticas. A preparação do bootstrap, a publicação inicial das políticas e as etapas de liberação do modelo continuam sendo pré-requisitos documentados do comando de atualização. Não se deve apresentar esse fluxo como provisionamento completo de uma conta vazia em uma única execução.
+
+### Comando usado para atualização do ambiente preparado
+
+Na raiz da pasta individual:
 
 ```bash
+aws sso login --profile luisfilipe
+bash infra/deploy.sh luisfilipe
+```
+
+O script:
+
+1. Prepara Node 24 e ativa `infra/.venv`.
+2. Instala dependências do chat com `npm ci`, testa e gera o bundle da Lambda.
+3. Reconstrói o pacote Python/ARM64 do agente.
+4. Publica os assets e a stack com CDK, salvando `infra/cdk.out/outputs.json`.
+5. Executa a carga condicional do catálogo.
+6. Gera `frontend/public/config.json` a partir dos outputs, sincronizando a exportação existente quando presente.
+7. Instala, testa e gera a exportação estática do frontend.
+
+Uma falha interrompe os passos seguintes. Se a AWS já foi atualizada e uma etapa local posterior falhar, o script não desfaz automaticamente o deploy.
+
+A configuração pública contém `apiUrl`, `chatApiUrl` e os identificadores Cognito. O script valida URLs de API Gateway em `us-east-1` antes de escrever. Esse fluxo gera o frontend local; ainda não executa upload para hospedagem pública nem invalidação CloudFront.
+
+## IAM, logs e limites da revisão
+
+| Role/componente | Acesso previsto |
+|---|---|
+| Sessão | Escrita nos próprios logs |
+| Perfil | Leitura e criação condicional na tabela de usuários; próprios logs |
+| Chat | Operações necessárias na tabela de conversas, invocação/encerramento do runtime e próprios logs |
+| AgentCore | Perfil Haiku/modelos de destino permitidos, três Lambdas exatas, pacote S3 e próprios logs; sem acesso direto ao DynamoDB |
+| Catálogo | Consulta do catálogo e operações necessárias à expiração de reservas |
+| Registro de intenção | Leitura/atualização do catálogo, criação/atualização de intenções e consulta ao índice de expiração |
+| Compra | Leitura/atualização de usuário e intenção, criação de transação e atualização do catálogo para expiração |
+| CloudFormation/bootstrap | Preparação, publicação e gerenciamento dos recursos; separados das roles de execução da aplicação |
+
+A Lambda do chat não recebe acesso às tabelas de intenções ou transações nem permissão de invocação direta do modelo. A role do agente não recebe acesso direto às tabelas. Os logs das Lambdas e do runtime têm retenção de sete dias.
+
+Não foi associada `AdministratorAccess` às roles da aplicação. Isso não significa ausência de curingas: existem padrões de ARN, permissões do bootstrap e exceções de criação que precisam constar da revisão final de menor privilégio.
+
+Em particular, a criação do runtime exige `Resource: "*"` para a ação correspondente, com condições de região e tag. As verificações dependentes de criação e o diretório de workload identity têm restrições próprias explicadas em [infra/policies/README.md](../../infra/policies/README.md). A política complementar da API REST permite gerenciar os ARNs de REST APIs da região, pois os IDs são atribuídos pelo serviço; isso não restringe essas operações exclusivamente ao nome do projeto.
+
+A ocorrência de `apigateway:TagResource` apontada pelo provider regional e sinalizada pelo Access Analyzer está registrada no mesmo documento. Validações sintáticas, simulações e deploy bem-sucedido não substituem a revisão final de permissões.
+
+## Testes e evidências observadas
+
+Os números abaixo descrevem as execuções apresentadas pelo usuário em momentos diferentes. Não representam uma única suíte executada novamente nesta atualização.
+
+| Camada | Resultado apresentado |
+|---|---|
+| Infraestrutura, perfil, ferramentas, deploy e configuração | 64 testes Python passaram |
+| Agente, ferramentas vinculadas e runtime/streaming | 30 testes Python passaram |
+| Backend Node.js do chat após correção de autenticação | 22 testes passaram |
+| Frontend | 9 testes Vitest passaram; TypeScript e build estático concluídos |
+| AgentCore real, antes da integração completa do chat | 8 testes passaram |
+| Integração completa pelo navegador/API Gateway | 18 verificações passaram |
+| Isolamento entre dois usuários Cognito reais | A segunda conta recebeu 404 para a conversa da primeira |
+| Conferência visual final | Usuário confirmou histórico, streaming, painel e saldo |
+
+### Integração real pelo navegador
+
+O módulo de validação foi copiado para a exportação local, sem alterar o código da aplicação:
+
+```bash
+cp infra/scripts/testar_chat_navegador.mjs frontend/out/testar-chat.mjs
+```
+
+Depois do login, foi executado no console do navegador:
+
+```javascript
+const { validarChat, baixarRelatorio } = await import("/testar-chat.mjs");
+const resultado = await validarChat({ compras: true, expiracao: true });
+baixarRelatorio(resultado);
+```
+
+O módulo reutiliza a sessão do navegador e não imprime o token. A cópia em `out/` é um artefato local e pode desaparecer em uma nova geração do frontend.
+
+As 18 verificações concluídas foram:
+
+1. Requisição anônima bloqueada.
+2. Token inválido bloqueado.
+3. Criação e listagem de conversa.
+4. Identidade e histórico enviados no corpo rejeitados.
+5. Conversa inexistente retornando 404.
+6. Streaming autenticado.
+7. Histórico completo entre turnos.
+8. Reenvio da mesma requisição sem novo turno.
+9. Mesmo ID com mensagem diferente rejeitado.
+10. Requisições duplicadas concorrentes gerando um único turno.
+11. Consulta de recuperação confirmando a conclusão.
+12. Conversa nova sem herdar histórico de outra.
+13. Catálogo real por ferramenta.
+14. Consultas preservando o saldo.
+15. Compra por cartão e reenvio sem novo débito.
+16. Compra por Pix e reenvio sem novo débito.
+17. Limite insuficiente sem débito.
+18. Expiração devolvendo a reserva uma única vez.
+
+Os HTTP 400, 401, 404 e 409 observados nesses casos negativos eram resultados esperados. O lote fez duas compras simuladas de R$ 25 e aguardou cerca de cinco minutos para a expiração. O saldo da conta de teste principal passou de R$ 115 para **R$ 65**. Esses valores são dados da aplicação, não valores da fatura AWS.
+
+Antes desse lote, testes diretos das ferramentas também verificaram intenção inexistente/de outro usuário, método inválido, pagamento já realizado, disputa de saldo, falta de vagas e preservação do catálogo pela carga. A evidência de intenção inválida deve ser organizada junto às demais exigidas para a entrega.
+
+Não se deve repetir um lote financeiro após falha sem consultar o estado das requisições. Os resultados e identificadores do relatório permitem recuperar o estado pelo GET da conversa com `requisicao_id`, sem executar novamente o agente.
+
+### Segundo usuário e conferência visual
+
+Foi criado um usuário Cognito temporário, com convite suprimido e senha definida sem exposição no terminal. Após o login com essa conta, tentar acessar a conversa do primeiro usuário retornou 404 e o módulo confirmou o isolamento.
+
+O usuário temporário e seu perfil DynamoDB foram removidos. A limpeza verificou a identidade, a ausência de conversas próprias e a preservação do saldo inicial. A conta original e os registros das compras de teste foram mantidos.
+
+O usuário confirmou que, ao retornar à conta original, as conversas reaparecem, o histórico abre, a resposta chega progressivamente e o painel apresenta as compras com o saldo correto. O teste visual não exigiu repetir pagamentos.
+
+### Comandos locais de verificação
+
+Executar na raiz; os testes abaixo usam simulações e não fazem inferência ou deploy:
+
+```bash
+npm --prefix api/chat test
+npm --prefix api/chat run build
+
+(cd infra && .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v)
+(cd agent && .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v)
+(cd frontend && npm test && npx tsc --noEmit && npm run build)
+```
+
+Síntese e diff não publicam a stack, mas o diff pode consultar a AWS. Testes reais com o runtime e o navegador utilizam serviços AWS e podem consumir inferência, chamadas, armazenamento e saldo simulado. Não há necessidade de repetir os testes reais somente por alterar documentação.
+
+## Revisão preliminar de custos
+
+A consulta apresentada em 16/11 cobriu **01/11/2026 a 15/11/2026, inclusive**, para a conta `631570928305`. Foi consultada uma página do Cost Explorer.
+
+| Serviço/lançamento | Valor observado (USD) |
+|---|---:|
+| AWS Config | 0,513000 |
+| Impostos | 0,080000 |
+| S3 | 0,000439 |
+| DynamoDB | 0,000065 |
+| CloudWatch | 0,000020 |
+| API Gateway | 0,000017 |
+| Demais serviços retornados | 0,000000 |
+| **Total** | **0,593541** |
+
+O AWS Config concentra o gasto registrado. A conta já tinha consumo desse serviço; não é correto atribuir automaticamente toda essa cobrança ao chat. Monitoramento compartilhado não deve ser desativado como parte da limpeza ou da otimização deste projeto.
+
+A consulta ainda não inclui as implantações, inferências e testes de 16/11, o acesso da conta temporária nem a própria consulta de custos recém-executada. Uma linha com valor zero no relatório não comprova custo futuro zero nem cobertura por créditos.
+
+O relatório foi salvo em `/tmp/luisfilipe-revisao-custos.json`. Ele mostra custos da conta por serviço e tipo de lançamento; não comprova o saldo restante de créditos nem a existência de alerta de orçamento. A revisão deve ser complementada quando os lançamentos estiverem disponíveis.
+
+## Remoção futura dos recursos
+
+A aplicação deve permanecer disponível até a correção. As instruções desta seção são para depois da avaliação e não foram executadas nesta atualização.
+
+Quando houver autorização para remover a aplicação, usar o CDK no ambiente preparado:
+
+```bash
+cd infra
 source .venv/bin/activate
-python -m pip install -r requirements.txt
-cdk synth --no-lookups --profile luisfilipe
-cdk diff --no-lookups --no-change-set --profile luisfilipe
-cdk deploy luis-filipe-mendes-nogueira-desafio-1 \
-  --profile luisfilipe \
-  --outputs-file cdk.out/outputs.json
-```
-
-O diff deve apontar para `luisfn001`, não para `hnb659fds`. As alterações de IAM foram revisadas antes de confirmar o deploy. O comando acima publica **a stack de autenticação/API**, não o ambiente completo exigido ao final do desafio.
-
-Após atualizar o `config.json`, na raiz da pasta individual:
-
-```bash
-docker compose up -d --build frontend
-```
-
-Acessar `http://localhost:3001/login/`. Alterações apenas no frontend exigem reconstrução local, não outro deploy AWS. Alterações na stack, como o HTML do convite, exigem novo deploy.
-
-Para convidar um usuário, substituir as duas ocorrências de `SEU_EMAIL` pelo endereço autorizado a receber o convite:
-
-```bash
-aws cognito-idp admin-create-user \
-  --profile luisfilipe \
-  --region us-east-1 \
-  --user-pool-id us-east-1_tYHumks4h \
-  --username 'SEU_EMAIL' \
-  --user-attributes Name=email,Value='SEU_EMAIL' \
-  --desired-delivery-mediums EMAIL \
-  --query 'User.{Usuario:Username,Status:UserStatus}' \
-  --output json
-```
-
-O estado inicial esperado é `FORCE_CHANGE_PASSWORD`. O usuário recebe o convite, define uma senha nova e verifica seu e-mail. Não incluir senhas temporárias nem códigos nas evidências. O convite ao instrutor ainda deve ser providenciado antes da entrega; não foi confirmado nesta etapa.
-
-### Problemas encontrados e correções
-
-| Situação | Causa e correção |
-|---|---|
-| `cdk: command not found` após trocar o Node | Pacotes globais pertencem à versão do Node usada; instalar `aws-cdk` na versão ativa |
-| Aviso de Node 26 não testado | Usar Node 24 em vez de apenas ocultar o aviso |
-| `NameError: ArnFormat` | Adicionar o import usado na construção do ARN de logs |
-| CDK procurava a lookup role padrão | Ajustar `DefaultStackSynthesizer(qualifier="luisfn001")` |
-| Falta de `ssm:GetParameters` | Permitir leitura apenas do parâmetro `/cdk-bootstrap/luisfn001/version` |
-| Falta de `apigateway:TagResource` ao criar o stage | Adicionar a ação aos ARNs já definidos para HTTP API |
-| Primeira stack em `ROLLBACK_COMPLETE` | Conferir eventos, concluir rollback e excluir somente a stack da aplicação que falhou antes de recriar; bootstrap preservado |
-| Outros recursos com `Resource creation cancelled` | Cancelamento decorrente da falha do stage; não foi tratado como novo erro de permissão |
-| Convite sem quebra de linha | Trocar `\n` por `<br>` e atualizar o User Pool por deploy |
-| Verificação de contato reaparecia após `Skip` | Concluir `Verify` com o código de e-mail |
-| `Failed to fetch` / `404` em `/me` após login | Frontend chamava rota ainda inexistente; usar `buscarSessao()` e tela de confirmação em vez de fabricar perfil ou saldo |
-
-As correções de permissão foram publicadas por novas versões da política IAM; ao final do deploy apresentado, a versão ativa era `v3`. O arquivo local contém as correções. Interromper o acompanhamento do CDK com `Ctrl+C` não interrompe o rollback no CloudFormation.
-
-### Validações e evidências apresentadas
-
-Os resultados abaixo foram apresentados pelo usuário durante a execução guiada; não são testes novamente executados ao atualizar este documento.
-
-| Verificação | Resultado |
-|---|---|
-| Build estático e TypeScript após a adaptação inicial da sessão | Concluídos; `/` e `/login` exportados |
-| `npm audit` apresentado na adaptação inicial | Zero vulnerabilidades conhecidas naquela execução |
-| Síntese e diff da stack | Recursos de autenticação/API presentes e qualifier corrigido |
-| Bootstrap e deploy real | Concluídos em `us-east-1` |
-| Login por convite e troca da senha temporária | Confirmados |
-| Verificação do e-mail | Confirmada |
-| `GET /sessao` sem token | `HTTP/2 401`, corpo `{"message":"Unauthorized"}` |
-| `GET /sessao` com `Bearer token-invalido` | `HTTP/2 401`, `invalid_token` no header de autenticação |
-| Chamada com access token pela interface local | Tela mostrou “Sessão autenticada confirmada pela API” e o `usuario_id` retornado |
-| Logout e retorno à página principal | Usuário confirmou redirecionamento ao login |
-| Renovação após expiração real | Implementada pelo uso do Amplify, mas não comprovada em teste de expiração |
-
-Para reproduzir os testes negativos, sem publicar tokens:
-
-```bash
-curl -i https://yl0xg78oei.execute-api.us-east-1.amazonaws.com/sessao
-
-curl -i \
-  -H 'Authorization: Bearer token-invalido' \
-  https://yl0xg78oei.execute-api.us-east-1.amazonaws.com/sessao
-```
-
-Os dois retornaram `401` em 14/11/2026. A tela autenticada confirma o retorno de identidade, mas a resposta e os tokens reais não foram copiados para este documento. Prints/vídeo ainda devem ser organizados para a entrega; não foram criados automaticamente nesta atualização.
-
-### Custos e recursos ativos
-
-Ao contrário da preparação inicial, **esta etapa utilizou AWS e criou recursos reais**. Autenticações e chamadas à API/Lambda, armazenamento de pacotes no S3 e logs podem gerar consumo. O ECR só terá custo de armazenamento de imagens se houver imagens armazenadas. IAM não tem tarifa própria pela criação das roles/políticas.
-
-A conta já apresentou cobrança de AWS Config antes desta implantação. Criações, atualizações e exclusões podem ser registradas por esse serviço; portanto, não se deve atribuir todo o faturamento ao tráfego do chatbot nem garantir custo zero quando ninguém estiver usando a interface.
-
-Foi usada uma reserva orientativa de até US$ 1 para poucos testes de um usuário em cinco dias, **não um teto nem uma medição**, sem confirmação atual de preços, cobertura dos créditos ou volume de Config. Bedrock e AgentCore não foram implantados e não estão nessa estimativa. Consultas de uso pelo Cost Explorer podem ter cobrança própria.
-
-O passo de análise de custos foi considerado resolvido a pedido do usuário; a criação/configuração do alerta de orçamento exigido pelo desafio não foi comprovada e continua pendente. Não alterar o AWS Config ou outros recursos da conta compartilhada para reduzir custos sem autorização correspondente.
-
-### Remoção após a correção
-
-A aplicação deve permanecer disponível para avaliação. Os comandos abaixo são instruções de limpeza futura, **não foram executados nesta etapa**. Destruir o User Pool remove usuários e exige novos convites após recriação; seus IDs também podem mudar.
-
-Dentro de `infra/`, para remover a stack da aplicação quando autorizado:
-
-```bash
+nvm use 24
 cdk destroy luis-filipe-mendes-nogueira-desafio-1 --profile luisfilipe
 ```
 
-User Pool e grupo de logs usam `RemovalPolicy.DESTROY`. Confirmar a exclusão efetiva de Cognito, API, Lambda, role e logs; não presumir remoção completa apenas pelo encerramento do comando.
+Conferir a remoção efetiva das APIs, Lambdas, runtime, tabelas, User Pool, roles/políticas próprias da stack e logs. A configuração atual de remoção das tabelas e do User Pool é destrutiva; recriá-los muda identificadores e exige novos usuários/convites e atualização da configuração pública.
 
-O bootstrap e a política IAM foram criados separadamente e **não são removidos pelo destroy da aplicação**. Depois de confirmar que nenhuma outra stack depende do qualifier `luisfn001`, remover a stack `luis-filipe-mendes-nogueira-bootstrap` e conferir o bucket de pacotes, suas versões/objetos, o repositório ECR, imagens, roles e parâmetro SSM. Recursos retidos pelo template oficial ou com conteúdo podem exigir limpeza adicional. Não apagar recursos de outros projetos nem o monitoramento compartilhado.
+O bootstrap, seus assets e a política gerenciada de execução foram preparados fora da stack da aplicação. Antes de remover esses recursos, confirmar que nenhuma outra stack depende do qualifier `luisfn001`. Revisar bucket e versões de objetos, ECR e imagens se existentes, roles, parâmetro SSM e versões/associações das políticas.
 
-A política `luis-filipe-mendes-nogueira-cfn-execution` deve ser removida somente depois de não ter mais associações e de excluir suas versões não padrão. Conferir no console que não restaram recursos próprios cobrados.
+A política inline complementar foi associada à role do bootstrap e também deve entrar nessa conferência. A service-linked role do AgentCore é gerenciada pela AWS e pode ser compartilhada; não deve ser excluída automaticamente como recurso exclusivo deste desafio. Não remover recursos de colegas ou o AWS Config da conta compartilhada.
 
-## Pendências para as próximas etapas e entrega
+## Pendências antes da entrega completa
 
-- Integrar perfil e limite com DynamoDB; `/me` ainda não existe.
-- Implementar `/chat`, Strands no AgentCore Runtime e modelo Bedrock; os contratos presentes no frontend não comprovam backend publicado.
-- Migrar as três ferramentas para Lambda e usuários, conversas, intenções e transações para DynamoDB, com identidade pelo `sub` e compra atômica/idempotente.
-- Implementar streaming ou WebSocket no chat. O `GET /sessao` atual é apenas um teste HTTP comum.
-- Reconectar os componentes de chat quando houver perfil e backend AWS; a tela principal atual é uma confirmação de sessão.
-- Revisar escopo das políticas de deploy e bootstrap, incluindo curingas, antes de considerar o requisito de menor privilégio encerrado.
-- Automatizar preparação, publicação da política, geração de configuração e deploy completo em um comando, sem CI/CD; os passos atuais ainda são separados.
-- Configurar/comprovar o alerta de orçamento, validar a renovação real de tokens e organizar evidências sem segredos.
-- Convidar o instrutor, manter o ambiente para avaliação e completar o README de entrega e a limpeza.
-- Quando liberado pelo orientador, publicar o frontend em S3 privado com CloudFront/OAC e ajustar o CORS para a origem final. O bucket do bootstrap não atende à hospedagem do frontend.
+### Já implementado e validado no escopo atual
+
+Cognito, sessão/perfil, tabelas, ferramentas Lambda, agente Strands/Bedrock, AgentCore, chat autenticado, SSE, histórico persistido, pagamentos, erros, concorrência, isolamento e geração automática da configuração do frontend.
+
+### Adiado por orientação
+
+- Hospedagem do frontend em S3 privado com CloudFront e OAC.
+- Upload do frontend e invalidação do cache no comando de deploy.
+- CORS restrito à origem pública da distribuição.
+
+Esses requisitos continuam pendentes no enunciado. O adiamento precisa ficar explícito na entrega; a validação local não equivale a uma URL pública acessível ao instrutor.
+
+### Fechamento técnico e documental
+
+- Atualizar o Compose para servir a interface atual, sem dependência operacional dos backends legados.
+- Consolidar o README principal de entrega e substituir as instruções genéricas de `infra/README.md` ou apontá-las para o fluxo atualizado.
+- Organizar prints/vídeo e relatórios da Fase 2: login, API sem token/401, cartão, Pix, limite excedido e intenção inválida, sem credenciais.
+- Configurar ou comprovar o alerta AWS Budgets; concluir a conferência dos custos de 16/11 quando disponíveis.
+- Documentar e alinhar a inferência entre regiões do perfil Haiku com o requisito regional do desafio.
+- Finalizar a revisão de IAM, das exceções de criação e do histórico Git quanto a segredos.
+- Comprovar especificamente a rejeição de token realmente expirado pelo autorizador e a renovação real da sessão.
+- Documentar a preparação inicial de bootstrap/políticas/modelo e completar o comando de publicação integral quando a hospedagem for liberada.
+- Convidar o instrutor com o e-mail informado, preservando o fluxo normal de convite e troca de senha temporária.
+- Abrir o PR da branch individual, se ainda não estiver aberto, e manter o ambiente disponível durante a avaliação.
+
+## Referências
+
+- [Instruções do desafio](../../../../desafio_1_sprint_2.pdf).
+- [Políticas e exceções do CloudFormation](../../infra/policies/README.md).
+- [Streaming em integrações do API Gateway](https://docs.aws.amazon.com/apigateway/latest/developerguide/response-transfer-mode.html).
+- [Configuração Lambda para streaming no API Gateway](https://docs.aws.amazon.com/apigateway/latest/developerguide/response-streaming-lambda-configure.html).
+- [Autorização REST com Cognito](https://docs.aws.amazon.com/apigateway/latest/developerguide/apigateway-integrate-with-cognito.html).
+- [Criação administrativa de usuários Cognito](https://docs.aws.amazon.com/cognito-user-identity-pools/latest/APIReference/API_AdminCreateUser.html).
+- [Permissões do AgentCore](https://docs.aws.amazon.com/service-authorization/latest/reference/list_bedrock-agentcore.html).
+- [Datas e atualização dos custos do Cost Explorer](https://docs.aws.amazon.com/cost-management/latest/userguide/ce-exploring-data.html).
