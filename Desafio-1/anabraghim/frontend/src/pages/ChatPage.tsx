@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
+import { IconeBrilho, IconeEnviar, IconeFerramenta, IconeSacola, IconeSair } from "../components/Icones"
 import { NaoAutenticadoError, buscarConversas, buscarPerfil, enviarMensagem } from "../lib/api"
 import {
     ESTADO_INICIAL,
@@ -15,6 +16,10 @@ import type { Perfil } from "../types"
 import "./Chat.css"
 
 const CLASSE_DO_PAPEL = { usuario: "bubble-user", assistente: "bubble-assistant", erro: "bubble-erro" } as const
+const CLASSE_DA_LINHA = { usuario: "msg-user", assistente: "msg-assistant", erro: "msg-erro" } as const
+
+// Atalhos da tela de boas-vindas: um clique envia a frase como mensagem.
+const SUGESTOES = ["O que vocês têm à venda?", "Quero um fone Bluetooth", "Me mostra os periféricos"]
 
 function formatarReais(valor: number): string {
     return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
@@ -80,8 +85,8 @@ function ChatPage({ onSair }: Props) {
         fimDaLista.current?.scrollIntoView({ behavior: "smooth", block: "end" })
     }, [conversa.mensagens])
 
-    async function enviar() {
-        const texto = input.trim()
+    async function enviar(sugestao?: string) {
+        const texto = (sugestao ?? input).trim()
         if (!texto || enviando || carregando) return
 
         setInput("")
@@ -105,19 +110,34 @@ function ChatPage({ onSair }: Props) {
     const ultima = conversa.mensagens.at(-1)
     const aguardando = enviando && (conversa.ferramenta !== null || ultima?.papel === "usuario")
 
+    const vazia = !carregando && conversa.mensagens.length === 0 && !avisoHistorico
+
     return (
         <div className="chat-page">
             <header className="chat-header">
-                <span className="brand">◈ assistente de compras</span>
+                <div className="brand">
+                    <span className="logo">
+                        <IconeSacola />
+                    </span>
+                    <div className="brand-texto">
+                        <span className="brand-nome">Assistente de Compras</span>
+                        <span className="brand-status">online</span>
+                    </div>
+                </div>
                 <div className="chat-header-right">
                     {perfil && (
                         <span className="limit-pill" title={`Limite total: ${formatarReais(perfil.limite_total)}`}>
-                            limite disponível: {formatarReais(perfil.limite_disponivel)}
+                            <small>limite</small>
+                            <strong>{formatarReais(perfil.limite_disponivel)}</strong>
                         </span>
                     )}
-                    {perfil?.email && <span className="username">{perfil.email}</span>}
-                    <button className="logout-btn" onClick={onSair}>
-                        Sair
+                    {perfil?.email && (
+                        <span className="avatar" title={perfil.email}>
+                            {perfil.email.charAt(0)}
+                        </span>
+                    )}
+                    <button className="icon-btn" onClick={onSair} title="Sair" aria-label="Sair">
+                        <IconeSair />
                     </button>
                 </div>
             </header>
@@ -125,45 +145,91 @@ function ChatPage({ onSair }: Props) {
             <div className="chat-messages" aria-live="polite">
                 {carregando && <div className="chat-aviso">Carregando a conversa…</div>}
                 {avisoHistorico && <div className="chat-aviso">{avisoHistorico}</div>}
-                {!carregando && conversa.mensagens.length === 0 && !avisoHistorico && (
-                    <div className="chat-aviso">Pergunte o que temos à venda para começar.</div>
+                {vazia && (
+                    <div className="boas-vindas">
+                        <span className="logo logo-lg">
+                            <IconeSacola tamanho={28} />
+                        </span>
+                        <h1>
+                            Oi! Bora às <span>compras</span>?
+                        </h1>
+                        <p>Pergunte sobre os produtos, escolha o que quiser e pague com cartão ou Pix, tudo pelo chat.</p>
+                        <div className="sugestoes">
+                            {SUGESTOES.map((s) => (
+                                <button key={s} type="button" className="sugestao" onClick={() => enviar(s)}>
+                                    {s}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                 )}
                 {conversa.mensagens.map((m) => (
-                    <div key={m.id} className={`bubble ${CLASSE_DO_PAPEL[m.papel]}`}>
-                        {m.papel === "erro" ? (
-                            m.texto
-                        ) : (
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.texto}</ReactMarkdown>
+                    <div key={m.id} className={`msg ${CLASSE_DA_LINHA[m.papel]}`}>
+                        {m.papel === "assistente" && (
+                            <span className="bot-avatar">
+                                <IconeBrilho />
+                            </span>
                         )}
+                        <div className={`bubble ${CLASSE_DO_PAPEL[m.papel]}`}>
+                            {m.papel === "erro" ? (
+                                m.texto
+                            ) : (
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.texto}</ReactMarkdown>
+                            )}
+                        </div>
                     </div>
                 ))}
                 {aguardando && (
-                    <div className="bubble bubble-assistant bubble-status">
-                        {conversa.ferramenta ? `🔧 ${rotuloFerramenta(conversa.ferramenta)}` : "…"}
+                    <div className="msg msg-assistant">
+                        <span className="bot-avatar">
+                            <IconeBrilho />
+                        </span>
+                        <div className="bubble bubble-assistant bubble-status">
+                            {conversa.ferramenta ? (
+                                <>
+                                    <IconeFerramenta /> {rotuloFerramenta(conversa.ferramenta)}
+                                </>
+                            ) : (
+                                <span className="digitando" aria-label="O assistente está digitando">
+                                    <span />
+                                    <span />
+                                    <span />
+                                </span>
+                            )}
+                        </div>
                     </div>
                 )}
                 <div ref={fimDaLista} />
             </div>
 
-            <form
-                className="chat-input"
-                onSubmit={(e) => {
-                    e.preventDefault()
-                    enviar()
-                }}
-            >
-                <input
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    placeholder="Pergunte o que temos à venda…"
-                    maxLength={4000}
-                    disabled={enviando || carregando}
-                    aria-label="Mensagem"
-                />
-                <button type="submit" disabled={enviando || carregando || input.trim() === ""}>
-                    Enviar
-                </button>
-            </form>
+            <div className="chat-rodape">
+                <form
+                    className="chat-input"
+                    onSubmit={(e) => {
+                        e.preventDefault()
+                        enviar()
+                    }}
+                >
+                    <input
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        placeholder="Escreva sua mensagem…"
+                        maxLength={4000}
+                        disabled={enviando || carregando}
+                        aria-label="Mensagem"
+                    />
+                    <button
+                        type="submit"
+                        className="enviar-btn"
+                        disabled={enviando || carregando || input.trim() === ""}
+                        aria-label="Enviar"
+                        title="Enviar"
+                    >
+                        <IconeEnviar />
+                    </button>
+                </form>
+                <p className="aviso-simulado">Ambiente de demonstração: os pagamentos são simulados e nada é cobrado.</p>
+            </div>
         </div>
     )
 }

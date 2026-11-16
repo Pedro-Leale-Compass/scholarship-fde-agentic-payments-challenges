@@ -1,127 +1,170 @@
+/* Tokens de cor e tipografia. Fontes do sistema: a CSP do CloudFront só
+   libera font-src 'self', então nada de Google Fonts. */
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  --bg: #f6f5fb;
+  --bg-glow-1: rgba(124, 92, 255, 0.16);
+  --bg-glow-2: rgba(255, 95, 162, 0.12);
+  --surface: #ffffff;
+  --surface-2: #f1effa;
+  --border: #e6e3f2;
+  --text: #1c1830;
+  --text-soft: #6b6787;
+  --primary: #7c5cff;
+  --primary-strong: #6a46ff;
+  --pink: #ff5fa2;
+  --gradient: linear-gradient(135deg, #7c5cff 0%, #b45cff 50%, #ff5fa2 100%);
+  --mint: #0fb88a;
+  --mint-bg: rgba(15, 184, 138, 0.12);
+  --danger: #e5484d;
+  --danger-bg: rgba(229, 72, 77, 0.1);
+  --shadow-sm: 0 1px 2px rgba(28, 24, 48, 0.06), 0 2px 8px rgba(28, 24, 48, 0.05);
+  --shadow-lg: 0 20px 50px -12px rgba(76, 52, 180, 0.25);
+  --radius: 20px;
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+  --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", Consolas, monospace;
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
+  font: 16px/1.5 var(--sans);
   color: var(--text);
   background: var(--bg);
+  color-scheme: light dark;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
+  /* Tema do Amplify Authenticator (tela de login) nas cores da marca. */
+  --amplify-colors-primary-10: #f1edff;
+  --amplify-colors-primary-20: #e2d9ff;
+  --amplify-colors-primary-40: #b9a6ff;
+  --amplify-colors-primary-60: #9a80ff;
+  --amplify-colors-primary-80: #7c5cff;
+  --amplify-colors-primary-90: #6a46ff;
+  --amplify-colors-primary-100: #5532e6;
+  --amplify-components-fieldcontrol-border-radius: 12px;
+  --amplify-components-authenticator-router-border-width: 0;
+  --amplify-components-authenticator-router-box-shadow: var(--shadow-lg);
+  --amplify-components-tabs-item-active-color: #7c5cff;
+  --amplify-components-tabs-item-active-border-color: #7c5cff;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
+    --bg: #0e0c18;
+    --bg-glow-1: rgba(124, 92, 255, 0.22);
+    --bg-glow-2: rgba(255, 95, 162, 0.14);
+    --surface: #18152a;
+    --surface-2: #221e38;
+    --border: #2c2745;
+    --text: #f2f0fb;
+    --text-soft: #a19cbd;
+    --mint: #3ddbb0;
+    --mint-bg: rgba(61, 219, 176, 0.14);
+    --danger: #ff6b70;
+    --danger-bg: rgba(255, 107, 112, 0.12);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 20px 50px -12px rgba(0, 0, 0, 0.6);
   }
 }
 
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
+  min-height: 100dvh;
+  background:
+    radial-gradient(60rem 40rem at 10% -10%, var(--bg-glow-1), transparent 60%),
+    radial-gradient(50rem 35rem at 110% 10%, var(--bg-glow-2), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
 }
 
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
+#root {
+  min-height: 100dvh;
 }
 
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
+button,
+input {
+  font: inherit;
+  color: inherit;
 }
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
+
 p {
   margin: 0;
 }
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
+/* ---------- Tela de login (Amplify Authenticator) ---------- */
+
+[data-amplify-authenticator] {
+  min-height: 100dvh;
+  padding: 1.5rem 1rem;
 }
 
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+[data-amplify-authenticator] [data-amplify-router] {
+  border-radius: var(--radius);
+  overflow: hidden;
 }
 
-/* Cabeçalho da tela de login do Amplify Authenticator. */
 .auth-brand {
-    text-align: center;
-    padding: 2rem 0 1rem;
-    font-weight: 600;
-    color: var(--text-h);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0 1.5rem;
+  text-align: center;
 }
 
-/* Tela exibida quando /config.json não pode ser carregado. */
+.auth-brand h1 {
+  margin: 0.25rem 0 0;
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text);
+}
+
+.auth-brand p {
+  color: var(--text-soft);
+  font-size: 0.95rem;
+}
+
+/* Logo da marca (sacola em um quadrado com gradiente). */
+.logo {
+  display: inline-grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 12px;
+  background: var(--gradient);
+  color: #fff;
+  box-shadow: 0 8px 20px -6px rgba(124, 92, 255, 0.6);
+  flex-shrink: 0;
+}
+
+.logo-lg {
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 18px;
+}
+
+/* ---------- Tela exibida quando /config.json não pode ser carregado ---------- */
+
 .erro-config {
-    max-width: 32rem;
-    margin: 4rem auto;
-    padding: 0 1rem;
-    text-align: center;
+  max-width: 32rem;
+  margin: 0 auto;
+  padding: 6rem 1.25rem;
+  text-align: center;
+}
+
+.erro-config h1 {
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.75rem;
+}
+
+.erro-config p {
+  color: var(--text-soft);
 }

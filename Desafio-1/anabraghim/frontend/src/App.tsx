@@ -1,4 +1,5 @@
 import { Authenticator } from "@aws-amplify/ui-react"
+import { IconeSacola } from "./components/Icones"
 import ChatPage from "./pages/ChatPage"
 
 // Cadastro só por convite: o user pool já recusa SignUp (AllowAdminCreateUserOnly)
@@ -6,7 +7,15 @@ import ChatPage from "./pages/ChatPage"
 // obrigatória da senha temporária do convite e do "esqueci minha senha".
 const componentes = {
     Header() {
-        return <div className="auth-brand">◈ assistente de compras</div>
+        return (
+            <div className="auth-brand">
+                <span className="logo logo-lg">
+                    <IconeSacola tamanho={28} />
+                </span>
+                <h1>Assistente de Compras</h1>
+                <p>Entre com o e-mail do seu convite</p>
+            </div>
+        )
     },
 }
 
