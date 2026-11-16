@@ -36,3 +36,17 @@ Esta pasta contém a suíte de testes Postman para validar a API de chat de paga
 
 - Stack implantada (`npm run deploy:api-agent`) para gerar `infra/cdk-outputs.json` com `ApiUrl` e `CognitoUserPoolClientId`.
 - Usuário de teste criado no Cognito (via `TEST_EMAIL`/`TEST_PASSWORD` no `.env` ou manualmente no console).
+
+## Atualizando as variáveis de ambiente
+
+Quando a stack for reimplantada ou os valores do `.env` mudarem, atualize o `postman-environment.json`:
+
+1. Confirme o novo `CognitoUserPoolClientId` e `ApiUrl` em `infra/cdk-outputs.json`.
+2. Confirme `TEST_EMAIL` e `TEST_PASSWORD` em `.env`.
+3. Abra `tests/postman-environment.json` e substitua os valores de:
+   - `userPoolClientId` — pelo `CognitoUserPoolClientId` do `cdk-outputs.json`.
+   - `apiUrl` — pelo `ApiUrl` do `cdk-outputs.json`.
+   - `testEmail` — pelo `TEST_EMAIL` do `.env`.
+   - `testPassword` — pelo `TEST_PASSWORD` do `.env`.
+4. Salve o arquivo e reimporte no Postman (Import → File) ou edite as variáveis diretamente no ambiente selecionado.
+5. Reexecute o login para gerar um novo `idToken`.

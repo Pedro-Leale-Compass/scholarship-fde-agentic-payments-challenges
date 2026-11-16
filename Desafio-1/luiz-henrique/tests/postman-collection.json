@@ -168,25 +168,25 @@
     },
     {
       "key": "testEmail",
-      "value": "",
+      "value": "<test-email>",
       "type": "string",
       "description": "E-mail do usuário de teste (do .env: TEST_EMAIL)"
     },
     {
       "key": "testPassword",
-      "value": "",
+      "value": "<redacted>",
       "type": "string",
       "description": "Senha do usuário de teste (do .env: TEST_PASSWORD)"
     },
     {
       "key": "userPoolClientId",
-      "value": "",
+      "value": "7eb2mr48f60mn5c4gdugk0cjhu",
       "type": "string",
       "description": "Cognito User Pool Client ID (output CognitoUserPoolClientId do cdk-outputs.json)"
     },
     {
       "key": "apiUrl",
-      "value": "",
+      "value": "https://<rest-api-id>.execute-api.us-east-1.amazonaws.com/prod/",
       "type": "string",
       "description": "URL da API Gateway (output ApiUrl do cdk-outputs.json)"
     },
