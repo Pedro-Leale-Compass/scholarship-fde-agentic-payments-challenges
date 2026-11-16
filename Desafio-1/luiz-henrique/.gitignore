@@ -8,14 +8,14 @@ frontend/node_modules/
 # Build / saída de build
 infra/cdk.out/
 infra/dist/
-infra/lib/*.js
-infra/lib/*.js.map
-infra/*.js
-infra/*.d.ts
-agent/*.js
-agent/*.d.ts
-tools/*.js
-tools/*.d.ts
+infra/lib/**/*.js
+infra/lib/**/*.js.map
+infra/**/*.js
+infra/**/*.d.ts
+agent/**/*.js
+agent/**/*.d.ts
+tools/**/*.js
+tools/**/*.d.ts
 frontend/.next/
 frontend/out/
 frontend/build/
