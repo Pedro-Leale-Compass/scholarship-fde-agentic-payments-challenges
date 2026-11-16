@@ -99,7 +99,11 @@ export class AgentStack extends Construct {
     // Bedrock Converse (Claude Haiku via inference profile US)
     this.agentRole.addToPolicy(
       new iam.PolicyStatement({
-        actions: ['bedrock:InvokeModel', 'bedrock:InvokeModelWithResponseStream', 'bedrock:Converse'],
+        actions: [
+          'bedrock-runtime:InvokeModel',
+          'bedrock-runtime:InvokeModelWithResponseStream',
+          'bedrock-runtime:Converse',
+        ],
         resources: [
           `arn:aws:bedrock:us-east-1:${cdk.Aws.ACCOUNT_ID}:inference-profile/${MODEL_ID}`,
           // global.* inference profiles resolvem para ARNs de foundation-model sem região
