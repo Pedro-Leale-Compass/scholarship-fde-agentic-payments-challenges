@@ -1,5 +1,8 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import * as cdk from 'aws-cdk-lib';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import { Construct } from 'constructs';
@@ -13,6 +16,10 @@ export interface FrontendHostProps {
    * ID da conta AWS para garantir unicidade global do nome do bucket S3.
    */
   readonly accountId: string;
+  /**
+   * Caminho opcional para o diretório de build do frontend (padrão: ../../frontend/dist).
+   */
+  readonly frontendDistPath?: string;
 }
 
 /**
@@ -24,16 +31,19 @@ export interface FrontendHostProps {
  * 3. Conectar o CloudFront ao S3 usando Origin Access Control (OAC) com assinatura SigV4
  *    e política de bucket restrita ao ARN da distribuição.
  * 4. Configurar respostas de erro 403/404 -> /index.html (HTTP 200) para roteamento SPA.
- * 5. Configurar autoDeleteObjects + RemovalPolicy.DESTROY para teardown limpo via cdk destroy.
+ * 5. Publicar o build estático via BucketDeployment com invalidação automática (/*) no CloudFront.
+ * 6. Configurar autoDeleteObjects + RemovalPolicy.DESTROY para teardown limpo via cdk destroy.
  */
 export class FrontendHost extends Construct {
   public readonly bucket: s3.Bucket;
   public readonly distribution: cloudfront.Distribution;
+  public readonly deployment: s3deploy.BucketDeployment;
 
   constructor(scope: Construct, id: string, props: FrontendHostProps) {
     super(scope, id);
 
     const { resourcePrefix, accountId } = props;
+    const distPath = props.frontendDistPath ?? path.resolve(__dirname, '../../frontend/dist');
 
     // 1. Bucket S3 100% Privado
     // Nomes de buckets S3 são globalmente únicos em toda a AWS; incluir accountId evita colisões.
@@ -79,7 +89,25 @@ export class FrontendHost extends Construct {
       ],
     });
 
-    // 3. Outputs para pipeline de deploy, CORS do API Gateway e acesso do avaliador
+    // 3. Upload do build estático (frontend/dist) + Invalidação automática no CloudFront
+    // Fallback com Source.data permite `cdk synth` offline mesmo antes do `vite build`.
+    const frontendSource = fs.existsSync(path.join(distPath, 'index.html'))
+      ? s3deploy.Source.asset(distPath)
+      : s3deploy.Source.data(
+          'index.html',
+          '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"/><title>Nexus Store</title></head><body><div id="root"></div></body></html>',
+        );
+
+    this.deployment = new s3deploy.BucketDeployment(this, 'DeployFrontend', {
+      sources: [frontendSource],
+      destinationBucket: this.bucket,
+      distribution: this.distribution,
+      distributionPaths: ['/*'],
+      prune: true,
+      memoryLimit: 256,
+    });
+
+    // 4. Outputs para pipeline de deploy, CORS do API Gateway e acesso do avaliador
     new cdk.CfnOutput(this, 'FrontendBucketNameOutput', {
       value: this.bucket.bucketName,
       description: 'Nome do bucket S3 privado que hospeda o build do frontend',

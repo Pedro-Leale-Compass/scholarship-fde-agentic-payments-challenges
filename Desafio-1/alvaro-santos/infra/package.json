@@ -5,9 +5,15 @@
   "description": "Infraestrutura como Código (AWS CDK v2 em TypeScript) - Desafio 1 (AWS Cloud)",
   "scripts": {
     "build": "tsc",
+    "build:frontend": "npm --prefix ../frontend run build",
     "watch": "tsc -w",
     "cdk": "cdk",
-    "synth": "cdk synth"
+    "synth": "cdk synth",
+    "synth:backend-only": "cdk synth -c skipFrontendHost=true",
+    "deploy": "npm run build:frontend && npm run build && cdk deploy --all --require-approval never --outputs-file cdk-outputs.json",
+    "deploy:backend-only": "npm run build && cdk deploy --all -c skipFrontendHost=true --require-approval never --outputs-file cdk-outputs.json",
+    "destroy": "cdk destroy --all --force",
+    "destroy:backend-only": "cdk destroy --all -c skipFrontendHost=true --force"
   },
   "devDependencies": {
     "@aws-sdk/client-bedrock-agentcore": "^3.1169.0",
