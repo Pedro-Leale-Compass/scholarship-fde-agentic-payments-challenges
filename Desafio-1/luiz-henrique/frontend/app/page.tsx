@@ -5,6 +5,8 @@ import { Amplify } from 'aws-amplify';
 import { signOut, fetchAuthSession } from 'aws-amplify/auth';
 import { Authenticator } from '@aws-amplify/ui-react';
 import '@aws-amplify/ui-react/styles.css';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface RuntimeConfig {
   apiUrl: string;
@@ -16,6 +18,11 @@ interface RuntimeConfig {
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+}
+
+function getDisplayName(user: any): string {
+  if (!user) return 'usuário';
+  return user.attributes?.email || user.username || user.userId || 'usuário';
 }
 
 export default function Page() {
@@ -126,11 +133,11 @@ function ChatApp({ config, user, signOut }: { config: RuntimeConfig; user: any; 
   }
 
   return (
-    <div style={{ padding: '2rem', maxWidth: 800, margin: '0 auto' }}>
+    <div style={{ padding: '2rem', maxWidth: 800, margin: '0 auto', minHeight: '100vh', boxSizing: 'border-box' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div>
           <h1>Agente de Pagamentos</h1>
-          <p>Bem-vindo, {user?.username || user?.userId || 'usuário'}</p>
+          <p>Bem-vindo, {getDisplayName(user)}</p>
         </div>
         <button
           onClick={() => { signOut(); setToken(null); setMessages([]); }}
@@ -145,31 +152,48 @@ function ChatApp({ config, user, signOut }: { config: RuntimeConfig; user: any; 
           border: '1px solid #ddd',
           borderRadius: '8px',
           padding: '1rem',
-          height: '400px',
+          height: 'calc(100vh - 320px)',
+          maxHeight: '70vh',
           overflowY: 'auto',
           marginBottom: '1rem',
           background: '#f9f9f9',
+          boxSizing: 'border-box',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '1rem',
         }}
       >
         {messages.map((m, i) => (
           <div
             key={i}
             style={{
-              marginBottom: '1rem',
               padding: '0.75rem',
               borderRadius: '6px',
               background: m.role === 'user' ? '#dbeafe' : '#ffffff',
               border: '1px solid #ccc',
-              whiteSpace: 'pre-wrap',
+              maxWidth: '80%',
+              alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
+              boxSizing: 'border-box',
             }}
           >
-            <strong>{m.role === 'user' ? 'Você' : 'Agente'}: </strong>
-            {m.content}
+            <strong style={{ fontSize: '0.85rem', opacity: 0.7 }}>
+              {m.role === 'user' ? 'Você' : 'Agente'}
+            </strong>
+            {m.role === 'assistant' ? (
+              <ReactMarkdown remarkPlugins={[remarkGfm]} children={m.content} />
+            ) : (
+              m.content
+            )}
           </div>
         ))}
+        {messages.length === 0 && (
+          <div style={{ marginTop: 'auto', color: '#666', fontSize: '0.9rem' }}>
+            Digite uma mensagem para começar a conversa com o agente.
+          </div>
+        )}
       </div>
 
-      <div style={{ display: 'flex', gap: '0.5rem' }}>
+      <div style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto' }}>
         <input
           type="text"
           value={input}
