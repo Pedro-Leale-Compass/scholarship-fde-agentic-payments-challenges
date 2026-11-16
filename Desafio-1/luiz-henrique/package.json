@@ -9,7 +9,7 @@
     "deploy:api-agent": "eval \"$(bash scripts/aws-creds.sh)\" && cd infra && npx cdk deploy --require-approval never --outputs-file cdk-outputs.json",
     "deploy": "npm run deploy:api-agent",
     "diff": "eval \"$(bash scripts/aws-creds.sh)\" && cd infra && npx cdk diff",
-    "destroy": "eval \"$(bash scripts/aws-creds.sh)\" && cd infra && npx cdk destroy --force",
+    "destroy": "eval \"$(bash scripts/aws-creds.sh)\" && cd infra && npx cdk destroy --force && cd .. && bash scripts/destroy-cleanup.sh",
     "dev:agent": "eval \"$(bash scripts/aws-creds.sh)\" && cd agent && npx tsx index.ts",
     "dev:frontend": "bash scripts/dev-frontend-local.sh",
     "dev:create-test-user": "eval \"$(bash scripts/aws-creds.sh)\" && bash scripts/create-test-user.sh"

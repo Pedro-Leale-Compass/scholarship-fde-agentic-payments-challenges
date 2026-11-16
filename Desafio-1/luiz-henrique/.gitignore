@@ -32,6 +32,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Resource explorer snapshots and cleanup reports
+logs/
+
 # IDE / OS
 .vscode/
 .idea/
