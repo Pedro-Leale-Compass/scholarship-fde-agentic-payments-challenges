@@ -6,6 +6,8 @@ Branch: `fellow/luiz-henrique-desafio-1`
 
 Região: `us-east-1` · Prefixo de recursos: `luiz-henrique`
 
+Repo anterior (referência): https://github.com/luiztosk/squad-03-desafio-MCP-agentic
+
 ## Estrutura
 
 ```
@@ -14,7 +16,7 @@ Desafio-1/luiz-henrique/
 ├── api/        # API Gateway + Lambda do chat (autorizador JWT Cognito)
 ├── agent/      # Agente Strands no Bedrock AgentCore Runtime (Claude Haiku)
 ├── tools/      # Lambdas das tools: listar_catalogo, registrar_intencao, realizar_compra
-├── infra/      # IaC (CDK: backend, agente, frontend no Amplify Hosting)
+├── infra/      # IaC (CDK: backend, agente, API, Cognito, DynamoDB, AgentCore)
 ├── docs/       # TODO.md, STACK.md, MIGRACAO-ANTERIOR.md
 └── README.md   # este arquivo
 ```
@@ -88,7 +90,9 @@ localmente (porta 3031) com Bedrock real e as tools em fallback em memória.
 - Agente Strands rodando no Bedrock AgentCore Runtime
 - Enquanto o acesso ao Claude Haiku não é liberado na conta, o agente usa
   `global.amazon.nova-2-lite-v1:0`. Para trocar, defina `BEDROCK_MODEL_ID` no
-  `.env` (lido tanto no deploy da infra quanto no `dev:agent` local).
+  `.env` e faça `npm run deploy:api-agent` (o modelo é lido do .env no deploy
+  da infra e no `dev:agent` local; sempre usa `override: true` para não manter
+  valor antigo do shell).
 
 ## Modelagem do DynamoDB
 
