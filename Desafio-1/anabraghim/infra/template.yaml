@@ -93,14 +93,18 @@ Resources:
       AdminCreateUserConfig:
         AllowAdminCreateUserOnly: true
         InviteMessageTemplate:
-          EmailSubject: "Seu convite para o Assistente de Compras"
+          EmailSubject: "Convite: Chatbot de Pagamentos da Ana"
           EmailMessage: >-
-            Olá! Você foi convidado(a) para o Assistente de Compras.<br><br>
-            Usuário: {username}<br>
-            Senha temporária: {####}<br><br>
-            No primeiro acesso você deverá definir uma nova senha.
-            A senha temporária expira em 7 dias.
-          SMSMessage: "Assistente de Compras - usuario: {username} senha temporaria: {####}"
+            Olá! 👋<br><br>
+            Você foi convidado(a) para testar o <b>Chatbot de Pagamentos da Ana</b>,
+            um assistente de compras com IA desenvolvido no desafio de AWS.<br><br>
+            <b>Usuário:</b> {username}<br>
+            <b>Senha temporária:</b> {####}<br><br>
+            No primeiro acesso você vai definir uma nova senha.
+            A senha temporária expira em 7 dias.<br><br>
+            Os pagamentos são simulados: nada é cobrado de verdade.<br><br>
+            Ana Braghim
+          SMSMessage: "Chatbot de Pagamentos da Ana - usuario: {username} senha temporaria: {####}"
       Policies:
         PasswordPolicy:
           MinimumLength: 8
