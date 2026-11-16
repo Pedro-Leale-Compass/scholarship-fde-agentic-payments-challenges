@@ -1,0 +1,1296 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Chatbot de pagamentos (Sprint 2) - stack principal: Cognito, API Gateway, Lambdas,
+  agente no Bedrock AgentCore, DynamoDB e frontend em S3 + CloudFront.
+
+# Cada feature acrescenta seus recursos aqui. Ordem prevista das seções:
+#   Cognito (F2) · DynamoDB (F3) · Tools (F4) · Agente (F5) · Chat/Perfil (F6)
+#   API Gateway (F7) · Frontend S3 + CloudFront (F9)
+
+Parameters:
+  Prefixo:
+    Type: String
+    Default: ana-braghim
+    AllowedPattern: "^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$"
+    ConstraintDescription: Apenas letras minúsculas, números e hífen (vai no nome de buckets).
+    Description: Prefixo da stack e dos recursos, para não colidir com outros fellows na mesma conta.
+
+  ComFrontend:
+    Type: String
+    Default: "sim"
+    AllowedValues: ["sim", "nao"]
+    Description: >-
+      "sim" cria o hosting do frontend (S3 privado + CloudFront com OAC).
+      "nao" cria só o backend (Cognito, API, agente, tools e tabelas), e o
+      frontend roda localmente (npm run dev), chamando a API publicada.
+
+  AgenteCodigoBucket:
+    Type: String
+    AllowedPattern: "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$"
+    Description: Bucket de artefatos onde o deploy.sh publicou o zip do agente (stack de bootstrap).
+
+  AgenteCodigoChave:
+    Type: String
+    AllowedPattern: "^agente/[a-f0-9]{64}\\.zip$"
+    ConstraintDescription: "Formato agente/<sha256>.zip, gerado pelo deploy.sh."
+    Description: >-
+      Chave do zip do agente no bucket. O nome é o SHA-256 do conteúdo, então o
+      runtime só é atualizado quando o código ou as dependências mudam.
+
+  ModeloId:
+    Type: String
+    # Claude Haiku 4.5: o Haiku 5.5 não está liberado para a conta do programa
+    # ("not available for this account"). Para voltar ao 5.5, trocar os dois
+    # defaults por us.anthropic.claude-haiku-5-5 e anthropic.claude-haiku-5-5.
+    Default: us.anthropic.claude-haiku-4-5-20251001-v1:0
+    Description: >-
+      Id usado pelo agente na chamada ao Bedrock: o inference profile de região
+      cruzada (prefixo us.) do Claude Haiku. Conferir no console do Bedrock.
+
+  ModeloBaseId:
+    Type: String
+    Default: anthropic.claude-haiku-4-5-20251001-v1:0
+    Description: >-
+      Id do modelo base por trás do inference profile. Usado só na policy IAM,
+      que precisa liberar o modelo em cada região para onde o profile roteia.
+
+Conditions:
+  # Desligada com ComFrontend=nao (deploy.sh com SEM_FRONTEND=1): os recursos
+  # do site não são criados. Religar depois só acrescenta esses recursos à
+  # stack, sem recriar o backend.
+  CriarFrontend: !Equals [!Ref ComFrontend, "sim"]
+
+Rules:
+  SomenteUsEast1:
+    Assertions:
+      - Assert: !Equals [!Ref "AWS::Region", us-east-1]
+        AssertDescription: Todos os recursos do desafio devem ser criados em us-east-1.
+
+Resources:
+  # ---------------------------------------------------------------------------
+  # Cognito (F2): login obrigatório, cadastro somente por convite do administrador
+  # ---------------------------------------------------------------------------
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      UserPoolName: !Sub "${Prefixo}-usuarios"
+      # Login pelo e-mail: o admin-create-user usa o e-mail como username.
+      UsernameAttributes:
+        - email
+      UsernameConfiguration:
+        CaseSensitive: false
+      AutoVerifiedAttributes:
+        - email
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+      # Auto cadastro desabilitado de verdade: a API SignUp do Cognito é recusada,
+      # não só escondida na tela. Usuários nascem por admin-create-user.
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+        InviteMessageTemplate:
+          EmailSubject: "Seu convite para o Assistente de Compras"
+          EmailMessage: >-
+            Olá! Você foi convidado(a) para o Assistente de Compras.<br><br>
+            Usuário: {username}<br>
+            Senha temporária: {####}<br><br>
+            No primeiro acesso você deverá definir uma nova senha.
+            A senha temporária expira em 7 dias.
+          SMSMessage: "Assistente de Compras - usuario: {username} senha temporaria: {####}"
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          TemporaryPasswordValidityDays: 7
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      MfaConfiguration: "OFF"
+      # E-mail padrão do Cognito (cota diária baixa, ~50/dia). Para mais convites, configurar o SES.
+      EmailConfiguration:
+        EmailSendingAccount: COGNITO_DEFAULT
+      # Desativada para o destroy.sh conseguir remover a stack no fim do desafio.
+      DeletionProtection: INACTIVE
+      UserPoolTags:
+        projeto: !Sub "${Prefixo}-pagamentos"
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub "${Prefixo}-frontend"
+      UserPoolId: !Ref UserPool
+      # SPA no navegador não guarda segredo: client público, autenticação SRP.
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      PreventUserExistenceErrors: ENABLED
+      EnableTokenRevocation: true
+      AccessTokenValidity: 60
+      IdTokenValidity: 60
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+      ReadAttributes:
+        - email
+        - email_verified
+      WriteAttributes:
+        - email
+
+  # ---------------------------------------------------------------------------
+  # DynamoDB (F3): uma tabela por domínio, para dar a cada role acesso só ao que usa.
+  # Valores em dinheiro são inteiros em centavos; os contratos das tools devolvem reais.
+  # ---------------------------------------------------------------------------
+  UsuariosTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      TableName: !Sub "${Prefixo}-usuarios"
+      BillingMode: PAY_PER_REQUEST
+      # usuario_id = sub do Cognito. Atributos: limite_total_centavos,
+      # limite_disponivel_centavos (decremento condicional na compra), criado_em.
+      AttributeDefinitions:
+        - AttributeName: usuario_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: usuario_id
+          KeyType: HASH
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - Key: projeto
+          Value: !Sub "${Prefixo}-pagamentos"
+
+  ConversasTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      TableName: !Sub "${Prefixo}-conversas"
+      BillingMode: PAY_PER_REQUEST
+      # Um item por mensagem: o histórico cresce sem esbarrar no limite de 400 KB
+      # por item. Query por usuario_id devolve a conversa em ordem (sk = msg#<ts>#<seq>).
+      AttributeDefinitions:
+        - AttributeName: usuario_id
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: usuario_id
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - Key: projeto
+          Value: !Sub "${Prefixo}-pagamentos"
+
+  ProdutosTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      TableName: !Sub "${Prefixo}-produtos"
+      BillingMode: PAY_PER_REQUEST
+      # Atributos: nome, preco_centavos, moeda, estoque, categoria. O catálogo é
+      # pequeno, então o filtro por categoria é um Scan com FilterExpression.
+      AttributeDefinitions:
+        - AttributeName: produto_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: produto_id
+          KeyType: HASH
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - Key: projeto
+          Value: !Sub "${Prefixo}-pagamentos"
+
+  IntencoesTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      TableName: !Sub "${Prefixo}-intencoes"
+      BillingMode: PAY_PER_REQUEST
+      # Atributos: usuario_id, produto_id, quantidade, valor_unitario_centavos,
+      # valor_total_centavos, moeda, status (pendente -> paga), expira_em, criado_em, ttl.
+      AttributeDefinitions:
+        - AttributeName: intencao_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: intencao_id
+          KeyType: HASH
+      # Limpeza automática de intenções antigas. O ttl fica bem depois do expira_em
+      # (o DynamoDB pode demorar para apagar), então a regra INTENCAO_EXPIRADA é
+      # sempre checada pelo expira_em, nunca pela ausência do item.
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - Key: projeto
+          Value: !Sub "${Prefixo}-pagamentos"
+
+  TransacoesTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      TableName: !Sub "${Prefixo}-transacoes"
+      BillingMode: PAY_PER_REQUEST
+      # PK = intencao_id: no máximo uma transação por intenção, garantido pelo banco
+      # (Put com attribute_not_exists), como o unique da Fase 1. Atributos:
+      # transacao_id, usuario_id, valor_centavos, moeda, metodo_pagamento, status, criado_em.
+      AttributeDefinitions:
+        - AttributeName: intencao_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: intencao_id
+          KeyType: HASH
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - Key: projeto
+          Value: !Sub "${Prefixo}-pagamentos"
+
+  # ---------------------------------------------------------------------------
+  # Tools em Lambda (F4). Uma função e uma role por tool, cada role com acesso só
+  # às tabelas e ações que a tool usa. Nenhuma função tem resource policy: só
+  # identidades da conta com lambda:InvokeFunction explícito (a role do agente,
+  # na F5) conseguem invocá-las.
+  #
+  # `Code` aponta para a pasta gerada por `npm run build` em tools/; o
+  # `aws cloudformation package` (deploy.sh) zipa e envia ao bucket de artefatos.
+  # ---------------------------------------------------------------------------
+  ListarCatalogoLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${Prefixo}-tool-listar-catalogo"
+      RetentionInDays: 14
+
+  ListarCatalogoRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${Prefixo}-tool-listar-catalogo"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: menor-privilegio
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: LerCatalogo
+                Effect: Allow
+                Action:
+                  - dynamodb:Scan
+                Resource: !GetAtt ProdutosTable.Arn
+              - Sid: Logs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt ListarCatalogoLogGroup.Arn
+
+  ListarCatalogoFunction:
+    Type: AWS::Lambda::Function
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks:
+            - W3002 # Code é um caminho local; o `cloudformation package` troca por S3Bucket/S3Key
+    Properties:
+      FunctionName: !Sub "${Prefixo}-tool-listar-catalogo"
+      Description: Tool listar_catalogo do agente de pagamentos
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Handler: index.handler
+      Code: build/tools/listar-catalogo
+      MemorySize: 256
+      Timeout: 10
+      Role: !GetAtt ListarCatalogoRole.Arn
+      LoggingConfig:
+        LogGroup: !Ref ListarCatalogoLogGroup
+      Environment:
+        Variables:
+          TABELA_PRODUTOS: !Ref ProdutosTable
+
+  RegistrarIntencaoLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${Prefixo}-tool-registrar-intencao"
+      RetentionInDays: 14
+
+  RegistrarIntencaoRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${Prefixo}-tool-registrar-intencao"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: menor-privilegio
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: LerProduto
+                Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                Resource: !GetAtt ProdutosTable.Arn
+              - Sid: GravarIntencao
+                Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                Resource: !GetAtt IntencoesTable.Arn
+              - Sid: Logs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt RegistrarIntencaoLogGroup.Arn
+
+  RegistrarIntencaoFunction:
+    Type: AWS::Lambda::Function
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks:
+            - W3002 # Code é um caminho local; o `cloudformation package` troca por S3Bucket/S3Key
+    Properties:
+      FunctionName: !Sub "${Prefixo}-tool-registrar-intencao"
+      Description: Tool registrar_intencao do agente de pagamentos
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Handler: index.handler
+      Code: build/tools/registrar-intencao
+      MemorySize: 256
+      Timeout: 10
+      Role: !GetAtt RegistrarIntencaoRole.Arn
+      LoggingConfig:
+        LogGroup: !Ref RegistrarIntencaoLogGroup
+      Environment:
+        Variables:
+          TABELA_PRODUTOS: !Ref ProdutosTable
+          TABELA_INTENCOES: !Ref IntencoesTable
+
+  RealizarCompraLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${Prefixo}-tool-realizar-compra"
+      RetentionInDays: 14
+
+  RealizarCompraRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${Prefixo}-tool-realizar-compra"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: menor-privilegio
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # O TransactWriteItems não tem ação IAM própria: o IAM checa a ação
+              # de cada item (UpdateItem/PutItem) na tabela correspondente.
+              - Sid: IntencaoLerEPagar
+                Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                Resource: !GetAtt IntencoesTable.Arn
+              - Sid: UsuarioLimite
+                Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                Resource: !GetAtt UsuariosTable.Arn
+              - Sid: ProdutoEstoque
+                Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                Resource: !GetAtt ProdutosTable.Arn
+              - Sid: GravarTransacao
+                Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                Resource: !GetAtt TransacoesTable.Arn
+              - Sid: Logs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt RealizarCompraLogGroup.Arn
+
+  RealizarCompraFunction:
+    Type: AWS::Lambda::Function
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks:
+            - W3002 # Code é um caminho local; o `cloudformation package` troca por S3Bucket/S3Key
+    Properties:
+      FunctionName: !Sub "${Prefixo}-tool-realizar-compra"
+      Description: Tool realizar_compra do agente de pagamentos
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Handler: index.handler
+      Code: build/tools/realizar-compra
+      MemorySize: 256
+      Timeout: 10
+      Role: !GetAtt RealizarCompraRole.Arn
+      LoggingConfig:
+        LogGroup: !Ref RealizarCompraLogGroup
+      Environment:
+        Variables:
+          TABELA_USUARIOS: !Ref UsuariosTable
+          TABELA_PRODUTOS: !Ref ProdutosTable
+          TABELA_INTENCOES: !Ref IntencoesTable
+          TABELA_TRANSACOES: !Ref TransacoesTable
+
+  # ---------------------------------------------------------------------------
+  # Agente (F5): Strands Agents em Python no Bedrock AgentCore Runtime.
+  # O nome do runtime não aceita hífen: ana-braghim -> ana_braghim_agente.
+  # O id gerado pelo AgentCore é "<nome>-<sufixo>", por isso as policies usam
+  # "<nome>-*" e não precisam depender do próprio runtime.
+  # ---------------------------------------------------------------------------
+  AgenteRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${Prefixo}-agente-runtime"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action: sts:AssumeRole
+            # Só o AgentCore desta conta e região pode assumir a role (confused deputy).
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub "arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:*"
+      Policies:
+        - PolicyName: menor-privilegio
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # Inference profile us.* roteia para us-east-1, us-east-2 e us-west-2:
+              # o IAM exige o profile e o modelo base em cada região de destino.
+              - Sid: ModeloClaudeHaiku
+                Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource:
+                  - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${ModeloId}"
+                  - !Sub "arn:aws:bedrock:us-east-1::foundation-model/${ModeloBaseId}"
+                  - !Sub "arn:aws:bedrock:us-east-2::foundation-model/${ModeloBaseId}"
+                  - !Sub "arn:aws:bedrock:us-west-2::foundation-model/${ModeloBaseId}"
+              - Sid: InvocarTools
+                Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt ListarCatalogoFunction.Arn
+                  - !GetAtt RegistrarIntencaoFunction.Arn
+                  - !GetAtt RealizarCompraFunction.Arn
+              - Sid: Logs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogStreams
+                Resource:
+                  - !Sub
+                    - "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/runtimes/${Nome}-*"
+                    - Nome: !Join ["_", [!Join ["_", !Split ["-", !Ref Prefixo]], agente]]
+              # Token de identidade do workload, que o runtime obtém a cada invocação.
+              - Sid: IdentidadeDoWorkload
+                Effect: Allow
+                Action:
+                  - bedrock-agentcore:GetWorkloadAccessToken
+                  - bedrock-agentcore:GetWorkloadAccessTokenForJWT
+                  - bedrock-agentcore:GetWorkloadAccessTokenForUserId
+                Resource:
+                  - !Sub "arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default"
+                  - !Sub
+                    - "arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default/workload-identity/${Nome}-*"
+                    - Nome: !Join ["_", [!Join ["_", !Split ["-", !Ref Prefixo]], agente]]
+
+  AgenteRuntime:
+    Type: AWS::BedrockAgentCore::Runtime
+    Properties:
+      AgentRuntimeName: !Join ["_", [!Join ["_", !Split ["-", !Ref Prefixo]], agente]]
+      Description: Agente de compras (Strands) do chatbot de pagamentos
+      RoleArn: !GetAtt AgenteRole.Arn
+      AgentRuntimeArtifact:
+        CodeConfiguration:
+          Code:
+            S3:
+              Bucket: !Ref AgenteCodigoBucket
+              Prefix: !Ref AgenteCodigoChave
+          EntryPoint:
+            - main.py
+          Runtime: PYTHON_3_12
+      NetworkConfiguration:
+        NetworkMode: PUBLIC
+      ProtocolConfiguration: HTTP
+      EnvironmentVariables:
+        MODELO_ID: !Ref ModeloId
+        TOOL_LISTAR_CATALOGO: !GetAtt ListarCatalogoFunction.Arn
+        TOOL_REGISTRAR_INTENCAO: !GetAtt RegistrarIntencaoFunction.Arn
+        TOOL_REALIZAR_COMPRA: !GetAtt RealizarCompraFunction.Arn
+      Tags:
+        projeto: !Sub "${Prefixo}-pagamentos"
+
+  # ---------------------------------------------------------------------------
+  # API (F6): Lambdas atrás do API Gateway REST (rotas e autorizador na F7).
+  # O usuario_id vem sempre de requestContext.authorizer.claims.sub.
+  # ---------------------------------------------------------------------------
+  ChatLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${Prefixo}-api-chat"
+      RetentionInDays: 14
+
+  ChatRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${Prefixo}-api-chat"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: menor-privilegio
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # O TransactWriteItems do turno é checado como PutItem em cada item.
+              - Sid: HistoricoDoUsuario
+                Effect: Allow
+                Action:
+                  - dynamodb:Query
+                  - dynamodb:PutItem
+                Resource: !GetAtt ConversasTable.Arn
+              - Sid: InvocarAgente
+                Effect: Allow
+                Action:
+                  - bedrock-agentcore:InvokeAgentRuntime
+                Resource:
+                  - !GetAtt AgenteRuntime.AgentRuntimeArn
+                  - !Sub "${AgenteRuntime.AgentRuntimeArn}/runtime-endpoint/DEFAULT"
+              - Sid: Logs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt ChatLogGroup.Arn
+
+  ChatFunction:
+    Type: AWS::Lambda::Function
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks:
+            - W3002 # Code é um caminho local; o `cloudformation package` troca por S3Bucket/S3Key
+    Properties:
+      FunctionName: !Sub "${Prefixo}-api-chat"
+      Description: POST /chat com response streaming (invoca o agente no AgentCore)
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Handler: index.handler
+      Code: build/api/chat
+      MemorySize: 512
+      # Um turno pode ter até 8 chamadas ao modelo e às tools. Com streaming, o
+      # API Gateway REST aceita integrações de até 15 minutos.
+      Timeout: 180
+      Role: !GetAtt ChatRole.Arn
+      LoggingConfig:
+        LogGroup: !Ref ChatLogGroup
+      Environment:
+        Variables:
+          TABELA_CONVERSAS: !Ref ConversasTable
+          AGENTE_RUNTIME_ARN: !GetAtt AgenteRuntime.AgentRuntimeArn
+
+  ConversasLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${Prefixo}-api-conversas"
+      RetentionInDays: 14
+
+  ConversasRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${Prefixo}-api-conversas"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: menor-privilegio
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: LerHistorico
+                Effect: Allow
+                Action:
+                  - dynamodb:Query
+                Resource: !GetAtt ConversasTable.Arn
+              - Sid: Logs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt ConversasLogGroup.Arn
+
+  ConversasFunction:
+    Type: AWS::Lambda::Function
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks:
+            - W3002 # Code é um caminho local; o `cloudformation package` troca por S3Bucket/S3Key
+    Properties:
+      FunctionName: !Sub "${Prefixo}-api-conversas"
+      Description: GET /conversas (histórico do usuário, somente leitura)
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Handler: index.handler
+      Code: build/api/conversas
+      MemorySize: 256
+      Timeout: 10
+      Role: !GetAtt ConversasRole.Arn
+      LoggingConfig:
+        LogGroup: !Ref ConversasLogGroup
+      Environment:
+        Variables:
+          TABELA_CONVERSAS: !Ref ConversasTable
+
+  PerfilLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${Prefixo}-api-perfil"
+      RetentionInDays: 14
+
+  PerfilRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${Prefixo}-api-perfil"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: menor-privilegio
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: LerLimite
+                Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                Resource: !GetAtt UsuariosTable.Arn
+              - Sid: Logs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt PerfilLogGroup.Arn
+
+  PerfilFunction:
+    Type: AWS::Lambda::Function
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks:
+            - W3002 # Code é um caminho local; o `cloudformation package` troca por S3Bucket/S3Key
+    Properties:
+      FunctionName: !Sub "${Prefixo}-api-perfil"
+      Description: GET /perfil (e-mail e limite, somente leitura)
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Handler: index.handler
+      Code: build/api/perfil
+      MemorySize: 256
+      Timeout: 10
+      Role: !GetAtt PerfilRole.Arn
+      LoggingConfig:
+        LogGroup: !Ref PerfilLogGroup
+      Environment:
+        Variables:
+          TABELA_USUARIOS: !Ref UsuariosTable
+
+  # ---------------------------------------------------------------------------
+  # API Gateway (F7): REST regional, autorizador Cognito em todas as rotas.
+  # As rotas ficam sob /api porque, na F9, o CloudFront encaminha /api/* para o
+  # stage prod na MESMA origem do frontend: o navegador não faz chamada
+  # cross-origin, então não há CORS (nem rotas OPTIONS) para configurar.
+  # ---------------------------------------------------------------------------
+  Api:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub "${Prefixo}-api"
+      Description: API do chatbot de pagamentos (chat com streaming, histórico e perfil)
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+
+  ApiAutorizador:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      Name: !Sub "${Prefixo}-cognito"
+      RestApiId: !Ref Api
+      Type: COGNITO_USER_POOLS
+      ProviderARNs:
+        - !GetAtt UserPool.Arn
+      # Sem AuthorizationScopes nos métodos, o autorizador aceita o ID token
+      # (que traz a claim email usada pelo /perfil).
+      IdentitySource: method.request.header.Authorization
+
+  ApiRecursoRaiz:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref Api
+      ParentId: !GetAtt Api.RootResourceId
+      PathPart: api
+
+  ApiRecursoChat:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref Api
+      ParentId: !Ref ApiRecursoRaiz
+      PathPart: chat
+
+  ApiRecursoConversas:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref Api
+      ParentId: !Ref ApiRecursoRaiz
+      PathPart: conversas
+
+  ApiRecursoPerfil:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref Api
+      ParentId: !Ref ApiRecursoRaiz
+      PathPart: perfil
+
+  # POST /api/chat: Lambda proxy com response streaming. Com STREAM, o limite de
+  # 29 s não se aplica (até 15 min); o timeout fica um pouco acima do da Lambda.
+  ApiMetodoChat:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref Api
+      ResourceId: !Ref ApiRecursoChat
+      HttpMethod: POST
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref ApiAutorizador
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2021-11-15/functions/${ChatFunction.Arn}/response-streaming-invocations"
+        ResponseTransferMode: STREAM
+        TimeoutInMillis: 190000
+
+  ApiMetodoConversas:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref Api
+      ResourceId: !Ref ApiRecursoConversas
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref ApiAutorizador
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ConversasFunction.Arn}/invocations"
+
+  ApiMetodoPerfil:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref Api
+      ResourceId: !Ref ApiRecursoPerfil
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref ApiAutorizador
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PerfilFunction.Arn}/invocations"
+
+  # Erros gerados pelo próprio API Gateway (antes da Lambda) no mesmo formato
+  # { "erro": "..." } das Lambdas, em português.
+  ApiErroNaoAutenticado:
+    Type: AWS::ApiGateway::GatewayResponse
+    Properties:
+      RestApiId: !Ref Api
+      ResponseType: UNAUTHORIZED
+      StatusCode: "401"
+      ResponseTemplates:
+        application/json: '{"erro":"Sessão expirada ou inválida. Entre novamente."}'
+
+  ApiErroAcessoNegado:
+    Type: AWS::ApiGateway::GatewayResponse
+    Properties:
+      RestApiId: !Ref Api
+      ResponseType: ACCESS_DENIED
+      StatusCode: "403"
+      ResponseTemplates:
+        application/json: '{"erro":"Acesso negado."}'
+
+  # Rota inexistente: o API Gateway responde 403 "Missing Authentication Token",
+  # o que confunde. Vira 404.
+  ApiErroRotaInexistente:
+    Type: AWS::ApiGateway::GatewayResponse
+    Properties:
+      RestApiId: !Ref Api
+      ResponseType: MISSING_AUTHENTICATION_TOKEN
+      StatusCode: "404"
+      ResponseTemplates:
+        application/json: '{"erro":"Rota não encontrada."}'
+
+  ApiErroLimite:
+    Type: AWS::ApiGateway::GatewayResponse
+    Properties:
+      RestApiId: !Ref Api
+      ResponseType: THROTTLED
+      StatusCode: "429"
+      ResponseTemplates:
+        application/json: '{"erro":"Muitas requisições. Aguarde alguns segundos e tente de novo."}'
+
+  ApiErro4xx:
+    Type: AWS::ApiGateway::GatewayResponse
+    Properties:
+      RestApiId: !Ref Api
+      ResponseType: DEFAULT_4XX
+      ResponseTemplates:
+        application/json: '{"erro":"Requisição inválida."}'
+
+  ApiErro5xx:
+    Type: AWS::ApiGateway::GatewayResponse
+    Properties:
+      RestApiId: !Ref Api
+      ResponseType: DEFAULT_5XX
+      ResponseTemplates:
+        application/json: '{"erro":"Serviço indisponível no momento. Tente novamente em instantes."}'
+
+  # Deployment inicial. O CloudFormation não republica a API quando um método
+  # muda, então o deploy.sh cria um deployment novo no stage a cada execução.
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - ApiMetodoChat
+      - ApiMetodoConversas
+      - ApiMetodoPerfil
+    Properties:
+      RestApiId: !Ref Api
+      Description: Deployment inicial (o deploy.sh publica os seguintes)
+
+  ApiStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref Api
+      DeploymentId: !Ref ApiDeployment
+      StageName: prod
+      Description: Stage único do desafio
+      # Limite por stage para conter abuso e custo (o chat chama o modelo).
+      # Logs de execução e de acesso ficam desligados: exigem a role do
+      # AWS::ApiGateway::Account, que é da conta inteira (ver README, Decisões e limitações).
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          ThrottlingRateLimit: 10
+          ThrottlingBurstLimit: 20
+          MetricsEnabled: true
+      Tags:
+        - Key: projeto
+          Value: !Sub "${Prefixo}-pagamentos"
+
+  # Só esta API, neste stage, neste método e nesta rota pode invocar cada Lambda.
+  ChatPermissaoApi:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt ChatFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/prod/POST/api/chat"
+
+  ConversasPermissaoApi:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt ConversasFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/prod/GET/api/conversas"
+
+  PerfilPermissaoApi:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt PerfilFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/prod/GET/api/perfil"
+
+  # ---------------------------------------------------------------------------
+  # Hosting (F9): S3 privado + CloudFront com OAC. O mesmo domínio serve o site
+  # (/*, do S3) e a API (/api/*, do API Gateway): sem CORS.
+  # ---------------------------------------------------------------------------
+  SiteBucket:
+    Condition: CriarFrontend
+    Type: AWS::S3::Bucket
+    # O destroy.sh esvazia o bucket antes de apagar a stack; o conteúdo é
+    # regerado a cada deploy, então não há o que reter.
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      BucketName: !Sub "${Prefixo}-site-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      Tags:
+        - Key: projeto
+          Value: !Sub "${Prefixo}-pagamentos"
+
+  SiteOAC:
+    Condition: CriarFrontend
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${Prefixo}-site"
+        Description: Acesso do CloudFront ao bucket privado do site
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # Só esta distribuição lê o bucket; acesso direto ao S3 dá 403.
+  SiteBucketPolicy:
+    Condition: CriarFrontend
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref SiteBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: SomenteCloudFront
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "${SiteBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribuicao}"
+          - Sid: SomenteHttps
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !GetAtt SiteBucket.Arn
+              - !Sub "${SiteBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+
+  # O CloudFront só repassa o header Authorization em GET/HEAD se ele estiver na
+  # chave de cache (CachingDisabled não aceita headers). Esta política inclui o
+  # Authorization com TTL 0: na prática nada é guardado, e as respostas da API
+  # ainda vêm com Cache-Control: no-store.
+  ApiCachePolicy:
+    Condition: CriarFrontend
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: !Sub "${Prefixo}-api-sem-cache"
+        Comment: Repassa o Authorization para a API sem guardar respostas
+        DefaultTTL: 0
+        MinTTL: 0
+        MaxTTL: 1
+        ParametersInCacheKeyAndForwardedToOrigin:
+          EnableAcceptEncodingGzip: false
+          EnableAcceptEncodingBrotli: false
+          HeadersConfig:
+            HeaderBehavior: whitelist
+            Headers:
+              - Authorization
+          CookiesConfig:
+            CookieBehavior: none
+          QueryStringsConfig:
+            QueryStringBehavior: none
+
+  # Cabeçalhos de segurança do site. A CSP só libera o próprio domínio e o
+  # endpoint do Cognito, o único serviço externo que o Amplify chama.
+  SiteHeadersPolicy:
+    Condition: CriarFrontend
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: !Sub "${Prefixo}-site-seguranca"
+        Comment: HSTS, CSP, nosniff, frame DENY e referrer
+        SecurityHeadersConfig:
+          StrictTransportSecurity:
+            AccessControlMaxAgeSec: 31536000
+            IncludeSubdomains: true
+            Override: true
+          ContentTypeOptions:
+            Override: true
+          FrameOptions:
+            FrameOption: DENY
+            Override: true
+          ReferrerPolicy:
+            ReferrerPolicy: strict-origin-when-cross-origin
+            Override: true
+          ContentSecurityPolicy:
+            Override: true
+            ContentSecurityPolicy: !Sub >-
+              default-src 'self';
+              script-src 'self';
+              style-src 'self' 'unsafe-inline';
+              img-src 'self' data:;
+              font-src 'self';
+              connect-src 'self' https://cognito-idp.${AWS::Region}.amazonaws.com;
+              object-src 'none';
+              base-uri 'self';
+              form-action 'self';
+              frame-ancestors 'none'
+
+  Distribuicao:
+    Condition: CriarFrontend
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: !Sub "${Prefixo} - assistente de compras"
+        Enabled: true
+        DefaultRootObject: index.html
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: site
+            DomainName: !GetAtt SiteBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt SiteOAC.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+          - Id: api
+            DomainName: !Sub "${Api}.execute-api.${AWS::Region}.amazonaws.com"
+            # /api/chat no CloudFront vira /prod/api/chat no API Gateway.
+            OriginPath: /prod
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols:
+                - TLSv1.2
+              # Tempo máximo sem receber bytes da origem (padrão 30 s). O chat
+              # também envia um "pulso" a cada 15 s durante o streaming.
+              OriginReadTimeout: 60
+              OriginKeepaliveTimeout: 60
+        DefaultCacheBehavior:
+          TargetOriginId: site
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+          CachedMethods:
+            - GET
+            - HEAD
+          Compress: true
+          # Gerenciada pela AWS: CachingOptimized. Respeita o Cache-Control que o
+          # deploy.sh grava em cada arquivo (assets com hash: 1 ano; index.html e
+          # config.json: no-cache).
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          ResponseHeadersPolicyId: !Ref SiteHeadersPolicy
+        CacheBehaviors:
+          - PathPattern: /api/*
+            TargetOriginId: api
+            ViewerProtocolPolicy: https-only
+            AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+              - PUT
+              - PATCH
+              - POST
+              - DELETE
+            CachedMethods:
+              - GET
+              - HEAD
+            # Sem compressão: o CloudFront poderia segurar o NDJSON do chat para
+            # comprimir, e a resposta deixaria de chegar aos poucos.
+            Compress: false
+            CachePolicyId: !Ref ApiCachePolicy
+            # Gerenciada pela AWS: AllViewerExceptHostHeader. Repassa corpo, headers
+            # e query, menos o Host (o API Gateway exige o próprio domínio).
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+      Tags:
+        - Key: projeto
+          Value: !Sub "${Prefixo}-pagamentos"
+
+Outputs:
+  Prefixo:
+    Description: Prefixo usado nos nomes dos recursos.
+    Value: !Ref Prefixo
+
+  UserPoolId:
+    Description: Id do user pool (config.json do frontend e criar-usuario.sh).
+    Value: !Ref UserPool
+
+  UserPoolArn:
+    Description: ARN do user pool (autorizador do API Gateway).
+    Value: !GetAtt UserPool.Arn
+
+  UserPoolClientId:
+    Description: Id do app client usado pelo frontend (Amplify).
+    Value: !Ref UserPoolClient
+
+  UsuariosTabela:
+    Description: Tabela de usuários e limites (criar-usuario.sh).
+    Value: !Ref UsuariosTable
+
+  ConversasTabela:
+    Description: Tabela de histórico das conversas.
+    Value: !Ref ConversasTable
+
+  ProdutosTabela:
+    Description: Tabela do catálogo (seed-catalogo.sh).
+    Value: !Ref ProdutosTable
+
+  IntencoesTabela:
+    Description: Tabela de intenções de compra.
+    Value: !Ref IntencoesTable
+
+  TransacoesTabela:
+    Description: Tabela de transações aprovadas.
+    Value: !Ref TransacoesTable
+
+  ToolListarCatalogoArn:
+    Description: Lambda da tool listar_catalogo (invocada pelo agente).
+    Value: !GetAtt ListarCatalogoFunction.Arn
+
+  ToolRegistrarIntencaoArn:
+    Description: Lambda da tool registrar_intencao (invocada pelo agente).
+    Value: !GetAtt RegistrarIntencaoFunction.Arn
+
+  ToolRealizarCompraArn:
+    Description: Lambda da tool realizar_compra (invocada pelo agente).
+    Value: !GetAtt RealizarCompraFunction.Arn
+
+  AgenteRuntimeArn:
+    Description: ARN do runtime do agente (InvokeAgentRuntime pela Lambda do chat).
+    Value: !GetAtt AgenteRuntime.AgentRuntimeArn
+
+  AgenteRuntimeId:
+    Description: Id do runtime (log group /aws/bedrock-agentcore/runtimes/<id>-DEFAULT).
+    Value: !GetAtt AgenteRuntime.AgentRuntimeId
+
+  ApiChatArn:
+    Description: Lambda do POST /chat (integração com streaming no API Gateway, F7).
+    Value: !GetAtt ChatFunction.Arn
+
+  ApiConversasArn:
+    Description: Lambda do GET /conversas.
+    Value: !GetAtt ConversasFunction.Arn
+
+  ApiPerfilArn:
+    Description: Lambda do GET /perfil.
+    Value: !GetAtt PerfilFunction.Arn
+
+  ApiId:
+    Description: Id da API REST (deploy.sh publica um deployment novo a cada execução).
+    Value: !Ref Api
+
+  ApiStageNome:
+    Description: Stage publicado.
+    Value: !Ref ApiStage
+
+  ApiUrl:
+    Description: URL base da API. As rotas são <ApiUrl>/api/chat, /api/conversas e /api/perfil.
+    Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/prod"
+
+  ApiDominio:
+    Description: Domínio da API, usado como origem /api/* do CloudFront.
+    Value: !Sub "${Api}.execute-api.${AWS::Region}.amazonaws.com"
+
+  SiteBucketNome:
+    Condition: CriarFrontend
+    Description: Bucket privado com o build do frontend (deploy.sh e destroy.sh).
+    Value: !Ref SiteBucket
+
+  DistribuicaoId:
+    Condition: CriarFrontend
+    Description: Id da distribuição CloudFront (invalidação de cache no deploy).
+    Value: !Ref Distribuicao
+
+  SiteUrl:
+    Condition: CriarFrontend
+    Description: Endereço público do assistente (site e API em /api).
+    Value: !Sub "https://${Distribuicao.DomainName}"
