@@ -2,9 +2,6 @@ import { useState, type FormEvent } from 'react'
 import { Navigate } from 'react-router-dom'
 import {
   ArrowRight,
-  ArrowUpRight,
-  Check,
-  ChevronRight,
   Eye,
   EyeOff,
   LockKeyhole,
@@ -16,7 +13,6 @@ import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Spinner } from '../components/ui/Spinner'
 import { useAuth } from '../hooks/useAuth'
-import { demoProfiles } from '../config/demoProfiles'
 import { brand } from '../config/brand'
 
 export function LoginPage() {
@@ -66,8 +62,8 @@ export function LoginPage() {
             <span>começa aqui.</span>
           </h1>
           <p>
-            Feito por Álvaro Kayc e Kauan Pedreira
-            <br className="desktop-break" /> Projeto Compass UOL
+            Projeto Compass UOL
+            <br className="desktop-break" /> Trilha AWS AI FDE
           </p>
         </div>
         <img
@@ -142,48 +138,6 @@ export function LoginPage() {
               {!submitting && <ArrowRight size={19} />}
             </Button>
           </form>
-          <div className="demo-divider">
-            <span />
-            EXPLORE A EXPERIÊNCIA
-            <span />
-          </div>
-          <div className="demo-heading">
-            <h3>Perfis rápidos para demonstração</h3>
-            <span>
-              Selecione para preencher <ChevronRight size={12} />
-            </span>
-          </div>
-          <div className="demo-profiles">
-            {demoProfiles.map((profile) => (
-              <button
-                className={`demo-profile ${username === profile.username ? 'selected' : ''}`}
-                type="button"
-                key={profile.username}
-                disabled={submitting}
-                onClick={() => {
-                  setUsername(profile.username)
-                  setPassword(profile.password)
-                  setError('')
-                }}
-                aria-label={`Usar perfil ${profile.name}`}
-              >
-                <span className={`demo-avatar ${profile.label === 'VIP' ? 'vip' : ''}`}>
-                  {profile.name
-                    .split(' ')
-                    .map((part) => part[0])
-                    .join('')}
-                </span>
-                <span className="demo-profile-info">
-                  <strong>{profile.name}</strong>
-                  <span>{profile.label}</span>
-                </span>
-                <span className="demo-profile-limit">
-                  R$ {profile.limit.toLocaleString('pt-BR')}
-                  {username === profile.username ? <Check size={14} /> : <ArrowUpRight size={14} />}
-                </span>
-              </button>
-            ))}
-          </div>
         </div>
         <footer className="login-footer">
           <span>

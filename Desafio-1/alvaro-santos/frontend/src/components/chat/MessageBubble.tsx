@@ -4,6 +4,7 @@ import { ToolEventCard } from '../tools/ToolEventCard'
 import { Avatar } from '../ui/Avatar'
 import { useAuth } from '../../hooks/useAuth'
 import type { ChatMessage } from '../../types/chat'
+import { renderMarkdown } from '../../utils/markdown'
 export function MessageBubble({
   message,
   onAsk,
@@ -39,7 +40,9 @@ export function MessageBubble({
           {isUser ? 'Você' : brand.name}
           {!isUser && <span>ASSISTENTE IA</span>}
         </div>
-        <div className="message-content">{message.content}</div>
+        <div className="message-content">
+          {isUser ? message.content : renderMarkdown(message.content)}
+        </div>
         {message.interrupted && (
           <small className="interrupted-label">
             Resposta interrompida. O resultado de uma compra deve ser confirmado com o agente.

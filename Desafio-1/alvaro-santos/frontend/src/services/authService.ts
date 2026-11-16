@@ -77,16 +77,18 @@ function mapCognitoError(errorBody: unknown): string {
     : 'Não foi possível autenticar no Cognito.'
 }
 
-export function syncUserBalance(newBalance: number): void {
+export function syncUserBalance(newBalance: number, newName?: string): void {
   if (!Number.isFinite(newBalance)) return
   const current = readStoredUser()
   if (!current) return
   const nextTotal = Math.max(current.limite_total, newBalance)
+  const nextName = newName && newName.trim() ? newName.trim() : current.name
   try {
     localStorage.setItem(
       USER_STORAGE_KEY,
       JSON.stringify({
         ...current,
+        name: nextName,
         limite_total: nextTotal,
         limite_disponivel: newBalance,
       }),

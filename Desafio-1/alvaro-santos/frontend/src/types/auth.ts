@@ -19,5 +19,4 @@ export interface DemoProfile {
   label: string
   limit: number
   username: string
-  password: string
 }

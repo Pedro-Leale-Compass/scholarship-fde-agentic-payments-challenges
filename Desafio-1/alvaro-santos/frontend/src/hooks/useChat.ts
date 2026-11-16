@@ -120,7 +120,9 @@ export function useChat() {
                 typeof event.tool.result.saldo_disponivel === 'number' &&
                 Number.isFinite(event.tool.result.saldo_disponivel)
               ) {
-                syncUserBalance(event.tool.result.saldo_disponivel)
+                const userName =
+                  typeof event.tool.result.nome === 'string' ? event.tool.result.nome : undefined
+                syncUserBalance(event.tool.result.saldo_disponivel, userName)
                 void refreshUser().catch(() => undefined)
               }
               if (event.tool.name === 'realizar_compra' && isApproved(event.tool.result)) {

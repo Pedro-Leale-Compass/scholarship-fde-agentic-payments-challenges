@@ -4,16 +4,15 @@ Interface interativa desenvolvida em **React 19 + TypeScript + Vite** para a loj
 
 - **Porta padrão:** `5173`
 - **URL da aplicação:** `http://localhost:5173`
-- **Responsável:** Kauan Pedreira
 - **Tecnologias:** React 19, TypeScript, Vite, React Router, CSS modular, Lucide React, Vitest, ESLint
 
 ---
 
-## 1. Contribuições e Funcionalidades
+## 1. Funcionalidades
 
-Desenvolvido por **Kauan Pedreira**, o frontend contempla:
+O frontend contempla:
 
-- **Autenticação com JWT:** Tela de login com atalhos rápidos para os perfis dos instrutores (**Maria Alyce**, **Pedro Leale**, **Gabriel Missio**) e persistência de sessão via `localStorage`.
+- **Autenticação com JWT (Amazon Cognito):** Tela de login fechada (sem auto cadastro, apenas usuários convidados via Cognito) com persistência de sessão via `localStorage`.
 - **Chat com Streaming NDJSON:** Consumo em tempo real da rota `POST /api/chat` usando o parser `consumeNdjson` (`application/x-ndjson`), com feedback de digitação e auto-scroll.
 - **Renderização Visual de Tools MCP:**
   - `CatalogToolCard`: Grade visual de produtos disponíveis com preços e estoque em tempo real.
