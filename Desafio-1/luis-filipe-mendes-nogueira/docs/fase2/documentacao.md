@@ -326,17 +326,48 @@ O `sessionStorage` administrado pelo chat guarda a conversa selecionada e dados 
 
 Após uma interrupção, **Verificar resultado** faz somente GET. Uma requisição só pode ser reenviada pelo botão específico quando a consulta informa que não foi recebida e a conversa está livre; o reenvio conserva o mesmo ID. Não há reenvio automático do lote de compras.
 
-### Execução local usada na validação final
+### Execução local atual pelo Docker Compose
 
-O Docker Compose tinha uma imagem antiga ocupando a porta 3001. Ela entregava `config.json` sem `chatApiUrl` e não tinha o módulo de testes. O container `frontend` foi parado, e a validação final utilizou a exportação atual pelo servidor Python:
+O frontend atualizado foi reconstruído e validado pelo Docker Compose. Seu serviço não tem `depends_on` dos backends antigos. Os serviços `app` e `auth` foram associados ao perfil `legado` e não iniciam na execução padrão, desde que esse perfil não esteja habilitado por opção ou pela variável `COMPOSE_PROFILES`.
+
+Na raiz da pasta individual, com Docker e Compose disponíveis e `frontend/public/config.json` atualizado pelos outputs do deploy:
 
 ```bash
-npm --prefix frontend start
+docker compose up -d --build
+docker compose ps
 ```
 
-Esse comando serve `frontend/out/` em `127.0.0.1:3001`. O navegador acessa `http://localhost:3001`. O servidor deve permanecer aberto durante o uso local.
+O build usa Node 24 para gerar a exportação Next.js. A imagem final usa Nginx para servir os arquivos estáticos, com o mapeamento `127.0.0.1:3001:80`. O navegador acessa **http://localhost:3001** e chama diretamente Cognito e as APIs AWS.
 
-O Compose ainda contém dependências dos serviços antigos `app` e `auth`. Voltar ao fluxo local pelo Compose exige atualizar a imagem do frontend e revisar essas dependências. Não executar dois servidores na mesma porta. O frontend local não fica disponível remotamente para o instrutor apenas porque o backend foi implantado na AWS.
+As credenciais do legado não são necessárias para iniciar o frontend. Os serviços legados permanecem disponíveis por ativação explícita do perfil ou seleção de serviço; dentro desses containers, as credenciais necessárias são verificadas antes da execução. O código e o volume `ingressos_db` foram preservados, e os containers antigos foram parados.
+
+Para conferir a configuração e o conteúdo servido:
+
+```bash
+docker compose config --quiet
+docker compose config --services
+docker compose port frontend 80
+curl -fsS http://localhost:3001/config.json
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3001/login/
+```
+
+O usuário apresentou configuração válida, somente `frontend` na lista de serviços padrão, porta `127.0.0.1:3001`, `config.json` com as duas APIs e o Cognito, e HTTP 200 para `/login/`. Depois confirmou o funcionamento do chat pelo container. Não foi necessário outro deploy AWS nem repetir o lote de compras.
+
+### Histórico do conflito de porta e alternativa local
+
+Antes desse ajuste, o Compose servia uma imagem antiga, cujo `config.json` não tinha `chatApiUrl`. Durante a migração, o container foi parado e a exportação atual foi validada com `npm --prefix frontend start`, que usa um servidor Python local.
+
+Ao voltar ao Compose, a primeira tentativa encontrou a porta 3001 ocupada. Depois de liberar a porta, o container ainda apareceu sem publicação de porta ativa. Foi necessário recriar somente o frontend:
+
+```bash
+docker compose up -d --force-recreate --no-deps frontend
+```
+
+Após a recriação, o mapeamento e as chamadas HTTP funcionaram. Esse comando fica como diagnóstico para a situação observada; não precisa ser usado em toda inicialização.
+
+O servidor Python continua disponível como alternativa, mas deve ser encerrado antes de usar o Compose na mesma porta. Novas alterações no frontend ou no `config.json` exigem reconstruir a imagem para que o Nginx entregue a versão atual. O módulo de testes copiado manualmente para `frontend/out/` não é incluído por essa cópia na imagem Docker, pois o build gera sua própria exportação.
+
+O frontend local não fica disponível remotamente para o instrutor apenas porque o backend foi implantado na AWS. A publicação pública continua aguardando liberação.
 
 ## Deploy e configuração pública
 
@@ -418,6 +449,7 @@ Os números abaixo descrevem as execuções apresentadas pelo usuário em moment
 | Integração completa pelo navegador/API Gateway | 18 verificações passaram |
 | Isolamento entre dois usuários Cognito reais | A segunda conta recebeu 404 para a conversa da primeira |
 | Conferência visual final | Usuário confirmou histórico, streaming, painel e saldo |
+| Frontend atualizado pelo Compose | Somente frontend no fluxo padrão, porta/configuração/login conferidos e funcionamento do chat confirmado pelo usuário |
 
 ### Integração real pelo navegador
 
@@ -531,7 +563,7 @@ A política inline complementar foi associada à role do bootstrap e também dev
 
 ### Já implementado e validado no escopo atual
 
-Cognito, sessão/perfil, tabelas, ferramentas Lambda, agente Strands/Bedrock, AgentCore, chat autenticado, SSE, histórico persistido, pagamentos, erros, concorrência, isolamento e geração automática da configuração do frontend.
+Cognito, sessão/perfil, tabelas, ferramentas Lambda, agente Strands/Bedrock, AgentCore, chat autenticado, SSE, histórico persistido, pagamentos, erros, concorrência, isolamento, geração automática da configuração do frontend e execução local pelo Compose independente dos serviços legados.
 
 ### Adiado por orientação
 
@@ -543,7 +575,6 @@ Esses requisitos continuam pendentes no enunciado. O adiamento precisa ficar exp
 
 ### Fechamento técnico e documental
 
-- Atualizar o Compose para servir a interface atual, sem dependência operacional dos backends legados.
 - Consolidar o README principal de entrega e substituir as instruções genéricas de `infra/README.md` ou apontá-las para o fluxo atualizado.
 - Organizar prints/vídeo e relatórios da Fase 2: login, API sem token/401, cartão, Pix, limite excedido e intenção inválida, sem credenciais.
 - Configurar ou comprovar o alerta AWS Budgets; concluir a conferência dos custos de 16/11 quando disponíveis.
