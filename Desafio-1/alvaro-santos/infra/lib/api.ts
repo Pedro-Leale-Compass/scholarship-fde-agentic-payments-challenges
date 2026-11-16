@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as cdk from 'aws-cdk-lib';
 import * as apigw from 'aws-cdk-lib/aws-apigateway';
+import * as bedrockagentcore from 'aws-cdk-lib/aws-bedrockagentcore';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
@@ -24,6 +25,10 @@ export interface ChatApiProps {
    * Tabela de conversas (única tabela DynamoDB que a Lambda do chat pode acessar).
    */
   readonly conversasTable: dynamodb.ITable;
+  /**
+   * Runtime do agente Strands no Bedrock AgentCore invocado pela Lambda do chat.
+   */
+  readonly agentRuntime: bedrockagentcore.IBedrockAgentRuntime;
 }
 
 /**
@@ -42,7 +47,7 @@ export class ChatApi extends Construct {
   constructor(scope: Construct, id: string, props: ChatApiProps) {
     super(scope, id);
 
-    const { resourcePrefix, userPool, allowedOrigin, conversasTable } = props;
+    const { resourcePrefix, userPool, allowedOrigin, conversasTable, agentRuntime } = props;
     const apiDir = path.join(__dirname, '../../api');
 
     // 1. Lambda da Borda do Chat (Node.js 22 + bundling determinístico in-process via esbuild)
@@ -56,12 +61,14 @@ export class ChatApi extends Construct {
       environment: {
         CONVERSAS_TABLE_NAME: conversasTable.tableName,
         ALLOWED_ORIGIN: allowedOrigin,
+        AGENT_RUNTIME_ARN: agentRuntime.agentRuntimeArn,
       },
     });
 
-    // Menor privilégio estrito: a Lambda do chat só acessa a tabela de conversas.
+    // Menor privilégio estrito: a Lambda do chat só acessa a tabela de conversas e o runtime do agente.
     // Acesso a usuários, intenções e Bedrock direto é proibido nesta camada.
     conversasTable.grantReadWriteData(this.chatLambda);
+    agentRuntime.grantInvoke(this.chatLambda);
 
     // 2. Amazon API Gateway REST
     this.restApi = new apigw.RestApi(this, 'ChatRestApi', {
@@ -116,19 +123,22 @@ export class ChatApi extends Construct {
       identitySource: apigw.IdentitySource.header('Authorization'),
     });
 
-    // 5. Endpoint POST /chat com ResponseTransferMode.STREAM
+    // 5. Endpoints POST /chat e POST /api/chat com ResponseTransferMode.STREAM
+    const chatIntegration = new apigw.LambdaIntegration(this.chatLambda, {
+      proxy: true,
+      responseTransferMode: apigw.ResponseTransferMode.STREAM,
+    });
+    const authMethodOptions: apigw.MethodOptions = {
+      authorizer: cognitoAuthorizer,
+      authorizationType: apigw.AuthorizationType.COGNITO,
+    };
+
     const chatResource = this.restApi.root.addResource('chat');
-    chatResource.addMethod(
-      'POST',
-      new apigw.LambdaIntegration(this.chatLambda, {
-        proxy: true,
-        responseTransferMode: apigw.ResponseTransferMode.STREAM,
-      }),
-      {
-        authorizer: cognitoAuthorizer,
-        authorizationType: apigw.AuthorizationType.COGNITO,
-      },
-    );
+    chatResource.addMethod('POST', chatIntegration, authMethodOptions);
+
+    const apiResource = this.restApi.root.addResource('api');
+    const apiChatResource = apiResource.addResource('chat');
+    apiChatResource.addMethod('POST', chatIntegration, authMethodOptions);
 
     // 6. Output da URL pública da API
     new cdk.CfnOutput(this, 'ChatApiUrlOutput', {

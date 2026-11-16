@@ -57,14 +57,6 @@ export class AgenticPaymentsStack extends cdk.Stack {
       accountId: this.account,
     });
 
-    // Camada de Borda da API (API Gateway REST + Streaming + JWT Authorizer)
-    this.chatApi = new ChatApi(this, 'ChatApi', {
-      resourcePrefix: props.resourcePrefix,
-      userPool: this.auth.userPool,
-      allowedOrigin: `https://${this.frontendHost.distribution.distributionDomainName}`,
-      conversasTable: this.database.conversasTable,
-    });
-
     // Camada de Ferramentas Determinísticas (Lambdas de Tools)
     this.paymentTools = new PaymentTools(this, 'PaymentTools', {
       resourcePrefix: props.resourcePrefix,
@@ -78,6 +70,15 @@ export class AgenticPaymentsStack extends cdk.Stack {
       consultarSaldoLambda: this.paymentTools.consultarSaldoLambda,
       criarIntencaoLambda: this.paymentTools.criarIntencaoLambda,
       confirmarPagamentoLambda: this.paymentTools.confirmarPagamentoLambda,
+    });
+
+    // Camada de Borda da API (API Gateway REST + Streaming + JWT Authorizer)
+    this.chatApi = new ChatApi(this, 'ChatApi', {
+      resourcePrefix: props.resourcePrefix,
+      userPool: this.auth.userPool,
+      allowedOrigin: `https://${this.frontendHost.distribution.distributionDomainName}`,
+      conversasTable: this.database.conversasTable,
+      agentRuntime: this.paymentAgent.runtime,
     });
 
     // Output inicial para confirmação de síntese do scaffolding

@@ -4,7 +4,8 @@ import * as esbuild from 'esbuild';
 
 /**
  * Empacota uma Lambda TypeScript in-process via esbuild, evitando dependência de Docker ou npx.
- * O AWS SDK v3 já está disponível no runtime NODEJS_22_X, portanto é marcado como external.
+ * Apenas clientes DynamoDB usam o SDK v3 nativo do runtime NODEJS_22_X; pacotes mais recentes
+ * como @aws-sdk/client-bedrock-agentcore vão no bundle para evitar divergência de versão na Lambda.
  */
 export function bundleNode22Lambda(entryFile: string, assetRootDir: string): lambda.Code {
   return lambda.Code.fromAsset(assetRootDir, {
@@ -19,7 +20,8 @@ export function bundleNode22Lambda(entryFile: string, assetRootDir: string): lam
             target: 'node22',
             minify: true,
             sourcemap: true,
-            external: ['@aws-sdk/*'],
+            nodePaths: [path.resolve(__dirname, '../node_modules')],
+            external: ['@aws-sdk/client-dynamodb', '@aws-sdk/lib-dynamodb'],
             outfile: path.join(outputDir, 'index.js'),
           });
           return true;
