@@ -9,10 +9,16 @@ import * as path from 'path';
 
 // Carrega variáveis de ambiente do .env (ignorado pelo git) se existir.
 import dotenv from 'dotenv';
-dotenv.config({ override: true });
+dotenv.config({ path: path.resolve(__dirname, '..', '..', '..', '.env'), override: true });
 
-// Modelo temporário até a liberação do Claude Haiku na conta.
-const MODEL_ID = process.env.BEDROCK_MODEL_ID || 'global.amazon.nova-2-lite-v1:0';
+if (!process.env.BEDROCK_MODEL_ID) {
+  throw new Error(
+    'BEDROCK_MODEL_ID environment variable is not defined. ' +
+    'Set it in .env (e.g. BEDROCK_MODEL_ID=us.anthropic.claude-haiku-4-5-20251001-v1:0).',
+  );
+}
+
+const MODEL_ID = process.env.BEDROCK_MODEL_ID;
 const FOUNDATION_MODEL_ID = 'amazon.nova-2-lite-v1:0';
 const BEDROCK_MODEL_REGIONS = ['us-east-1', 'us-east-2', 'us-west-2'];
 
