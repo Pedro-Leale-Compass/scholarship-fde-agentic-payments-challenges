@@ -6,6 +6,8 @@
     "build": "tsc --noEmit",
     "synth": "cdk synth",
     "cdk": "cdk",
+    "build:frontend": "npm --prefix ../frontend run build",
+    "deploy": "npm run build:frontend && cdk deploy --require-approval never --outputs-file cdk-outputs.json",
     "usuario": "node scripts/criar-usuario.mjs",
     "agente": "node scripts/invocar-agente.mjs"
   },
