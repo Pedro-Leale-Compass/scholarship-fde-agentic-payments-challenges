@@ -43,6 +43,7 @@ O usuário entra com login, conversa com o assistente e compra pelo chat:
 - [Permissões IAM](#-permissões-iam)
 - [Evidências](#evidências)
 - [Remover todos os recursos](#-remover-todos-os-recursos)
+- [Desenvolvimento com IA](#-desenvolvimento-com-ia)
 
 ---
 
@@ -362,3 +363,29 @@ Uma role por função, cada uma com uma policy inline chamada `menor-privilegio`
 ```
 
 Remove as duas stacks, esvazia os buckets e apaga os logs do agente. ⚠️ **Isso apaga todos os dados** (usuários, conversas e transações).
+
+---
+
+## 🤖 Desenvolvimento com IA
+
+O projeto foi desenvolvido com o **Claude Code** como agente de programação, e eu no controle: escolhendo cada etapa, tomando as decisões e revisando tudo antes de seguir. A base desse trabalho é o [**`AGENT.md`**](AGENT.md), um arquivo de contexto que serve para **qualquer agente** (ou pessoa) continuar o projeto sem depender do histórico de uma conversa.
+
+```mermaid
+flowchart LR
+    A["👩‍💻 Escolho a<br/>próxima feature"] --> B["📖 Agente lê<br/>o AGENT.md"]
+    B --> C["⚙️ Implementa<br/>e testa"]
+    C --> D["🔍 Eu reviso<br/>e decido"]
+    D --> E["📝 Agente registra<br/>decisões e erros"]
+    E --> A
+```
+
+| Prática | Como apareceu no projeto |
+|---|---|
+| 📜 **Regras explícitas** | O que o agente pode e não pode fazer: nunca `git push`, nenhum segredo no código, nenhuma chamada à AWS sem minha autorização, uma feature por vez. |
+| 🧭 **Decisões registradas** | 13 decisões de arquitetura com o motivo de cada uma (ex.: trocar o Haiku 5.5 pelo 4.5, que era o liberado na conta). O agente propõe opções; a escolha é minha. |
+| 🧠 **Erros aprendidos** | Mais de 60 lições anotadas para não se repetirem (ex.: a AWS CLI do Windows devolve `\r` na saída, o CloudFront não repassa o `Authorization` em GET). |
+| ✅ **Verificação antes do commit** | Testes com a AWS mockada (vitest e pytest), `tsc`, `cfn-lint`, build e um verificador do template que barra `*` no IAM. Nada era dado como pronto sem passar. |
+| 🔁 **Contexto portátil** | O status das features, a arquitetura e o "para a próxima feature" ficam no arquivo: trocar de agente ou de sessão não perde nada. |
+| 🏷️ **Transparência** | Os commits feitos com o agente levam `Co-Authored-By: Claude`. |
+
+> 💡 A IA acelerou a escrita do código; a engenharia (o que fazer, em que ordem, com que limites e como validar) ficou comigo.

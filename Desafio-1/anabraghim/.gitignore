@@ -32,8 +32,7 @@ __pycache__/
 *.tfstate
 *.tfstate.*
 
-# documentos de trabalho locais (guia do agente e roteiro de deploy), fora do versionamento
-AGENT.md
+# roteiro local de deploy, fora do versionamento (o AGENT.md é versionado)
 PASSOS-RESTANTES.md
 
 # config gerada pelo deploy a partir dos Outputs da stack
