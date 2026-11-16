@@ -2,19 +2,17 @@
 # =============================================================================
 # Pipeline de Deploy em Comando Único e Teardown — Desafio 1 (AWS Cloud)
 #
-# Executa o ciclo completo da infraestrutura CDK em us-east-1 (conta 006739439488):
-#   - Modo padrão: compila o frontend React, provisiona a stack CDK, extrai os
-#     outputs reais (API Gateway + Cognito) para frontend/.env.local, recompila
-#     o frontend com esses valores e atualiza o BucketDeployment + invalidação
-#     do cache do CloudFront em /*.
-#   - Modo --skip-frontend: ativa -c skipFrontendHost=true para deploy apenas
-#     do backend com CORS liberado para http://localhost:5173 (contorno temporário
-#     caso cloudfront:* esteja bloqueado na conta compartilhada) e gera
-#     frontend/.env.local para execução local da SPA.
+# Executa o ciclo da infraestrutura CDK em us-east-1 (conta 006739439488):
+#   - Modo padrão (diretriz oficial do desafio): implanta backend e autenticação
+#     na AWS (DynamoDB, Cognito, 3 Tool Lambdas, AgentCore Runtime, API Gateway),
+#     libera CORS para http://localhost:5173 e gera frontend/.env.local com os
+#     outputs reais para execução local do frontend React.
+#   - Modo --with-cloudfront: ativa -c skipFrontendHost=false para provisionar
+#     também S3 privado + CloudFront OAC + BucketDeployment (uso opcional futuro).
 #   - Modo --destroy: executa cdk destroy --all e exibe o checklist de teardown.
 #
 # Uso:
-#   bash scripts/deploy.sh [--skip-frontend] [--destroy] [--profile <perfil>]
+#   bash scripts/deploy.sh [--with-cloudfront] [--destroy] [--profile <perfil>]
 # =============================================================================
 set -euo pipefail
 
@@ -26,13 +24,17 @@ OUTPUTS_FILE="${INFRA_DIR}/cdk-outputs.json"
 FRONTEND_ENV_FILE="${FRONTEND_DIR}/.env.local"
 
 AWS_PROFILE="${AWS_PROFILE:-alvaro-fellowship}"
-SKIP_FRONTEND=false
+WITH_CLOUDFRONT=false
 DESTROY_MODE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --skip-frontend)
-      SKIP_FRONTEND=true
+      WITH_CLOUDFRONT=false
+      shift
+      ;;
+    --with-cloudfront)
+      WITH_CLOUDFRONT=true
       shift
       ;;
     --destroy)
@@ -48,7 +50,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     -h|--help)
-      sed -n '2,20p' "${BASH_SOURCE[0]}"
+      sed -n '2,18p' "${BASH_SOURCE[0]}"
       exit 0
       ;;
     *)
@@ -61,8 +63,8 @@ done
 export AWS_DEFAULT_REGION="us-east-1"
 
 CDK_CONTEXT_ARGS=()
-if [[ "${SKIP_FRONTEND}" == "true" ]]; then
-  CDK_CONTEXT_ARGS+=(-c "skipFrontendHost=true")
+if [[ "${WITH_CLOUDFRONT}" == "true" ]]; then
+  CDK_CONTEXT_ARGS+=(-c "skipFrontendHost=false")
 fi
 
 write_frontend_env_from_outputs() {
@@ -110,15 +112,15 @@ if [[ "${DESTROY_MODE}" == "true" ]]; then
   echo "  [ ] API Gateway: REST API alvaro-chat-api removida."
   echo "  [ ] Lambda: funções alvaro-* removidas."
   echo "  [ ] Bedrock AgentCore: runtime alvaro_payment_agent removido."
-  echo "  [ ] S3 / CloudFront (se aplicável): bucket alvaro-frontend-bucket-* e distribuição removidos."
+  echo "  [ ] S3 / CloudFront (se --with-cloudfront): bucket alvaro-frontend-bucket-* e distribuição removidos."
   exit 0
 fi
 
-if [[ "${SKIP_FRONTEND}" == "false" ]]; then
+if [[ "${WITH_CLOUDFRONT}" == "true" ]]; then
   echo "== [1/4] Preparando build inicial do frontend React (Vite)..."
   npm --prefix "${FRONTEND_DIR}" run build
 else
-  echo "== [1/4] Modo --skip-frontend ativo (CORS liberado para http://localhost:5173)."
+  echo "== [1/4] Modo padrão ativo: backend e Cognito na AWS + frontend local (http://localhost:5173)."
 fi
 
 echo "== [2/4] Validando tipos TypeScript da infraestrutura (infra/)..."
@@ -135,15 +137,17 @@ npx cdk deploy --all \
 echo "== [4/4] Gerando frontend/.env.local a partir dos outputs reais do CDK..."
 write_frontend_env_from_outputs
 
-if [[ "${SKIP_FRONTEND}" == "false" ]]; then
+if [[ "${WITH_CLOUDFRONT}" == "true" ]]; then
   echo "== Recompilando frontend com os outputs reais e publicando no S3 + CloudFront..."
   npm --prefix "${FRONTEND_DIR}" run build
   npx cdk deploy --all \
+    "${CDK_CONTEXT_ARGS[@]}" \
     --require-approval never \
     --outputs-file "${OUTPUTS_FILE}" \
     --profile "${AWS_PROFILE}"
 else
-  echo "== Ambiente backend pronto. Para iniciar o frontend local: npm --prefix frontend run dev"
+  echo "== Backend e Cognito prontos na AWS. Inicie o frontend local com:"
+  echo "   npm --prefix frontend run dev"
 fi
 
 echo "== Deploy concluído. Outputs salvos em infra/cdk-outputs.json."

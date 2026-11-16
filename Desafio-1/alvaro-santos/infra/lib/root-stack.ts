@@ -13,8 +13,8 @@ export interface AgenticPaymentsStackProps extends cdk.StackProps {
    */
   readonly resourcePrefix: string;
   /**
-   * Quando true (ou contexto CDK -c skipFrontendHost=true), omite S3 + CloudFront
-   * e libera o CORS da API para a origem local (contorno temporário ao bloqueio cloudfront:*).
+   * Padrão true (diretriz do Desafio 1: frontend local em http://localhost:5173 e backend + Cognito na AWS).
+   * Passe false (ou -c skipFrontendHost=false) para provisionar S3 privado + CloudFront OAC.
    */
   readonly skipFrontendHost?: boolean;
   /**
@@ -53,7 +53,9 @@ export class AgenticPaymentsStack extends cdk.Stack {
     const skipContext = this.node.tryGetContext('skipFrontendHost');
     const skipFrontendHost =
       props.skipFrontendHost ??
-      (skipContext === true || skipContext === 'true' || skipContext === '1');
+      (skipContext === undefined
+        ? true
+        : skipContext === true || skipContext === 'true' || skipContext === '1');
     const localFrontendOrigin =
       props.localFrontendOrigin ??
       (this.node.tryGetContext('localFrontendOrigin') as string | undefined) ??

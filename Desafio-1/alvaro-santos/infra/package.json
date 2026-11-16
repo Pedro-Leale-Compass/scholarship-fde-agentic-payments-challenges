@@ -10,10 +10,13 @@
     "cdk": "cdk",
     "synth": "cdk synth",
     "synth:backend-only": "cdk synth -c skipFrontendHost=true",
-    "deploy": "npm run build:frontend && npm run build && cdk deploy --all --require-approval never --outputs-file cdk-outputs.json",
-    "deploy:backend-only": "npm run build && cdk deploy --all -c skipFrontendHost=true --require-approval never --outputs-file cdk-outputs.json",
+    "synth:with-cloudfront": "cdk synth -c skipFrontendHost=false",
+    "deploy": "npm run build && cdk deploy --all --require-approval never --outputs-file cdk-outputs.json",
+    "deploy:backend-only": "npm run deploy",
+    "deploy:with-cloudfront": "npm run build:frontend && npm run build && cdk deploy --all -c skipFrontendHost=false --require-approval never --outputs-file cdk-outputs.json",
     "destroy": "cdk destroy --all --force",
-    "destroy:backend-only": "cdk destroy --all -c skipFrontendHost=true --force"
+    "destroy:backend-only": "npm run destroy",
+    "destroy:with-cloudfront": "cdk destroy --all -c skipFrontendHost=false --force"
   },
   "devDependencies": {
     "@aws-sdk/client-bedrock-agentcore": "^3.1169.0",
