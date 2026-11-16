@@ -10,10 +10,12 @@ import {
   encerrarSessao,
 } from "../services/auth";
 import ChatWindow from "../components/ChatWindow";
+import LoadingScreen from "../components/LoadingScreen";
 
 export default function HomePage() {
   const router = useRouter();
   const [usuario, setUsuario] = useState<Usuario | null>(null);
+  const [etapaAtual, setEtapaAtual] = useState(0);
   const [erro, setErro] = useState("");
   const [saindo, setSaindo] = useState(false);
 
@@ -23,6 +25,10 @@ export default function HomePage() {
     async function iniciar() {
       try {
         await configurarAutenticacao();
+
+        if (!ativo) return;
+        setEtapaAtual(1);
+
         const sessao = await fetchAuthSession();
 
         if (!ativo) return;
@@ -32,9 +38,14 @@ export default function HomePage() {
           return;
         }
 
+        setEtapaAtual(2);
+
         const perfil = await buscarPerfil();
 
-        if (ativo) setUsuario(perfil);
+        if (!ativo) return;
+
+        setEtapaAtual(3);
+        setUsuario(perfil);
       } catch (falha) {
         if (!ativo) return;
 
@@ -50,11 +61,15 @@ export default function HomePage() {
     }
 
     void iniciar();
-    return () => { ativo = false; };
+
+    return () => {
+      ativo = false;
+    };
   }, [router]);
 
   async function sair() {
     if (saindo) return;
+
     setSaindo(true);
 
     try {
@@ -66,29 +81,17 @@ export default function HomePage() {
     }
   }
 
-  if (usuario) return <ChatWindow usuarioInicial={usuario} />;
+  if (usuario) {
+    return <ChatWindow usuarioInicial={usuario} />;
+  }
 
   return (
-    <main>
-      <h1>Agente de Pagamentos</h1>
-      {erro ? <p role="alert">{erro}</p> : (
-        <p role="status">Carregando seu perfil…</p>
-      )}
-
-      {erro && (
-        <>
-          <button
-            type="button"
-            onClick={() => window.location.reload()}
-            disabled={saindo}
-          >
-            Tentar novamente
-          </button>
-          <button type="button" onClick={() => void sair()} disabled={saindo}>
-            {saindo ? "Saindo…" : "Sair da conta"}
-          </button>
-        </>
-      )}
-    </main>
+    <LoadingScreen
+      etapaAtual={etapaAtual}
+      erro={erro}
+      saindo={saindo}
+      onTentarNovamente={() => window.location.reload()}
+      onSair={() => void sair()}
+    />
   );
 }

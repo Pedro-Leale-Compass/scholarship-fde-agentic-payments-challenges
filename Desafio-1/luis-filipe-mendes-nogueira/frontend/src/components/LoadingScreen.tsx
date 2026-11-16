@@ -1,41 +1,38 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
 const ETAPAS = [
+  "Preparando seu acesso",
   "Reconhecendo sua conta",
   "Conferindo quanto você pode gastar",
-  "Buscando os eventos de hoje",
   "Abrindo sua conversa",
 ];
 
 interface LoadingScreenProps {
-  onConcluido: () => void;
+  etapaAtual: number;
+  erro?: string;
+  saindo?: boolean;
+  onTentarNovamente: () => void;
+  onSair: () => void;
 }
 
-export default function LoadingScreen({ onConcluido }: LoadingScreenProps) {
-  const [etapaAtual, setEtapaAtual] = useState(0);
-
-  useEffect(() => {
-    if (etapaAtual >= ETAPAS.length) {
-      onConcluido();
-      return;
-    }
-    const timer = setTimeout(() => setEtapaAtual((n) => n + 1), 500);
-    return () => clearTimeout(timer);
-  }, [etapaAtual, onConcluido]);
-
+export default function LoadingScreen({
+  etapaAtual,
+  erro,
+  saindo = false,
+  onTentarNovamente,
+  onSair,
+}: LoadingScreenProps) {
   return (
-    <div className="ig-tela-carregando">
+    <main className="ig-tela-carregando" aria-busy={!erro}>
       <div className="ig-carregando">
-        <div className="ig-carregando__blocos">
-          {ETAPAS.map((_, i) => (
+        <div className="ig-carregando__blocos" aria-hidden="true">
+          {ETAPAS.map((_, indice) => (
             <span
-              key={i}
+              key={indice}
               className={`ig-carregando__bloco ${
-                i < etapaAtual
+                indice < etapaAtual
                   ? "ig-carregando__bloco--feito"
-                  : i === etapaAtual
+                  : indice === etapaAtual && !erro
                     ? "ig-carregando__bloco--agora"
                     : ""
               }`}
@@ -50,38 +47,90 @@ export default function LoadingScreen({ onConcluido }: LoadingScreenProps) {
             marginTop: "var(--e-6)",
           }}
         >
-          Só um instante
+          {erro ? "Não conseguimos continuar" : "Só um instante"}
         </h1>
-        <p
-          style={{
-            font: "var(--t-corpo)",
-            color: "var(--c-tinta-70)",
-            marginTop: "var(--e-2)",
-          }}
-        >
-          Estamos deixando tudo pronto para você conversar.
-        </p>
+
+        {erro ? (
+          <p
+            role="alert"
+            style={{
+              font: "var(--t-corpo)",
+              marginTop: "var(--e-2)",
+            }}
+          >
+            {erro}
+          </p>
+        ) : (
+          <p
+            style={{
+              font: "var(--t-corpo)",
+              color: "var(--c-tinta-70)",
+              marginTop: "var(--e-2)",
+            }}
+          >
+            Estamos deixando tudo pronto para você conversar.
+          </p>
+        )}
 
         <div className="ig-etapas" aria-live="polite">
-          {ETAPAS.map((etapa, i) => {
+          {ETAPAS.map((etapa, indice) => {
             const estado =
-              i < etapaAtual ? "feita" : i === etapaAtual ? "agora" : "espera";
+              indice < etapaAtual
+                ? "feita"
+                : indice === etapaAtual && !erro
+                  ? "agora"
+                  : "espera";
+
             return (
-              <div key={etapa} className={`ig-etapa ig-etapa--${estado}`}>
+              <div
+                key={etapa}
+                className={`ig-etapa ig-etapa--${estado}`}
+              >
                 <span className="ig-etapa__marca" />
                 <span className="ig-etapa__nome">{etapa}</span>
                 <span className="ig-etapa__estado">
-                  {estado === "feita"
-                    ? "pronto"
-                    : estado === "agora"
-                      ? "agora"
-                      : "em fila"}
+                  {indice === etapaAtual && erro
+                    ? "interrompido"
+                    : estado === "feita"
+                      ? "pronto"
+                      : estado === "agora"
+                        ? "agora"
+                        : "em fila"}
                 </span>
               </div>
             );
           })}
         </div>
+
+        {erro && (
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "var(--e-2)",
+              marginTop: "var(--e-6)",
+            }}
+          >
+            <button
+              type="button"
+              className="ig-botao ig-botao--principal"
+              onClick={onTentarNovamente}
+              disabled={saindo}
+            >
+              Tentar novamente
+            </button>
+
+            <button
+              type="button"
+              className="ig-botao ig-botao--contorno"
+              onClick={onSair}
+              disabled={saindo}
+            >
+              {saindo ? "Saindo…" : "Sair da conta"}
+            </button>
+          </div>
+        )}
       </div>
-    </div>
+    </main>
   );
 }
