@@ -188,19 +188,23 @@ Todas as roles têm o prefixo `ana-braghim-` e só podem escrever nos próprios 
 
 ## Evidências
 
-> 📸 Pendente: as capturas serão adicionadas em [`screenshots/aws/`](screenshots/aws/) depois do deploy. O que cada uma deve mostrar está no [README da pasta](screenshots/aws/README.md).
+> 📸 Capturas do deploy real, em [`screenshots/aws/`](screenshots/aws/).
 
-| Login | API sem token (401) |
-|---|---|
-| ![Login do Cognito sem cadastro](screenshots/aws/01-login.png) | ![Chamada sem token rejeitada com 401](screenshots/aws/02-api-sem-token-401.png) |
+**Alerta de custo criado no AWS Budgets** (antes do primeiro deploy)
 
-| Compra com cartão | Compra com Pix |
-|---|---|
-| ![Compra aprovada com cartão](screenshots/aws/03-compra-cartao.png) | ![Compra aprovada com Pix](screenshots/aws/04-compra-pix.png) |
+![Orçamento criado no AWS Budgets](screenshots/aws/0-orcamento-criado.png)
 
-| Limite excedido | `intencao_id` inválido |
+| Login (sem opção de cadastro) | API sem token → 401 |
 |---|---|
-| ![Compra recusada por limite excedido](screenshots/aws/05-limite-excedido.png) | ![Intenção inventada recusada](screenshots/aws/06-intencao-invalida.png) |
+| ![Página de login do Cognito sem cadastro](screenshots/aws/1-pagina-login.png) | ![Chamada à API sem token rejeitada com 401](screenshots/aws/2-chamada-api-sem-token-rejeitada.png) |
+
+| Compra aprovada com cartão | Compra aprovada com Pix |
+|---|---|
+| ![Compra aprovada com cartão](screenshots/aws/3-compra-aprovada-com-cartao.png) | ![Compra aprovada com Pix](screenshots/aws/4-compra-aprovada-pix.png) |
+
+| Bloqueada por limite excedido | `intencao_id` inválido |
+|---|---|
+| ![Tentativa bloqueada por limite excedido](screenshots/aws/5-tentativa-bloqueada-limite-excedido.png) | ![Pagamento de intenção inválida recusado](screenshots/aws/6-intencao-invalida.png) |
 
 ---
 
