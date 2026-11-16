@@ -7,9 +7,10 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test test/*.test.ts",
-    "synth": "cdk synth -c frontend=false",
-    "deploy:backend": "cdk deploy -c frontend=false",
-    "deploy": "npm --prefix ../frontend run build && cdk deploy",
+    "install:lambdas": "npm ci --prefix ../tools && npm ci --prefix ../api",
+    "synth": "npm run install:lambdas && cdk synth -c frontend=false",
+    "deploy:backend": "npm run install:lambdas && cdk deploy -c frontend=false",
+    "deploy": "npm run install:lambdas && npm ci --prefix ../frontend && npm run build --prefix ../frontend && cdk deploy",
     "destroy": "cdk destroy",
     "check": "npm run typecheck && npm test"
   },
