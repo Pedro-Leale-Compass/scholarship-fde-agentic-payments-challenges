@@ -4,12 +4,14 @@ import { FrontendHostingConstruct } from './constructs/frontend-hosting';
 import { AutenticacaoConstruct } from './constructs/autenticacao';
 import { DadosConstruct } from './constructs/dados';
 import { ToolsConstruct } from './constructs/tools';
+import { AgenteConstruct } from './constructs/agente';
 
 export class DesafioStack extends cdk.Stack {
   public readonly frontendHosting: FrontendHostingConstruct;
   public readonly autenticacao: AutenticacaoConstruct;
   public readonly dados: DadosConstruct;
   public readonly tools: ToolsConstruct;
+  public readonly agente: AgenteConstruct;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -98,6 +100,28 @@ export class DesafioStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'ToolRealizarCompraArn', {
       value: this.tools.realizarCompra.functionArn,
       description: 'ARN da Lambda tool realizar_compra',
+    });
+
+    // =========================================================================
+    // 5. Agente (Strands no Bedrock AgentCore Runtime)
+    // =========================================================================
+    this.agente = new AgenteConstruct(this, 'Agente', {
+      toolListarCatalogo: this.tools.listarCatalogo,
+      toolRegistrarIntencao: this.tools.registrarIntencao,
+      toolRealizarCompra: this.tools.realizarCompra,
+    });
+
+    new cdk.CfnOutput(this, 'AgentRuntimeArn', {
+      value: this.agente.runtimeArn,
+      description: 'ARN do Bedrock AgentCore Runtime',
+    });
+    new cdk.CfnOutput(this, 'AgentRuntimeId', {
+      value: this.agente.runtimeId,
+      description: 'ID do Bedrock AgentCore Runtime',
+    });
+    new cdk.CfnOutput(this, 'AgentImageUri', {
+      value: this.agente.imageUri,
+      description: 'URI da imagem Docker no ECR do agente',
     });
   }
 }
