@@ -1,0 +1,16 @@
+# Ambientes Python
+.venv/
+__pycache__/
+
+# Node
+node_modules/
+
+# Saída do CDK
+cdk.out/
+
+# Segredos e configurações locais
+.env
+.env.*
+
+# Pacote do agente para o AgentCore
+agent/build/
