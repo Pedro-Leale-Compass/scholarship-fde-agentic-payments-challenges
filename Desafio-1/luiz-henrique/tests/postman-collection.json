@@ -180,13 +180,13 @@
     },
     {
       "key": "userPoolClientId",
-      "value": "7eb2mr48f60mn5c4gdugk0cjhu",
+      "value": "<user-pool-client-id>",
       "type": "string",
       "description": "Cognito User Pool Client ID (output CognitoUserPoolClientId do cdk-outputs.json)"
     },
     {
       "key": "apiUrl",
-      "value": "https://<rest-api-id>.execute-api.us-east-1.amazonaws.com/prod/",
+      "value": "<api-url>/",
       "type": "string",
       "description": "URL da API Gateway (output ApiUrl do cdk-outputs.json)"
     },
