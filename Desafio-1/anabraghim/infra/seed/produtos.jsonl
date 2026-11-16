@@ -1,0 +1,3 @@
+{"produto_id":{"S":"10000000-0000-0000-0000-000000000001"},"nome":{"S":"Fone Bluetooth"},"preco_centavos":{"N":"24990"},"moeda":{"S":"BRL"},"estoque":{"N":"12"},"categoria":{"S":"audio"}}
+{"produto_id":{"S":"10000000-0000-0000-0000-000000000002"},"nome":{"S":"Teclado Mec\u00e2nico"},"preco_centavos":{"N":"45900"},"moeda":{"S":"BRL"},"estoque":{"N":"5"},"categoria":{"S":"perifericos"}}
+{"produto_id":{"S":"10000000-0000-0000-0000-000000000003"},"nome":{"S":"Mouse Sem Fio"},"preco_centavos":{"N":"12950"},"moeda":{"S":"BRL"},"estoque":{"N":"30"},"categoria":{"S":"perifericos"}}
