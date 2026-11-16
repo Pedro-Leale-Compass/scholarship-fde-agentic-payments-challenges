@@ -1,6 +1,6 @@
 import unittest
 from copy import deepcopy
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import agente
 from strands.agent.conversation_manager import NullConversationManager
@@ -18,21 +18,16 @@ class TestAgente(unittest.IsolatedAsyncioTestCase):
         self.client_lambda = MagicMock()
         self.client_modelo = MagicMock()
 
-        self.contexto_cliente = MagicMock()
-        self.contexto_cliente.__aenter__ = AsyncMock(
-            return_value=self.client_modelo
-        )
-        self.contexto_cliente.__aexit__ = AsyncMock(
-            return_value=False
-        )
+        self.sessao = MagicMock()
+        self.sessao.client.return_value = self.client_modelo
 
-        patch_cliente = patch.object(
-            agente,
-            "AsyncAnthropicBedrockMantle",
-            return_value=self.contexto_cliente,
+        patch_sessao = patch.object(
+            agente.boto3,
+            "Session",
+            return_value=self.sessao,
         )
-        self.construir_cliente = patch_cliente.start()
-        self.addCleanup(patch_cliente.stop)
+        self.construir_sessao = patch_sessao.start()
+        self.addCleanup(patch_sessao.stop)
 
     def criar(self, historico=None, usuario_id="usuario-autenticado"):
         return agente.criar_agente(
@@ -43,29 +38,50 @@ class TestAgente(unittest.IsolatedAsyncioTestCase):
             perfil_aws="luisfilipe",
         )
 
-    async def test_configura_haiku_regional_sem_invocar_servicos(self):
+    async def test_configura_haiku_runtime_sem_invocar_servicos(self):
         async with self.criar() as instancia:
-            argumentos = self.construir_cliente.call_args.kwargs
-
-            self.assertEqual(argumentos["aws_region"], "us-east-1")
-            self.assertEqual(argumentos["aws_profile"], "luisfilipe")
-            self.assertEqual(
-                argumentos["base_url"],
-                "https://bedrock-mantle.us-east-1.api.aws/anthropic",
+            self.construir_sessao.assert_called_once_with(
+                profile_name="luisfilipe",
+                region_name="us-east-1",
             )
+
             self.assertEqual(
                 instancia.model.get_config()["model_id"],
-                "anthropic.claude-haiku-4-5",
+                "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            )
+            self.assertEqual(
+                instancia.model.get_config()["max_tokens"],
+                1024,
             )
             self.assertIsInstance(
                 instancia.conversation_manager,
                 NullConversationManager,
             )
 
-            self.client_modelo.messages.create.assert_not_called()
+            chamada = self.sessao.client.call_args
+            servico = (
+                chamada.args[0]
+                if chamada.args
+                else chamada.kwargs["service_name"]
+            )
+            self.assertEqual(servico, "bedrock-runtime")
+
+            self.client_modelo.converse.assert_not_called()
+            self.client_modelo.converse_stream.assert_not_called()
             self.client_lambda.invoke.assert_not_called()
 
-        self.contexto_cliente.__aexit__.assert_awaited_once()
+        self.client_modelo.close.assert_called_once()
+
+    async def test_sem_perfil_usa_credenciais_do_ambiente(self):
+        async with agente.criar_agente(
+            client_lambda=self.client_lambda,
+            usuario_id="usuario-autenticado",
+            funcoes=FUNCOES,
+        ):
+            self.construir_sessao.assert_called_once_with(
+                profile_name=None,
+                region_name="us-east-1",
+            )
 
     async def test_historico_e_copiado_sem_perder_mensagens(self):
         historico = [
@@ -117,9 +133,7 @@ class TestAgente(unittest.IsolatedAsyncioTestCase):
                     "falha simulada durante execução"
                 )
 
-        self.contexto_cliente.__aexit__.assert_awaited_once()
-        tipo_erro = self.contexto_cliente.__aexit__.await_args.args[0]
-        self.assertIs(tipo_erro, RuntimeError)
+        self.client_modelo.close.assert_called_once()
 
     async def test_fecha_cliente_quando_montagem_do_agente_falha(self):
         with patch.object(
@@ -134,14 +148,14 @@ class TestAgente(unittest.IsolatedAsyncioTestCase):
                 async with self.criar():
                     self.fail("O agente não deveria ter sido criado.")
 
-        self.contexto_cliente.__aexit__.assert_awaited_once()
+        self.client_modelo.close.assert_called_once()
 
-    async def test_historico_invalido_e_recusado_antes_do_cliente(self):
+    async def test_historico_invalido_e_recusado_antes_da_sessao(self):
         with self.assertRaises(ValueError):
             async with self.criar(historico={"messages": []}):
                 self.fail("Histórico inválido foi aceito.")
 
-        self.construir_cliente.assert_not_called()
+        self.construir_sessao.assert_not_called()
         self.client_lambda.invoke.assert_not_called()
 
 

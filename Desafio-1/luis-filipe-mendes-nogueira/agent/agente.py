@@ -2,20 +2,18 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from copy import deepcopy
 
-from anthropic import AsyncAnthropicBedrockMantle
+import boto3
+from botocore.config import Config
 from strands import Agent
 from strands.agent.conversation_manager import NullConversationManager
-from strands.models.anthropic import AnthropicModel
+from strands.models import BedrockModel
 
 from ferramentas import criar_ferramentas
 from prompt import PROMPT_SISTEMA
 
 
 REGIAO = "us-east-1"
-MODELO_ID = "anthropic.claude-haiku-4-5"
-ENDPOINT_MANTLE = (
-    "https://bedrock-mantle.us-east-1.api.aws/anthropic"
-)
+MODELO_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 
 
 @asynccontextmanager
@@ -37,19 +35,29 @@ async def criar_agente(
 
     mensagens = deepcopy(historico) if historico is not None else []
 
-    async with AsyncAnthropicBedrockMantle(
-        aws_region=REGIAO,
-        aws_profile=perfil_aws,
-        base_url=ENDPOINT_MANTLE,
-        timeout=60.0,
-        max_retries=1,
-    ) as client_modelo:
-        modelo = AnthropicModel(
-            model_id=MODELO_ID,
-            max_tokens=1024,
-            client=client_modelo,
-        )
+    # Localmente, usa o perfil informado.
+    # No AgentCore, perfil_aws=None permite usar a role do Runtime.
+    sessao = boto3.Session(
+        profile_name=perfil_aws,
+        region_name=REGIAO,
+    )
 
+    modelo = BedrockModel(
+        model_id=MODELO_ID,
+        boto_session=sessao,
+        boto_client_config=Config(
+            connect_timeout=5,
+            read_timeout=60,
+            retries={
+                "mode": "standard",
+                "total_max_attempts": 2,
+            },
+        ),
+        max_tokens=1024,
+        streaming=True,
+    )
+
+    try:
         agente = Agent(
             model=modelo,
             system_prompt=PROMPT_SISTEMA,
@@ -60,3 +68,5 @@ async def criar_agente(
         )
 
         yield agente
+    finally:
+        modelo.client.close()
