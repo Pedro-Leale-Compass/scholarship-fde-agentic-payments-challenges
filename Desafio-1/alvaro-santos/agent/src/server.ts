@@ -6,6 +6,7 @@ import {
   DEFAULT_BEDROCK_MODEL_ID,
   NEXUS_STORE_SYSTEM_PROMPT,
 } from './prompt.js';
+import { createPaymentTools, type ToolExecutionEvent } from './tools.js';
 
 /**
  * Schema validado para chamadas POST /invocations no contrato Bedrock AgentCore Runtime.
@@ -21,6 +22,7 @@ export type InvocationPayload = z.infer<typeof InvocationPayloadSchema>;
 export interface AgentTurnResult {
   response: string;
   stopReason?: string;
+  tools?: ToolExecutionEvent[];
 }
 
 export type AgentRunner = (payload: InvocationPayload) => Promise<AgentTurnResult>;
@@ -50,9 +52,15 @@ export async function runStrandsTurn(payload: InvocationPayload): Promise<AgentT
     region,
   });
 
+  const toolsUsed: ToolExecutionEvent[] = [];
+  const tools = createPaymentTools({
+    onToolEvent: (event) => toolsUsed.push(event),
+  });
+
   const agent = new Agent({
     model,
     systemPrompt: NEXUS_STORE_SYSTEM_PROMPT,
+    tools,
     printer: false,
   });
 
@@ -72,6 +80,7 @@ export async function runStrandsTurn(payload: InvocationPayload): Promise<AgentT
   return {
     response: extractAssistantText(result),
     stopReason: result.stopReason,
+    tools: toolsUsed,
   };
 }
 
@@ -136,6 +145,7 @@ export function createServer(runner: AgentRunner = runStrandsTurn): Express {
         res.status(200).json({
           response: result.response,
           stopReason: result.stopReason,
+          tools: result.tools ?? [],
         });
       } catch (error) {
         console.error('Erro interno ao processar /invocations:', error);

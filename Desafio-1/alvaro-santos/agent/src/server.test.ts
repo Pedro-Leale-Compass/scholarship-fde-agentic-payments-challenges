@@ -72,6 +72,7 @@ describe('AgentCore HTTP Runtime Server', () => {
       return {
         response: 'Temos fone Bluetooth em estoque.',
         stopReason: 'endTurn',
+        tools: [{ name: 'listar_catalogo', arguments: {}, result: { produtos: [] } }],
       };
     };
 
@@ -86,9 +87,14 @@ describe('AgentCore HTTP Runtime Server', () => {
       });
 
       assert.equal(res.status, 200);
-      const body = (await res.json()) as { response: string; stopReason?: string };
+      const body = (await res.json()) as {
+        response: string;
+        stopReason?: string;
+        tools?: unknown[];
+      };
       assert.equal(body.response, 'Temos fone Bluetooth em estoque.');
       assert.equal(body.stopReason, 'endTurn');
+      assert.equal(body.tools?.length, 1);
       assert.deepEqual(receivedPayload, {
         prompt: 'Quais produtos estão disponíveis?',
         usuarioId: 'sub-usuario-123',
