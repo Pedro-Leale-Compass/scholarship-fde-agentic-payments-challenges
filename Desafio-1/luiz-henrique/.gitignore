@@ -7,7 +7,8 @@ frontend/node_modules/
 
 # Build / saída de build
 infra/cdk.out/
-infra/lib/
+infra/lib/*.js
+infra/lib/*.js.map
 frontend/.next/
 frontend/out/
 frontend/build/
