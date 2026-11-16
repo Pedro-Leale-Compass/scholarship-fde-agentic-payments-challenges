@@ -17,6 +17,7 @@ from aws_cdk import (
 )
 from constructs import Construct
 from .agentcore import criar_runtime
+from .chat import criar_chat
 
 class InfraStack(Stack):
     def __init__(
@@ -426,7 +427,7 @@ class InfraStack(Stack):
             ],
         )
 
-        criar_runtime(
+        runtime_agente = criar_runtime(
             stack=self,
             prefixo=prefixo,
             pacote=(
@@ -443,6 +444,18 @@ class InfraStack(Stack):
                     funcao_realizar_compra.function_arn
                 ),
             },
+        )
+
+        criar_chat(
+            stack=self,
+            prefixo=prefixo,
+            raiz_projeto=raiz_projeto,
+            tabela_conversas=tabela_conversas,
+            user_pool=user_pool,
+            app_client=app_client,
+            arn_runtime=runtime_agente.get_att(
+                "AgentRuntimeArn"
+            ).to_string(),
         )
 
         autorizador = authorizers.HttpJwtAuthorizer(

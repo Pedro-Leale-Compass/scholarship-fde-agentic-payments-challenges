@@ -2,21 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  buscarSessao,
-  SessaoExpiradaError,
-  type SessaoAutenticada,
-} from "../services/api";
+import { fetchAuthSession } from "aws-amplify/auth";
+import type { Usuario } from "../types";
+import { buscarPerfil, SessaoExpiradaError } from "../services/api";
 import {
   configurarAutenticacao,
   encerrarSessao,
 } from "../services/auth";
-import { fetchAuthSession } from "aws-amplify/auth";
+import ChatWindow from "../components/ChatWindow";
 
 export default function HomePage() {
   const router = useRouter();
-
-  const [sessao, setSessao] = useState<SessaoAutenticada | null>(null);
+  const [usuario, setUsuario] = useState<Usuario | null>(null);
   const [erro, setErro] = useState("");
   const [saindo, setSaindo] = useState(false);
 
@@ -26,45 +23,38 @@ export default function HomePage() {
     async function iniciar() {
       try {
         await configurarAutenticacao();
+        const sessao = await fetchAuthSession();
 
-        const autenticacao = await fetchAuthSession();
+        if (!ativo) return;
 
-        if (!autenticacao.tokens?.accessToken) {
+        if (!sessao.tokens?.accessToken) {
           router.replace("/login");
           return;
         }
 
-        const resultado = await buscarSessao();
+        const perfil = await buscarPerfil();
 
-        if (ativo) {
-          setSessao(resultado);
-        }
+        if (ativo) setUsuario(perfil);
       } catch (falha) {
         if (!ativo) return;
 
         if (falha instanceof SessaoExpiradaError) {
-          setErro("Sua sessão não foi aceita pela API. Saia e entre novamente.");
+          setErro(
+            "Não foi possível validar seu acesso ao perfil. Saia da conta e entre novamente.",
+          );
           return;
         }
 
-        setErro(
-          falha instanceof Error
-            ? falha.message
-            : "Não foi possível confirmar sua sessão.",
-        );
+        setErro("Não foi possível carregar seu perfil. Tente novamente.");
       }
     }
 
     void iniciar();
-
-    return () => {
-      ativo = false;
-    };
+    return () => { ativo = false; };
   }, [router]);
 
   async function sair() {
     if (saindo) return;
-
     setSaindo(true);
 
     try {
@@ -76,41 +66,29 @@ export default function HomePage() {
     }
   }
 
+  if (usuario) return <ChatWindow usuarioInicial={usuario} />;
+
   return (
     <main>
       <h1>Agente de Pagamentos</h1>
-
-      {erro ? (
-        <p role="alert">{erro}</p>
-      ) : sessao ? (
-        <>
-          <p>Sessão autenticada confirmada pela API.</p>
-          <p>
-            Identificador do usuário: <code>{sessao.usuario_id}</code>
-          </p>
-          <p>O chat será integrado nas próximas etapas.</p>
-        </>
-      ) : (
-        <p role="status">Verificando sua sessão…</p>
+      {erro ? <p role="alert">{erro}</p> : (
+        <p role="status">Carregando seu perfil…</p>
       )}
 
       {erro && (
-        <button
-          type="button"
-          onClick={() => window.location.reload()}
-          disabled={saindo}
-        >
-          Tentar novamente
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            disabled={saindo}
+          >
+            Tentar novamente
+          </button>
+          <button type="button" onClick={() => void sair()} disabled={saindo}>
+            {saindo ? "Saindo…" : "Sair da conta"}
+          </button>
+        </>
       )}
-
-      <button
-        type="button"
-        onClick={() => void sair()}
-        disabled={saindo}
-      >
-        {saindo ? "Saindo…" : "Sair da conta"}
-      </button>
     </main>
   );
 }

@@ -1,5 +1,6 @@
-interface ConfigPublica {
+export interface ConfigPublica {
   apiUrl: string;
+  chatApiUrl: string;
   cognito: {
     region: string;
     userPoolId: string;
@@ -8,6 +9,24 @@ interface ConfigPublica {
 }
 
 let carregamento: Promise<ConfigPublica> | undefined;
+
+function normalizarUrl(valor: unknown, campo: string): string {
+  if (typeof valor !== "string") {
+    throw new Error(`Configuração inválida: ${campo}.`);
+  }
+
+  const endereco = valor.trim().replace(/\/+$/, "");
+
+  if (endereco) {
+    const url = new URL(endereco);
+
+    if (!["http:", "https:"].includes(url.protocol)) {
+      throw new Error(`Protocolo inválido: ${campo}.`);
+    }
+  }
+
+  return endereco;
+}
 
 export function carregarConfig(): Promise<ConfigPublica> {
   if (!carregamento) {
@@ -19,19 +38,11 @@ export function carregarConfig(): Promise<ConfigPublica> {
 
         const dados = await resposta.json();
 
-        if (typeof dados.apiUrl !== "string") {
-          throw new Error("Configuração inválida: apiUrl.");
-        }
-
-        const apiUrl = dados.apiUrl.trim().replace(/\/+$/, "");
-
-        if (apiUrl) {
-          const url = new URL(apiUrl);
-
-          if (!["http:", "https:"].includes(url.protocol)) {
-            throw new Error("Protocolo inválido para a API.");
-          }
-        }
+        const apiUrl = normalizarUrl(dados.apiUrl, "apiUrl");
+        const chatApiUrl = normalizarUrl(
+          dados.chatApiUrl ?? "",
+          "chatApiUrl",
+        );
 
         const cognito = dados.cognito;
 
@@ -44,7 +55,15 @@ export function carregarConfig(): Promise<ConfigPublica> {
           throw new Error("Configuração do Cognito inválida.");
         }
 
-        return { apiUrl, cognito };
+        return {
+          apiUrl,
+          chatApiUrl,
+          cognito: {
+            region: cognito.region,
+            userPoolId: cognito.userPoolId,
+            userPoolClientId: cognito.userPoolClientId,
+          },
+        };
       })
       .catch((erro) => {
         carregamento = undefined;

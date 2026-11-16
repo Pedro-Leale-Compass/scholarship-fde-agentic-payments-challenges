@@ -1,216 +1,512 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Content, MensagemUI, Usuario } from "../types";
+import type { Usuario } from "../types";
+import type {
+  Conversa,
+  PendenciaChat,
+  ResumoConversa,
+} from "../types/chat";
 import {
-  enviarMensagem,
   buscarPerfil,
+  ErroApi,
   SessaoExpiradaError,
 } from "../services/api";
+import {
+  buscarConversa,
+  criarConversa,
+  enviarMensagem,
+  listarConversas,
+} from "../services/chat";
 import { encerrarSessao } from "../services/auth";
 import { extrairPedidoAtual } from "../utils/derivarPedido";
+import { historicoParaMensagens } from "../utils/strands";
+import {
+  guardarConversaSelecionada,
+  guardarPendencia,
+  lerConversaSelecionada,
+  lerPendencia,
+  limparPendencia,
+  pendenciaConcluida,
+  podeReenviar,
+} from "../utils/pendencias";
 import MessageBubble from "./MessageBubble";
 import ToolCallBadge from "./ToolCallBadge";
 import OrderPanel from "./OrderPanel";
-import SystemFailureScreen from "./SystemFailureScreen";
 
 const SUGESTOES = [
-  "tem mais barato?",
-  "quero dois ingressos",
-  "o que rola domingo?",
+  "Quais eventos estão disponíveis?",
+  "Quais são as opções mais baratas?",
+  "Mostre os workshops disponíveis.",
 ];
-
-interface ChatWindowProps {
-  usuarioInicial: Usuario;
-}
 
 export default function ChatWindow({
   usuarioInicial,
-}: ChatWindowProps) {
+}: {
+  usuarioInicial: Usuario;
+}) {
   const router = useRouter();
-
-  const [historico, setHistorico] = useState<Content[]>([]);
-  const [mensagens, setMensagens] = useState<MensagemUI[]>([]);
+  const [usuario, setUsuario] = useState(usuarioInicial);
+  const [conversas, setConversas] = useState<ResumoConversa[]>([]);
+  const [conversa, setConversa] = useState<Conversa | null>(null);
+  const [pendencia, setPendencia] = useState<PendenciaChat | null>(null);
   const [entrada, setEntrada] = useState("");
-  const [carregando, setCarregando] = useState(false);
+  const [textoOtimista, setTextoOtimista] = useState("");
+  const [parcial, setParcial] = useState("");
+  const [carregando, setCarregando] = useState(true);
+  const [transmitindo, setTransmitindo] = useState(false);
   const [saindo, setSaindo] = useState(false);
-  const [erroLogout, setErroLogout] = useState("");
-  const [falhaSistema, setFalhaSistema] = useState(false);
-  const [usuario, setUsuario] = useState<Usuario>(usuarioInicial);
+  const [erro, setErro] = useState("");
+  const [avisoSaldo, setAvisoSaldo] = useState("");
 
-  const pedido = extrairPedidoAtual(historico);
+  const ocupado = useRef(true);
+  const ativo = useRef(true);
+  const controle = useRef<AbortController | null>(null);
+  const fim = useRef<HTMLDivElement>(null);
 
-  async function handleLogout() {
-    if (saindo) return;
+  const pedido = extrairPedidoAtual(conversa?.historico ?? []);
+  const mensagens = historicoParaMensagens(conversa?.historico ?? []);
+  const bloqueado = !!pendencia || conversa?.estado !== "livre";
 
-    setSaindo(true);
-    setErroLogout("");
+  function tratarErro(falha: unknown) {
+    if (!ativo.current) return;
 
+    if (falha instanceof SessaoExpiradaError) {
+      setErro(
+        "Seu acesso não foi aceito nesta operação. Use Sair da conta para entrar novamente.",
+      );
+      return;
+    }
+
+    setErro(
+      falha instanceof ErroApi
+        ? falha.message
+        : "Não foi possível concluir. Verifique o resultado antes de reenviar.",
+    );
+  }
+
+  async function carregar(id: string, signal?: AbortSignal) {
+    let pendente = lerPendencia(usuarioInicial.id, id);
+
+    const resultado = await buscarConversa(
+      id,
+      pendente?.requisicao_id,
+      signal,
+    );
+
+    if (signal?.aborted || !ativo.current) return;
+
+    if (pendente && pendenciaConcluida(resultado, pendente)) {
+      limparPendencia(usuarioInicial.id, id);
+      pendente = null;
+    }
+
+    setConversa(resultado);
+    setPendencia(pendente);
+    setTextoOtimista(pendente?.mensagem ?? "");
+    setParcial("");
+    guardarConversaSelecionada(usuarioInicial.id, id);
+  }
+
+  async function saldo() {
     try {
-      await encerrarSessao();
-      router.replace("/login");
-    } catch {
-      setErroLogout("Não foi possível sair. Tente novamente.");
-      setSaindo(false);
+      const perfil = await buscarPerfil();
+      if (!ativo.current) return;
+      setUsuario(perfil);
+      setAvisoSaldo("");
+    } catch (falha) {
+      if (falha instanceof SessaoExpiradaError) throw falha;
+      if (ativo.current) {
+        setAvisoSaldo("O saldo ainda não foi atualizado.");
+      }
     }
   }
 
-  async function enviar(texto: string) {
-    if (!texto.trim() || carregando || saindo) return;
+  async function executar(acao: () => Promise<void>) {
+    if (ocupado.current) return;
 
-    setMensagens((atuais) => [
-      ...atuais,
-      { id: crypto.randomUUID(), role: "user", texto },
-    ]);
-
-    setEntrada("");
+    ocupado.current = true;
     setCarregando(true);
-    setFalhaSistema(false);
+    setErro("");
 
     try {
-      const resultado = await enviarMensagem(historico, texto);
+      await acao();
+    } catch (falha) {
+      tratarErro(falha);
+    } finally {
+      ocupado.current = false;
 
-      setHistorico(resultado.historico);
-      setMensagens((atuais) => [
-        ...atuais,
-        {
-          id: crypto.randomUUID(),
-          role: "model",
-          texto: resultado.resposta,
-        },
-      ]);
+      if (ativo.current) {
+        setCarregando(false);
+        setTransmitindo(false);
+        setSaindo(false);
+      }
+    }
+  }
 
-      // Atualiza o saldo caso uma compra tenha ocorrido neste turno.
+  useEffect(() => {
+    ativo.current = true;
+    ocupado.current = true;
+
+    const inicial = new AbortController();
+    controle.current = inicial;
+
+    async function iniciar() {
       try {
-        const perfilAtualizado = await buscarPerfil();
-        setUsuario(perfilAtualizado);
-      } catch (erro) {
-        if (erro instanceof SessaoExpiradaError) {
-          throw erro;
+        const lista = await listarConversas(inicial.signal);
+        if (inicial.signal.aborted) return;
+
+        setConversas(lista);
+
+        const selecionada = lerConversaSelecionada(usuarioInicial.id);
+        const id = lista.find((item) => item.conversa_id === selecionada)
+          ?.conversa_id ?? lista[0]?.conversa_id;
+
+        if (id) await carregar(id, inicial.signal);
+      } catch (falha) {
+        if (!inicial.signal.aborted) tratarErro(falha);
+      } finally {
+        if (!inicial.signal.aborted) {
+          ocupado.current = false;
+          setCarregando(false);
+        }
+      }
+    }
+
+    void iniciar();
+
+    return () => {
+      ativo.current = false;
+      inicial.abort();
+      controle.current?.abort();
+    };
+    // A inicialização depende da identidade autenticada.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usuarioInicial.id]);
+
+  useEffect(() => {
+    fim.current?.scrollIntoView({ block: "end" });
+  }, [conversa?.historico, parcial, textoOtimista]);
+
+  function novaConversa() {
+    void executar(async () => {
+      const nova = await criarConversa();
+      if (!ativo.current) return;
+
+      setConversa(nova);
+      setPendencia(null);
+      setTextoOtimista("");
+      setParcial("");
+      setEntrada("");
+      guardarConversaSelecionada(usuarioInicial.id, nova.conversa_id);
+      setConversas(await listarConversas());
+    });
+  }
+
+  function selecionar(id: string) {
+    void executar(async () => {
+      await carregar(id);
+      await saldo();
+    });
+  }
+
+  function verificarResultado() {
+    if (!conversa) return;
+
+    void executar(async () => {
+      await carregar(conversa.conversa_id);
+      await saldo();
+      setConversas(await listarConversas());
+    });
+  }
+
+  function enviar(texto: string, repeticao?: PendenciaChat) {
+    const mensagem = texto.trim();
+
+    if (
+      !conversa ||
+      !mensagem ||
+      mensagem.length > 4000 ||
+      (!repeticao && bloqueado) ||
+      (repeticao && !podeReenviar(conversa, repeticao))
+    ) {
+      return;
+    }
+
+    const atual = conversa;
+    const envio: PendenciaChat = repeticao ?? {
+      conversa_id: atual.conversa_id,
+      requisicao_id: crypto.randomUUID(),
+      mensagem,
+    };
+
+    void executar(async () => {
+      const abortador = new AbortController();
+      controle.current = abortador;
+
+      guardarPendencia(usuarioInicial.id, envio);
+      setPendencia(envio);
+      setTextoOtimista(envio.mensagem);
+      setParcial("");
+      setEntrada("");
+      setTransmitindo(true);
+
+      try {
+        const resultado = await enviarMensagem(
+          envio,
+          (evento) => {
+            if (!ativo.current) return;
+
+            if (evento.tipo === "delta") {
+              setParcial((textoAtual) => textoAtual + evento.texto);
+            }
+          },
+          abortador.signal,
+        );
+
+        if (!ativo.current) return;
+
+        setConversa((anterior) => {
+          if (!anterior || anterior.conversa_id !== resultado.conversa_id) {
+            return anterior;
+          }
+
+          if (anterior.versao > resultado.versao) return anterior;
+
+          return {
+            ...anterior,
+            estado: "livre",
+            versao: resultado.versao,
+            requisicao_id: null,
+            requisicao: null,
+            historico: resultado.historico,
+          };
+        });
+
+        limparPendencia(usuarioInicial.id, envio.conversa_id);
+        setPendencia(null);
+        setTextoOtimista("");
+        setParcial("");
+
+        try {
+          setConversas(await listarConversas());
+        } catch {
+          setErro("Resposta salva. Não foi possível atualizar a lista de conversas.");
+        }
+      } catch (falha) {
+        // Estes códigos indicam recusa antes da execução do agente.
+        if (
+          falha instanceof SessaoExpiradaError ||
+          (falha instanceof ErroApi && [400, 413].includes(falha.status))
+        ) {
+          limparPendencia(usuarioInicial.id, envio.conversa_id);
+          setPendencia(null);
+          setTextoOtimista("");
+          setEntrada(envio.mensagem);
         }
 
-        // Uma falha isolada ao atualizar o saldo não interrompe a conversa.
+        throw falha;
+      } finally {
+        if (ativo.current) await saldo();
       }
-    } catch (erro) {
-      if (erro instanceof SessaoExpiradaError) {
-        router.replace("/login");
-        return;
-      }
-
-      setFalhaSistema(true);
-    } finally {
-      setCarregando(false);
-    }
+    });
   }
 
   function pagar(metodo: "cartao" | "pix") {
-    void enviar(
-      metodo === "pix"
-        ? "Pode pagar no pix."
-        : "Pode pagar no cartão.",
+    if (!pedido?.intencaoId) return;
+
+    const total = new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: pedido.moeda,
+    }).format(pedido.valorTotal);
+
+    enviar(
+      `Confirmo a compra de ${pedido.quantidade} ingresso(s) para ` +
+      `${pedido.nome}, total ${total}, intenção ${pedido.intencaoId}. ` +
+      `Pagar com ${metodo === "pix" ? "Pix" : "cartão"}.`,
     );
   }
 
-  function reiniciarPedido() {
-    setHistorico([]);
-    setMensagens([]);
-  }
-
-  if (falhaSistema) {
-    return (
-      <SystemFailureScreen
-        onTentarNovamente={() => setFalhaSistema(false)}
-        onVoltar={() => {
-          setFalhaSistema(false);
-          reiniciarPedido();
-        }}
-      />
-    );
+  function sair() {
+    void executar(async () => {
+      setSaindo(true);
+      await encerrarSessao();
+      router.replace("/login");
+    });
   }
 
   return (
     <div className="ig-app">
-      <div className="ig-app__lateral">
+      <aside className="ig-app__lateral">
         <div className="ig-cabecalho">
           <div className="ig-quadro-marca" />
           <span className="ig-cabecalho__titulo">Ingressos</span>
         </div>
 
+        <button
+          type="button"
+          className="ig-botao ig-botao--principal"
+          onClick={novaConversa}
+          disabled={carregando}
+        >
+          Nova conversa
+        </button>
+
         <div className="ig-conversas__titulo">Suas conversas</div>
 
-        <div className="ig-conversa-item ig-conversa-item--ativo">
-          Ingressos para hoje
+        <div style={{ overflowY: "auto" }}>
+          {conversas.map((item) => (
+            <button
+              key={item.conversa_id}
+              type="button"
+              className={
+                "ig-conversa-item" +
+                (item.conversa_id === conversa?.conversa_id
+                  ? " ig-conversa-item--ativo"
+                  : "")
+              }
+              style={{ display: "block", width: "100%", textAlign: "left" }}
+              onClick={() => selecionar(item.conversa_id)}
+              disabled={carregando}
+              aria-current={
+                item.conversa_id === conversa?.conversa_id ? "true" : undefined
+              }
+            >
+              {new Date(item.criada_em).toLocaleString("pt-BR")}
+              {item.estado !== "livre" && " — verificar resultado"}
+            </button>
+          ))}
         </div>
 
         <div className="ig-saldo">
           <div className="ig-saldo__rotulo">Você pode gastar</div>
-
           <div className="ig-saldo__valor">
             {new Intl.NumberFormat("pt-BR", {
               style: "currency",
               currency: "BRL",
             }).format(usuario.limiteGasto)}
           </div>
+          {avisoSaldo && <p role="status">{avisoSaldo}</p>}
         </div>
 
         <div className="ig-lateral-usuario">
           <div className="ig-lateral-usuario__info">
-            <span className="ig-lateral-usuario__rotulo">
-              Conectado como
-            </span>
-
+            <span className="ig-lateral-usuario__rotulo">Conectado como</span>
             <strong className="ig-lateral-usuario__nome">
               {usuario.username}
             </strong>
           </div>
-
           <button
             type="button"
-            className="ig-botao ig-botao--contorno ig-botao--compacto ig-lateral-usuario__sair"
-            onClick={() => void handleLogout()}
-            disabled={saindo}
+            className="ig-botao ig-botao--contorno"
+            onClick={sair}
+            disabled={carregando}
           >
             {saindo ? "Saindo…" : "Sair da conta"}
           </button>
-
-          {erroLogout && <p role="alert">{erroLogout}</p>}
         </div>
-      </div>
+      </aside>
 
-      <div className="ig-app__conversa">
+      <section className="ig-app__conversa" aria-label="Conversa">
         <div className="ig-cabecalho">
           <div>
-            <div className="ig-cabecalho__titulo">
-              Ingressos para hoje
-            </div>
-
+            <div className="ig-cabecalho__titulo">Agente de ingressos</div>
             <div className="ig-cabecalho__estado">
-              Assistente disponível agora
+              {transmitindo ? "Preparando resposta…" : "Compras simuladas"}
             </div>
           </div>
         </div>
 
-        <div className="ig-mensagens">
+        <div className="ig-mensagens" aria-busy={transmitindo}>
+          {!conversa && !carregando && (
+            <p>Selecione uma conversa ou clique em Nova conversa.</p>
+          )}
+
           {mensagens.map((mensagem) => (
-            <MessageBubble
-              key={mensagem.id}
-              mensagem={mensagem}
-            />
+            <MessageBubble key={mensagem.id} mensagem={mensagem} />
           ))}
 
-          {carregando && <ToolCallBadge />}
+          {textoOtimista && (
+            <MessageBubble
+              mensagem={{
+                id: "mensagem-pendente",
+                role: "user",
+                texto: textoOtimista,
+              }}
+            />
+          )}
+
+          {parcial && (
+            <MessageBubble
+              mensagem={{
+                id: "resposta-parcial",
+                role: "model",
+                texto: parcial,
+              }}
+            />
+          )}
+
+          {transmitindo && <ToolCallBadge />}
+
+          {pendencia && !carregando && (
+            <p role="status">
+              Esta mensagem ainda não tem conclusão confirmada nesta tela.
+            </p>
+          )}
+
+          <div ref={fim} />
         </div>
 
         <div className="ig-escrita">
+          {erro && <p role="alert">{erro}</p>}
+
+          {conversa && (
+            <button
+              type="button"
+              className="ig-botao ig-botao--contorno"
+              onClick={verificarResultado}
+              disabled={carregando}
+            >
+              Verificar resultado e atualizar conversa
+            </button>
+          )}
+
+          {conversa?.estado === "incerta" && (
+            <p role="alert">
+              Não foi possível confirmar a última execução. Confira o saldo e
+              os registros antes de solicitar a mesma compra novamente.
+            </p>
+          )}
+
+          {conversa?.estado === "processando" && !transmitindo && (
+            <p role="status">
+              Há uma execução em andamento ou aguardando verificação.
+            </p>
+          )}
+
+          {conversa && pendencia && podeReenviar(conversa, pendencia) && (
+            <div>
+              <p>A requisição ainda não foi registrada pelo serviço.</p>
+              <button
+                type="button"
+                className="ig-botao ig-botao--contorno"
+                onClick={() => enviar(pendencia.mensagem, pendencia)}
+                disabled={carregando}
+              >
+                Reenviar esta mensagem
+              </button>
+            </div>
+          )}
+
           <div className="ig-escrita__atalhos">
             {SUGESTOES.map((sugestao) => (
               <button
                 key={sugestao}
                 type="button"
                 className="ig-chip"
-                onClick={() => void enviar(sugestao)}
-                disabled={carregando || saindo}
+                onClick={() => enviar(sugestao)}
+                disabled={carregando || bloqueado}
               >
                 {sugestao}
               </button>
@@ -221,7 +517,7 @@ export default function ChatWindow({
             className="ig-escrita__linha"
             onSubmit={(evento) => {
               evento.preventDefault();
-              void enviar(entrada);
+              enviar(entrada);
             }}
           >
             <input
@@ -229,28 +525,28 @@ export default function ChatWindow({
               value={entrada}
               onChange={(evento) => setEntrada(evento.target.value)}
               placeholder="Escreva aqui"
-              disabled={saindo}
+              aria-label="Sua mensagem"
+              maxLength={4000}
+              disabled={carregando || bloqueado}
             />
-
             <button
               type="submit"
               className="ig-botao ig-botao--principal ig-escrita__enviar"
-              disabled={carregando || saindo || !entrada.trim()}
+              disabled={carregando || bloqueado || !entrada.trim()}
             >
               Enviar
             </button>
           </form>
         </div>
-      </div>
+      </section>
 
       <OrderPanel
         pedido={pedido}
         usuario={usuario}
+        bloqueado={carregando || bloqueado}
         onPagar={pagar}
-        onVerOpcoesMaisBaratas={() => {
-          void enviar("tem mais barato?");
-        }}
-        onComprarOutro={reiniciarPedido}
+        onVerOpcoesMaisBaratas={() => enviar("Quais são as opções mais baratas?")}
+        onComprarOutro={novaConversa}
       />
     </div>
   );

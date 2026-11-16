@@ -1,4 +1,5 @@
-import type { Content, Usuario, RespostaChat } from "../types";
+import type { Usuario } from "../types";
+import { registro } from "../types/chat";
 import { carregarConfig } from "./config";
 import { obterAccessToken } from "./auth";
 
@@ -9,29 +10,75 @@ export class SessaoExpiradaError extends Error {
   }
 }
 
-async function requisicaoAutenticada(
+export class ErroApi extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly codigo: string,
+    mensagem: string,
+  ) {
+    super(mensagem);
+    this.name = "ErroApi";
+  }
+}
+
+export async function requisicaoAutenticada(
   caminho: string,
   opcoes: RequestInit = {},
+  destino: "perfil" | "chat" = "perfil",
 ): Promise<Response> {
-  const { apiUrl } = await carregarConfig();
+  const config = await carregarConfig();
+  const base = destino === "chat" ? config.chatApiUrl : config.apiUrl;
 
-  if (!apiUrl) {
-    throw new Error("A API aguarda o deploy na AWS.");
+  if (!base) {
+    throw new ErroApi(
+      0,
+      "SERVICO_INDISPONIVEL",
+      "A conversa está indisponível no momento.",
+    );
   }
 
   const token = await obterAccessToken();
   const headers = new Headers(opcoes.headers);
-
   headers.set("Authorization", `Bearer ${token}`);
 
-  const resposta = await fetch(`${apiUrl}${caminho}`, {
-    ...opcoes,
-    headers,
-    cache: "no-store",
-  });
+  let resposta: Response;
+
+  try {
+    resposta = await fetch(`${base}${caminho}`, {
+      ...opcoes,
+      headers,
+      cache: "no-store",
+      credentials: "omit",
+      signal: opcoes.signal ?? AbortSignal.timeout(15_000),
+    });
+  } catch {
+    throw new ErroApi(
+      0,
+      "CONEXAO_INTERROMPIDA",
+      "A conexão foi interrompida. Verifique o resultado antes de reenviar.",
+    );
+  }
 
   if (resposta.status === 401) {
     throw new SessaoExpiradaError();
+  }
+
+  if (!resposta.ok) {
+    let dados: Record<string, unknown> | null = null;
+
+    try {
+      dados = registro(await resposta.json());
+    } catch {
+      // Erros do próprio API Gateway podem não conter JSON.
+    }
+
+    throw new ErroApi(
+      resposta.status,
+      typeof dados?.erro === "string" ? dados.erro : "ERRO_API",
+      typeof dados?.mensagem === "string"
+        ? dados.mensagem
+        : "Não foi possível concluir esta solicitação.",
+    );
   }
 
   return resposta;
@@ -39,38 +86,6 @@ async function requisicaoAutenticada(
 
 export async function buscarPerfil(): Promise<Usuario> {
   const resposta = await requisicaoAutenticada("/me");
-
-  if (!resposta.ok) {
-    throw new Error("Não conseguimos carregar seus dados agora.");
-  }
-
-  return resposta.json();
-}
-
-export async function enviarMensagem(
-  historicoAtual: Content[],
-  textoUsuario: string,
-): Promise<RespostaChat> {
-  const mensagens: Content[] = [
-    ...historicoAtual,
-    { role: "user", parts: [{ text: textoUsuario }] },
-  ];
-
-  const resposta = await requisicaoAutenticada("/chat", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      messages: mensagens,
-      maxIteracoes: 5,
-    }),
-  });
-
-  if (!resposta.ok) {
-    throw new Error("Não conseguimos abrir sua conversa agora.");
-  }
-
   return resposta.json();
 }
 
@@ -80,10 +95,5 @@ export interface SessaoAutenticada {
 
 export async function buscarSessao(): Promise<SessaoAutenticada> {
   const resposta = await requisicaoAutenticada("/sessao");
-
-  if (!resposta.ok) {
-    throw new Error("Não foi possível confirmar sua sessão.");
-  }
-
   return resposta.json();
 }

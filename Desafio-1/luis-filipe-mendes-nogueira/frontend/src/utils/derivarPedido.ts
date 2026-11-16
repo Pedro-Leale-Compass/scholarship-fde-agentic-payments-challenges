@@ -1,98 +1,165 @@
-// gemini-chat/src/utils/derivarPedido.ts
-// O backend (geminiAgent.ts) já embute os resultados de cada tool dentro
-// do historico (Content[]), como partes functionResponse. Em vez do
-// frontend chamar as tools de novo, ele só LÊ o que já veio pronto.
-//
-// Formato real usado pelo geminiAgent.ts:
-//   part.functionResponse.response = { name: string, content: <resultado real> }
+import type { Content, EventoCatalogo } from "../types";
+import type { MensagemStrands, PedidoChat } from "../types/chat";
+import { registro } from "../types/chat";
+import { historicoParaContent } from "./strands";
 
-import type { Content } from "../types";
-import type { EventoCatalogo, PedidoAtual } from "../types";
+type Historico = Content[] | MensagemStrands[];
 
-interface FunctionResponsePart {
-  functionResponse?: {
-    name: string;
-    response: { name: string; content: unknown };
-  };
+function normalizar(historico: Historico): Content[] {
+  if (!historico.length) return [];
+
+  return "parts" in historico[0]
+    ? historico as Content[]
+    : historicoParaContent(historico as MensagemStrands[]);
 }
 
-function coletarFunctionResponses(
-  historico: Content[],
-  nomeTool: string,
-): unknown[] {
-  const resultados: unknown[] = [];
+function texto(valor: unknown): string | undefined {
+  return typeof valor === "string" && valor ? valor : undefined;
+}
 
-  for (const turno of historico) {
-    for (const parte of turno.parts as FunctionResponsePart[]) {
-      if (parte.functionResponse?.name === nomeTool) {
-        resultados.push(parte.functionResponse.response.content);
+function numero(valor: unknown, padrao: number): number {
+  return typeof valor === "number" && Number.isFinite(valor)
+    ? valor
+    : padrao;
+}
+
+export function extrairCatalogoConhecido(
+  historico: Historico,
+): Record<string, EventoCatalogo> {
+  const catalogo: Record<string, EventoCatalogo> = {};
+
+  for (const mensagem of normalizar(historico)) {
+    for (const parte of mensagem.parts) {
+      if (
+        !("functionResponse" in parte) ||
+        parte.functionResponse.name !== "listar_catalogo"
+      ) {
+        continue;
+      }
+
+      const resposta = registro(parte.functionResponse.response.content);
+      if (!Array.isArray(resposta?.produtos)) continue;
+
+      for (const bruto of resposta.produtos) {
+        const item = registro(bruto);
+
+        if (
+          item &&
+          typeof item.id === "string" &&
+          typeof item.nome === "string" &&
+          typeof item.preco === "number" &&
+          typeof item.moeda === "string" &&
+          typeof item.estoque === "number"
+        ) {
+          catalogo[item.id] = item as unknown as EventoCatalogo;
+        }
       }
     }
   }
 
-  return resultados;
-}
-
-/** Junta todos os eventos já vistos em listar_catalogo, por id. */
-export function extrairCatalogoConhecido(
-  historico: Content[],
-): Record<string, EventoCatalogo> {
-  const respostas = coletarFunctionResponses(historico, "listar_catalogo") as {
-    produtos?: EventoCatalogo[];
-  }[];
-
-  const catalogo: Record<string, EventoCatalogo> = {};
-  for (const resposta of respostas) {
-    for (const evento of resposta.produtos ?? []) {
-      catalogo[evento.id] = evento;
-    }
-  }
   return catalogo;
 }
 
-/** Deriva o pedido atual (o mais recente), combinando intenção + resultado de compra + nome do catálogo. */
-export function extrairPedidoAtual(historico: Content[]): PedidoAtual | null {
+export function extrairPedidoAtual(
+  historico: Historico,
+): PedidoChat | null {
   const catalogo = extrairCatalogoConhecido(historico);
+  const argumentos = new Map<string, Record<string, unknown>>();
+  let pedido: PedidoChat | null = null;
 
-  const intencoes = coletarFunctionResponses(historico, "registrar_intencao");
-  const compras = coletarFunctionResponses(historico, "realizar_compra");
+  for (const mensagem of normalizar(historico)) {
+    for (const parte of mensagem.parts) {
+      if ("functionCall" in parte) {
+        argumentos.set(parte.functionCall.name, parte.functionCall.args);
+        continue;
+      }
 
-  const ultimaCompra = compras[compras.length - 1] as any;
-  const ultimaIntencao = intencoes[intencoes.length - 1] as any;
+      if (!("functionResponse" in parte)) continue;
 
-  const base = ultimaCompra ?? ultimaIntencao;
-  if (!base) return null;
+      const nome = parte.functionResponse.name;
+      const resposta = registro(parte.functionResponse.response.content);
+      if (!resposta) continue;
 
-  if (base.status === "recusado") {
-    // pode ser recusa da intenção OU da compra — usa o que tiver disponível
-    const origem =
-      ultimaIntencao?.status === "recusado" ? ultimaIntencao : ultimaCompra;
-    const eventoId = origem?.evento_id ?? origem?.eventoId ?? "";
-    return {
-      eventoId,
-      nome: catalogo[eventoId]?.nome ?? "esse pedido",
-      quantidade: origem?.quantidade ?? 1,
-      valorTotal: origem?.valor_total ?? origem?.valorTotal ?? 0,
-      moeda: origem?.moeda ?? "BRL",
-      status: "recusado",
-      mensagemErro: origem?.mensagem,
-    };
+      const args = argumentos.get(nome) ?? {};
+
+      if (nome === "registrar_intencao") {
+        const eventoId =
+          texto(resposta.eventoId) ??
+          texto(resposta.evento_id) ??
+          texto(resposta.produto_id) ??
+          texto(args.evento_id) ??
+          "";
+
+        const intencaoId =
+          texto(resposta.intencaoId) ?? texto(resposta.intencao_id);
+
+        if (!intencaoId && resposta.status !== "recusado") continue;
+
+        pedido = {
+          eventoId,
+          nome: catalogo[eventoId]?.nome ?? "seu evento",
+          quantidade: numero(resposta.quantidade, numero(args.quantidade, 1)),
+          valorTotal: numero(
+            resposta.valorTotal,
+            numero(resposta.valor_total, 0),
+          ),
+          moeda: texto(resposta.moeda) ?? "BRL",
+          status: resposta.status === "recusado" ? "recusado" : "pendente",
+          ...(intencaoId ? { intencaoId } : {}),
+          ...(texto(resposta.expiraEm)
+            ? { expiraEm: texto(resposta.expiraEm) }
+            : {}),
+          ...(texto(resposta.erro)
+            ? { codigoErro: texto(resposta.erro) }
+            : {}),
+          ...(texto(resposta.mensagem)
+            ? { mensagemErro: texto(resposta.mensagem) }
+            : {}),
+        };
+
+        continue;
+      }
+
+      if (nome !== "realizar_compra" || !pedido) continue;
+
+      const alvo =
+        texto(resposta.intencao_id) ??
+        texto(args.intencao_id) ??
+        pedido.intencaoId;
+
+      if (alvo && pedido.intencaoId && alvo !== pedido.intencaoId) {
+        continue;
+      }
+
+      if (resposta.status === "aprovado") {
+        const metodo = resposta.metodo_pagamento;
+
+        pedido = {
+          ...pedido,
+          status: "aprovado",
+          valorTotal: numero(resposta.valor, pedido.valorTotal),
+          mensagemErro: undefined,
+          codigoErro: undefined,
+          ...(metodo === "pix" || metodo === "cartao"
+            ? { metodoPagamento: metodo }
+            : {}),
+          ...(texto(resposta.transacao_id)
+            ? { transacaoId: texto(resposta.transacao_id) }
+            : {}),
+        };
+      } else if (
+        resposta.status === "recusado" &&
+        pedido.status !== "aprovado"
+      ) {
+        pedido = {
+          ...pedido,
+          status: "recusado",
+          codigoErro: texto(resposta.erro),
+          mensagemErro: texto(resposta.mensagem),
+        };
+      }
+    }
   }
 
-  const eventoId = ultimaIntencao?.produto_id ?? ultimaIntencao?.eventoId ?? "";
-
-  return {
-    intencaoId: ultimaIntencao?.intencao_id ?? ultimaIntencao?.intencaoId,
-    eventoId,
-    nome: catalogo[eventoId]?.nome ?? "seu ingresso",
-    quantidade: ultimaIntencao?.quantidade ?? 1,
-    valorTotal:
-      ultimaCompra?.valor ??
-      ultimaIntencao?.valor_total ??
-      ultimaIntencao?.valorTotal ??
-      0,
-    moeda: ultimaIntencao?.moeda ?? "BRL",
-    status: ultimaCompra?.status === "aprovado" ? "aprovado" : "pendente",
-    metodoPagamento: ultimaCompra?.metodo_pagamento,
-  };
+  return pedido;
 }
