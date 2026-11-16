@@ -5,6 +5,7 @@ import { AutenticacaoConstruct } from './constructs/autenticacao';
 import { DadosConstruct } from './constructs/dados';
 import { ToolsConstruct } from './constructs/tools';
 import { AgenteConstruct } from './constructs/agente';
+import { ApiConstruct } from './constructs/api';
 
 export class DesafioStack extends cdk.Stack {
   public readonly frontendHosting: FrontendHostingConstruct;
@@ -12,6 +13,7 @@ export class DesafioStack extends cdk.Stack {
   public readonly dados: DadosConstruct;
   public readonly tools: ToolsConstruct;
   public readonly agente: AgenteConstruct;
+  public readonly api: ApiConstruct;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -122,6 +124,32 @@ export class DesafioStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'AgentImageUri', {
       value: this.agente.imageUri,
       description: 'URI da imagem Docker no ECR do agente',
+    });
+
+    // =========================================================================
+    // 6. API Gateway (REST Streaming + Cognito Authorizer + Lambdas da API)
+    // =========================================================================
+    const permitirLocalhost = this.node.tryGetContext('permitirLocalhost') === true;
+
+    this.api = new ApiConstruct(this, 'Api', {
+      userPool: this.autenticacao.userPool,
+      tabelaConversas: this.dados.conversas,
+      agentRuntimeArn: this.agente.runtimeArn,
+      urlFrontend: this.frontendHosting.urlFrontend,
+      permitirLocalhost,
+    });
+
+    new cdk.CfnOutput(this, 'ApiUrl', {
+      value: this.api.api.url,
+      description: 'URL base da API REST do WebChat',
+    });
+    new cdk.CfnOutput(this, 'ChatFunctionArn', {
+      value: this.api.chatFunction.functionArn,
+      description: 'ARN da Lambda de chat streaming',
+    });
+    new cdk.CfnOutput(this, 'ConversasFunctionArn', {
+      value: this.api.conversasFunction.functionArn,
+      description: 'ARN da Lambda de consulta de conversas',
     });
   }
 }
