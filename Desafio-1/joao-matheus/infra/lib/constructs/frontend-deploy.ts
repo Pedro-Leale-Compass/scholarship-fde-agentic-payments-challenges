@@ -19,7 +19,7 @@ export class FrontendDeployConstruct extends Construct {
   constructor(scope: Construct, id: string, props: FrontendDeployConstructProps) {
     super(scope, id);
 
-    const distPath = path.resolve(__dirname, '../../../../frontend/dist');
+    const distPath = path.resolve(__dirname, '../../../frontend/dist');
 
     // Validação preventiva de existência dos artefatos compilados do frontend
     if (!fs.existsSync(distPath)) {
