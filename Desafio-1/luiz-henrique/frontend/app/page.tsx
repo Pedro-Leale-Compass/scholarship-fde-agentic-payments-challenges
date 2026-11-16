@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { Amplify } from 'aws-amplify';
-import { signIn, signOut, fetchAuthSession } from 'aws-amplify/auth';
+import { signOut, fetchAuthSession } from 'aws-amplify/auth';
+import { Authenticator } from '@aws-amplify/ui-react';
+import '@aws-amplify/ui-react/styles.css';
 
 interface RuntimeConfig {
   apiUrl: string;
@@ -19,12 +21,6 @@ interface ChatMessage {
 export default function Page() {
   const [config, setConfig] = useState<RuntimeConfig | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
-  const [user, setUser] = useState<string | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [loginError, setLoginError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/config.json')
@@ -43,40 +39,44 @@ export default function Page() {
       .catch((err) => setConfigError(`Não foi possível carregar config.json: ${err.message}`));
   }, []);
 
-  async function handleLogin(email: string, password: string) {
-    setLoginError(null);
-    setLoading(true);
-    try {
-      const result = await signIn({ username: email, password });
-      if (!result.isSignedIn) {
-        setLoginError('Login incompleto (troca de senha necessária). Fale com o administrador.');
-        return;
-      }
-      const session = await fetchAuthSession();
-      const idToken = session.tokens?.idToken?.toString();
-      if (!idToken) {
-        setLoginError('Token não obtido do Cognito.');
-        return;
-      }
-      setUser(email);
-      setToken(idToken);
-    } catch (err) {
-      setLoginError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
+  if (configError) {
+    return <div style={{ padding: '2rem' }}>{configError}</div>;
   }
 
-  async function handleLogout() {
-    try {
-      await signOut();
-    } catch (_) {
-      // ignora erro de logout
-    }
-    setUser(null);
-    setToken(null);
-    setMessages([]);
+  if (!config) {
+    return <div style={{ padding: '2rem' }}>Carregando...</div>;
   }
+
+  return (
+    <Authenticator>
+      {({ signOut, user }) => (
+        <ChatApp config={config} user={user} signOut={signOut} />
+      )}
+    </Authenticator>
+  );
+}
+
+function ChatApp({ config, user, signOut }: { config: RuntimeConfig; user: any; signOut: () => void }) {
+  const [token, setToken] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const session = await fetchAuthSession();
+        const idToken = session.tokens?.idToken?.toString();
+        if (idToken && mounted) {
+          setToken(idToken);
+        }
+      } catch (_) {
+        // sem sessão válida
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   async function sendMessage() {
     if (!input.trim() || !config || !token) return;
@@ -125,85 +125,15 @@ export default function Page() {
     }
   }
 
-  if (configError) {
-    return <div style={{ padding: '2rem' }}>{configError}</div>;
-  }
-
-  if (!config) {
-    return <div style={{ padding: '2rem' }}>Carregando...</div>;
-  }
-
-  if (!user || !token) {
-    return (
-      <div style={{ padding: '2rem', maxWidth: 400, margin: '0 auto' }}>
-        <h1>Agente de Pagamentos</h1>
-        <p>Faça login com seu usuário Cognito</p>
-
-        {loginError && (
-          <div
-            style={{
-              padding: '0.75rem',
-              background: '#fee2e2',
-              border: '1px solid #dc2626',
-              borderRadius: '4px',
-              color: '#991b1b',
-              marginBottom: '1rem',
-              fontSize: '0.9rem',
-            }}
-          >
-            {loginError}
-          </div>
-        )}
-
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            const formData = new FormData(e.target as HTMLFormElement);
-            handleLogin(formData.get('email') as string, formData.get('password') as string);
-          }}
-          style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}
-        >
-          <div>
-            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>E-mail</label>
-            <input
-              name="email"
-              type="email"
-              required
-              autoComplete="email"
-              style={{ width: '100%', padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px', fontSize: '1rem', boxSizing: 'border-box' }}
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>Senha</label>
-            <input
-              name="password"
-              type="password"
-              required
-              autoComplete="current-password"
-              style={{ width: '100%', padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px', fontSize: '1rem', boxSizing: 'border-box' }}
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading}
-            style={{ padding: '0.5rem 1rem', background: loading ? '#9ca3af' : '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', cursor: loading ? 'not-allowed' : 'pointer', fontSize: '1rem' }}
-          >
-            {loading ? 'Entrando...' : 'Entrar'}
-          </button>
-        </form>
-      </div>
-    );
-  }
-
   return (
     <div style={{ padding: '2rem', maxWidth: 800, margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div>
           <h1>Agente de Pagamentos</h1>
-          <p>Bem-vindo, {user}</p>
+          <p>Bem-vindo, {user?.username || user?.userId || 'usuário'}</p>
         </div>
         <button
-          onClick={handleLogout}
+          onClick={() => { signOut(); setToken(null); setMessages([]); }}
           style={{ padding: '0.5rem 1rem', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
         >
           Sair
@@ -246,13 +176,13 @@ export default function Page() {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
           placeholder="Digite sua mensagem (ex: listar produtos, comprar com cartão)"
-          disabled={loading}
+          disabled={loading || !token}
           style={{ flex: 1, padding: '0.75rem', border: '1px solid #ccc', borderRadius: '4px', fontSize: '1rem' }}
         />
         <button
           onClick={sendMessage}
-          disabled={loading || !input.trim()}
-          style={{ padding: '0.75rem 1.5rem', background: loading || !input.trim() ? '#9ca3af' : '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', cursor: loading || !input.trim() ? 'not-allowed' : 'pointer', fontSize: '1rem' }}
+          disabled={loading || !input.trim() || !token}
+          style={{ padding: '0.75rem 1.5rem', background: loading || !input.trim() || !token ? '#9ca3af' : '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', cursor: loading || !input.trim() || !token ? 'not-allowed' : 'pointer', fontSize: '1rem' }}
         >
           {loading ? 'Enviando...' : 'Enviar'}
         </button>

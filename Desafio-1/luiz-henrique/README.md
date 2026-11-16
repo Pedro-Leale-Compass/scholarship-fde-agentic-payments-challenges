@@ -43,25 +43,23 @@ npm install                      # dependências do CDK (uma vez)
 # credenciais do perfil (o CDK/SDK não leem o login_session do AWS CLI)
 eval "$(scripts/aws-creds.sh)"
 
-# usuário do instrutor criado no Cognito pelo CDK
-export TEST_EMAIL=<test-email>
-export TEST_PASSWORD='<senha-temporaria>'
+# variáveis de ambiente (TEST_EMAIL, TEST_PASSWORD, etc.) são lidas do .env
+# (gitignorado; copie de .env.example e preencha)
 
-# cdk deploy + build e publicação do frontend no Amplify
-npm run deploy
+# Deploy apenas da API + agente (frontend roda localmente na porta 3000)
+npm run deploy:api-agent
 ```
 
-O `npm run deploy` executa `cdk deploy --require-approval never --outputs-file`
-e, em seguida, `scripts/deploy-frontend.sh`, que builda o Next.js, gera o
-`config.json` de runtime e publica no Amplify Hosting.
+`npm run deploy` executa `cdk deploy --require-approval never --outputs-file cdk-outputs.json`.
 
-Saídas: `ApiUrl`, `FrontendUrl`, `CognitoUserPoolId`, `CognitoUserPoolClientId`, `AgentRuntimeArn`.
+Saídas: `ApiUrl`, `CognitoUserPoolId`, `CognitoUserPoolClientId`, `AgentRuntimeArn`.
 
-**Nota sobre CloudFront:** esta conta tem uma SCP que nega
-`cloudfront:CreateDistribution`, `CreateOriginAccessControl` e
-`CreateCloudFrontOriginAccessIdentity`. Por isso o frontend usa **Amplify Hosting**
-(HTTPS + CDN) em vez de S3 + CloudFront + OAC. O bucket S3 privado + OAC continua
-como desenho documentado, mas não é implantável nesta conta.
+**Comandos disponíveis:**
+- `npm run deploy:api-agent` — API Gateway + Lambda chat + AgentCore Runtime (CORS permite `http://localhost:3000`)
+- `npm run deploy` — mesmo que `deploy:api-agent`
+- `npm run dev:frontend` — gera `frontend/public/config.json` a partir de `infra/cdk-outputs.json` e roda `next dev` em `http://localhost:3000` (usa `Authenticator` do `@aws-amplify/ui-react` apontando para o User Pool do CDK)
+- `npm run dev:agent` — roda o agente localmente (porta 3031) com Bedrock real
+- `npm run dev:create-test-user` — cria/atualiza o usuário de teste no Cognito User Pool (lê TEST_EMAIL/TEST_PASSWORD do `.env`)
 
 ## Ambiente de desenvolvimento
 
@@ -71,11 +69,14 @@ Fluxo remoto primeiro: a API, o agente e o banco rodam na AWS; localmente só o 
 # credenciais do perfil (o CDK/SDK não leem o login_session do AWS CLI)
 eval "$(scripts/aws-creds.sh)"
 
-# deploy
-npm run deploy
+# deploy da API + agente
+npm run deploy:api-agent
 
-# frontend local apontando para a API publicada
-NEXT_PUBLIC_API_URL=<ApiUrl do output> npm run dev:frontend
+# frontend local apontando para a API publicada (usa infra/cdk-outputs.json)
+npm run dev:frontend
+
+# criar/atualizar usuário de teste no Cognito (lê TEST_EMAIL/TEST_PASSWORD do .env)
+npm run dev:create-test-user
 ```
 
 Para iterar no prompt do agente sem redeploy, `npm run dev:agent` roda o agente
@@ -86,8 +87,8 @@ localmente (porta 3031) com Bedrock real e as tools em fallback em memória.
 - Amazon Bedrock — Claude Haiku (modelo alvo do desafio)
 - Agente Strands rodando no Bedrock AgentCore Runtime
 - Enquanto o acesso ao Claude Haiku não é liberado na conta, o agente usa
-  `global.amazon.nova-2-lite-v1:0`. Para trocar, basta definir `BEDROCK_MODEL_ID`
-  (local) ou ajustar `MODEL_ID` em `infra/lib/agent-stack.ts` (deploy).
+  `global.amazon.nova-2-lite-v1:0`. Para trocar, defina `BEDROCK_MODEL_ID` no
+  `.env` (lido tanto no deploy da infra quanto no `dev:agent` local).
 
 ## Modelagem do DynamoDB
 
@@ -125,19 +126,25 @@ Adicionar screenshots/logs de cada evidência nesta seção.
 ## Instruções de remoção (após a correção)
 
 ```bash
-cd Desafio-1/luiz-henrique/infra
+# Na raiz de Desafio-1/luiz-henrique
+eval "$(scripts/aws-creds.sh)"
 
-# Destruir a stack (único comando)
-cdk destroy --force
+# 1. (se aplicável) Remover app Amplify órfão — não está mais no CDK
+aws amplify list-apps --region us-east-1
+# Se houver um app, deletá-lo manualmente:
+aws amplify delete-app --app-id <APP_ID> --region us-east-1
+
+# 2. Destruir a stack CDK (API + agente + Cognito + DynamoDB + AgentCore + ECR)
+npm run destroy
 ```
 
-Confirmar no console AWS que não restou: bucket S3, distribuição CloudFront, runtime do AgentCore, imagens no ECR, tabelas DynamoDB, logs CloudWatch.
+Confirmar no console AWS que não restou: app Amplify, runtime do AgentCore, imagens no ECR, tabelas DynamoDB, logs CloudWatch.
 
 ## Regras essenciais
 
 - Tudo em `us-east-1`.
-- Frontend em Amplify Hosting (HTTPS). S3 privado + CloudFront/OAC não é permitido pela SCP da conta.
-- CORS da API aceita apenas o domínio do Amplify.
+- Frontend roda localmente (`http://localhost:3000`); no futuro pode ser S3 + CloudFront/OAC (bloqueado por SCP nesta conta).
+- CORS da API aceita apenas o domínio do frontend configurado (`http://localhost:3000` em desenvolvimento local).
 - Cognito sem auto cadastro (`AllowAdminCreateUserOnly`); usuários entram por convite.
 - `usuario_id` vem do `sub` do token, nunca do corpo nem do modelo.
 - Valor da compra vem da intenção salva; pagamento e limite usam escritas condicionais (sem duplicidade).

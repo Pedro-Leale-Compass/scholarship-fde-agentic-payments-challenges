@@ -5,7 +5,6 @@ import { DatabaseStack } from './database-stack';
 import { ToolsStack } from './tools-stack';
 import { AgentStack } from './agent-stack';
 import { ApiStack } from './api-stack';
-import { FrontendStack } from './frontend-stack';
 
 export interface Desafio1StackProps extends cdk.StackProps {
   stackPrefix: string;
@@ -42,15 +41,15 @@ export class Desafio1Stack extends cdk.Stack {
       toolLambdaArns: tools.toolLambdaArns,
     });
 
-    // 4. Frontend no Amplify Hosting (CloudFront é bloqueado por SCP nesta conta)
-    const frontend = new FrontendStack(this, 'FrontendStack', { stackPrefix });
+    // 4. URL do frontend (local:3000 em desenvolvimento; S3+CloudFront no futuro)
+    const frontendUrl = 'http://localhost:3000';
 
     // 5. Cognito user pool + API Gateway + Lambda chat + JWT authorizer
     const api = new ApiStack(this, 'ApiStack', {
       stackPrefix,
       agentRuntimeArn: agent.agentRuntimeArn,
       usuariosTable: database.usuariosTable,
-      frontendUrl: frontend.frontendUrl,
+      frontendUrl,
     });
 
     // 6. Popula o catálogo (idempotente: PutItem com os mesmos ids)
@@ -97,6 +96,21 @@ export class Desafio1Stack extends cdk.Stack {
           physicalResourceId: customResources.PhysicalResourceId.of(`cognito-user-${testEmail}`),
           ignoreErrorCodesMatching: 'UsernameExistsException',
         },
+        onUpdate: {
+          service: 'CognitoIdentityServiceProvider',
+          action: 'adminCreateUser',
+          parameters: {
+            UserPoolId: api.userPool.userPoolId,
+            Username: testEmail,
+            UserAttributes: [
+              { Name: 'email', Value: testEmail },
+              { Name: 'email_verified', Value: 'true' },
+            ],
+            MessageAction: 'SUPPRESS',
+          },
+          physicalResourceId: customResources.PhysicalResourceId.of(`cognito-user-${testEmail}`),
+          ignoreErrorCodesMatching: 'UsernameExistsException',
+        },
         policy: customResources.AwsCustomResourcePolicy.fromSdkCalls({
           resources: [api.userPool.userPoolArn],
         }),
@@ -104,6 +118,17 @@ export class Desafio1Stack extends cdk.Stack {
 
       new customResources.AwsCustomResource(this, 'SetTestPassword', {
         onCreate: {
+          service: 'CognitoIdentityServiceProvider',
+          action: 'adminSetUserPassword',
+          parameters: {
+            UserPoolId: api.userPool.userPoolId,
+            Username: testEmail,
+            Password: testPassword,
+            Permanent: true,
+          },
+          physicalResourceId: customResources.PhysicalResourceId.of(`cognito-password-${testEmail}`),
+        },
+        onUpdate: {
           service: 'CognitoIdentityServiceProvider',
           action: 'adminSetUserPassword',
           parameters: {
@@ -122,14 +147,6 @@ export class Desafio1Stack extends cdk.Stack {
 
     // Outputs
     new cdk.CfnOutput(this, 'ApiUrl', { value: api.apiUrl, description: 'API Gateway URL' });
-    new cdk.CfnOutput(this, 'FrontendUrl', {
-      value: frontend.frontendUrl,
-      description: 'Amplify Hosting URL (frontend)',
-    });
-    new cdk.CfnOutput(this, 'AmplifyAppId', {
-      value: frontend.app.attrAppId,
-      description: 'Amplify App ID (usado por scripts/deploy-frontend.sh)',
-    });
     new cdk.CfnOutput(this, 'CognitoUserPoolId', {
       value: api.userPool.userPoolId,
       description: 'Cognito User Pool ID',

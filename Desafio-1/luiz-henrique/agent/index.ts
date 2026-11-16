@@ -20,6 +20,9 @@ import {
   type InvokeCommandInput,
 } from '@aws-sdk/client-lambda';
 
+// Carrega variáveis de ambiente do .env (ignorado pelo git) se existir.
+await import('dotenv').then((m) => m.config?.());
+
 // Modelo temporário: Nova 2 Lite (barato e com tool use). O alvo do desafio é
 // Claude Haiku; troque via BEDROCK_MODEL_ID quando o acesso ao modelo for liberado:
 //   us.anthropic.claude-haiku-4-5-20251001-v1:0

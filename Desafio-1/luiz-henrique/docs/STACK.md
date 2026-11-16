@@ -12,20 +12,20 @@ Decisões tomadas antes de iniciar a implementação.
   e permite definir DynamoDB, API Gateway, Lambda, Cognito, S3, CloudFront, ECR e
   AgentCore Runtime em uma só stack, com tipos e testes (`cdk synth`/`cdk diff`).
 
-## 2. Frontend: Next.js (App Router) + AWS Amplify Gen 2
+## 2. Frontend: Next.js (App Router) + Amplify Auth (biblioteca)
 
 - Framework: Next.js (App Router), TypeScript.
 - Estilização: Tailwind CSS.
-- Geração estática: `next build` + `next export` (output: 'export') → pasta `out/`, enviada ao bucket S3 privado via `aws s3 sync` ou CDK `s3-deployment`.
-- Autenticação: Amplify Gen 2 + componente `Authenticator` (UI pronta de login/Cognito).
-- Hospedagem: S3 + CloudFront (não Amplify Hosting, pois o front é estático e servido pelo bucket).
+- Geração estática: `next build` + `next export` (output: 'export') → pasta `out/`.
+- Autenticação: `aws-amplify` + componente `Authenticator` de `@aws-amplify/ui-react`, apontando para o Cognito User Pool criado pelo IaC (login via e-mail/senha; sem auto-cadastro).
+- Hospedagem: local (`http://localhost:3000`) em desenvolvimento; no futuro S3 + CloudFront/OAC (bloqueado por SCP nesta conta). Sem Amplify Hosting.
 
 ## 3. Serviços AWS por camada
 
 | Camada | Serviço | Detalhes |
 |--------|---------|----------|
-| Autenticação | Cognito User Pool | Sem auto-cadastro (CDK: `selfSignUpEnabled: false`; Amplify Gen 2 `defineAuth` não tem `allowSignUp`); usuários entram por convite; `usuario_id` vem do `sub` do JWT |
-| Frontend | S3 + CloudFront (OAC) | Bucket privado servido apenas pelo CloudFront |
+| Autenticação | Cognito User Pool | Sem auto-cadastro (`selfSignUpEnabled: false`); usuários entram por convite; login via SDK `aws-amplify`; `usuario_id` vem do `sub` do JWT |
+| Frontend | Next.js local + Amplify Auth | Next.js estático (`next export`) rodando localmente na porta 3000; login Cognito via `Authenticator` do `@aws-amplify/ui-react` |
 | API | API Gateway REST | Autorizador JWT Cognito; resposta `401` sem token válido |
 | Chat | Lambda (Node 20) | Chama o agente Strands no AgentCore Runtime |
 | Agente | Bedrock AgentCore Runtime | Modelo Claude Haiku (Strands); imagem de container no ECR |
@@ -38,7 +38,7 @@ Decisões tomadas antes de iniciar a implementação.
 - Prefixo de recursos: `luiz-henrique`.
 - IAM de menor privilégio; nenhum `*` nem `AdministratorAccess`.
 - `usuario_id` vem do `sub` do token JWT, nunca do corpo nem do modelo.
-- CORS da API aceita apenas o domínio do CloudFront.
+- CORS da API aceita apenas o domínio do frontend configurado (`frontendUrl`: `http://localhost:3000` em desenvolvimento local).
 - Nenhum segredo no Git (sem `.env`, chaves de acesso ou tokens commitados).
 
 ## 5. Mapeamento com o projeto anterior (Squad 03 MCP)

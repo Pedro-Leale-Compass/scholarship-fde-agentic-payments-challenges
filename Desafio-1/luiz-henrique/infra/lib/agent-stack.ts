@@ -7,8 +7,12 @@ import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as customResources from 'aws-cdk-lib/custom-resources';
 import * as path from 'path';
 
+// Carrega variáveis de ambiente do .env (ignorado pelo git) se existir.
+import dotenv from 'dotenv';
+dotenv.config();
+
 // Modelo temporário até a liberação do Claude Haiku na conta.
-const MODEL_ID = 'global.amazon.nova-2-lite-v1:0';
+const MODEL_ID = process.env.BEDROCK_MODEL_ID || 'global.amazon.nova-2-lite-v1:0';
 const FOUNDATION_MODEL_ID = 'amazon.nova-2-lite-v1:0';
 const BEDROCK_MODEL_REGIONS = ['us-east-1', 'us-east-2', 'us-west-2'];
 

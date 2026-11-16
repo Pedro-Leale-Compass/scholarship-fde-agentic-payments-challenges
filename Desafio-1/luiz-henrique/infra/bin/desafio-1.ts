@@ -2,6 +2,10 @@ import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
 import { Desafio1Stack } from '../lib/desafio-1-stack';
 
+// Carrega variáveis de ambiente do .env (ignorado pelo git) se existir.
+import dotenv from 'dotenv';
+dotenv.config();
+
 const app = new cdk.App();
 
 new Desafio1Stack(app, 'Desafio1Stack', {

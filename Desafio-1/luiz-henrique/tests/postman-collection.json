@@ -1,0 +1,200 @@
+{
+  "info": {
+    "name": "Desafio 1 - Agente de Pagamentos (luiz-henrique)",
+    "_postman_id": "desafio-1-agentic-payments",
+    "description": "Coleção de testes Postman para a API de chat de pagamentos. Faz login no Cognito User Pool (USER_PASSWORD_AUTH) e testa o endpoint /chat com e sem token JWT.\n\nVariáveis de ambiente necessárias (copie de .env):\n- testEmail, testPassword: usuário de teste criado no Cognito pelo CDK\n- apiUrl: output ApiUrl do cdk-outputs.json\n- userPoolClientId: output CognitoUserPoolClientId do cdk-outputs.json\n- region: us-east-1",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Autenticação (Cognito)",
+      "item": [
+        {
+          "name": "Login - Cognito InitiateAuth (USER_PASSWORD_AUTH)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-amz-json-1.1"
+              },
+              {
+                "key": "X-Amz-Target",
+                "value": "AWSCognitoIdentityProviderService.InitiateAuth"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"AuthFlow\": \"USER_PASSWORD_AUTH\",\n  \"ClientId\": \"{{userPoolClientId}}\",\n  \"AuthParameters\": {\n    \"USERNAME\": \"{{testEmail}}\",\n    \"PASSWORD\": \"{{testPassword}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "https://cognito-idp.{{region}}.amazonaws.com/",
+              "protocol": "https",
+              "host": [
+                "cognito-idp",
+                "{{region}}",
+                "amazonaws",
+                "com"
+              ],
+              "path": [""]
+            },
+            "description": "Faz login no Cognito User Pool usando USER_PASSWORD_AUTH e extrai o IdToken para usar nas requisições seguintes."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status é 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "",
+                  "if (jsonData.AuthenticationResult && jsonData.AuthenticationResult.IdToken) {",
+                  "  pm.collectionVariables.set('idToken', jsonData.AuthenticationResult.IdToken);",
+                  "  console.log('IdToken obtido e salvo em collectionVariables.idToken');",
+                  "} else {",
+                  "  console.log('Não foi possível extrair IdToken da resposta:', JSON.stringify(jsonData));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. API - Chat",
+      "item": [
+        {
+          "name": "POST /chat - com token (sucesso)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{idToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [{ \"text\": \"listar produtos\" }]\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{apiUrl}}/chat",
+              "host": ["{{apiUrl}}"],
+              "path": ["chat"]
+            },
+            "description": "Envia uma mensagem para o agente de pagamentos usando o token JWT obtido no login."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status é 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "pm.test('Resposta tem campo reply ou message', function () {",
+                  "  pm.expect(jsonData).to.have.any.of(['reply', 'message']);",
+                  "});",
+                  "",
+                  "console.log('Resposta do agente:', JSON.stringify(jsonData, null, 2));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /chat - sem token (espera 401)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [{ \"text\": \"listar produtos\" }]\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{apiUrl}}/chat",
+              "host": ["{{apiUrl}}"],
+              "path": ["chat"]
+            },
+            "description": "Verifica que a API retorna 401 quando nenhuma autorização é enviada."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status é 401', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "pm.test('Resposta contém erro', function () {",
+                  "  pm.expect(jsonData).to.have.property('error');",
+                  "});",
+                  "",
+                  "console.log('Resposta 401:', JSON.stringify(jsonData, null, 2));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "region",
+      "value": "us-east-1",
+      "type": "string",
+      "description": "Região AWS dos recursos (us-east-1)"
+    },
+    {
+      "key": "testEmail",
+      "value": "",
+      "type": "string",
+      "description": "E-mail do usuário de teste (do .env: TEST_EMAIL)"
+    },
+    {
+      "key": "testPassword",
+      "value": "",
+      "type": "string",
+      "description": "Senha do usuário de teste (do .env: TEST_PASSWORD)"
+    },
+    {
+      "key": "userPoolClientId",
+      "value": "",
+      "type": "string",
+      "description": "Cognito User Pool Client ID (output CognitoUserPoolClientId do cdk-outputs.json)"
+    },
+    {
+      "key": "apiUrl",
+      "value": "",
+      "type": "string",
+      "description": "URL da API Gateway (output ApiUrl do cdk-outputs.json)"
+    },
+    {
+      "key": "idToken",
+      "value": "",
+      "type": "string",
+      "description": "IdToken extraído automaticamente após o login (preenchido pelo script de teste)"
+    }
+  ]
+}
