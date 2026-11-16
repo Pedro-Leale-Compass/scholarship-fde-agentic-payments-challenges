@@ -1,5 +1,5 @@
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
-import { Agent, BedrockModel } from '@strands-agents/sdk';
+import { Agent, BedrockModel, type MessageData } from '@strands-agents/sdk';
 import { z } from 'zod';
 import {
   DEFAULT_AWS_REGION,
@@ -8,6 +8,13 @@ import {
 } from './prompt.js';
 import { createPaymentTools, type ToolExecutionEvent } from './tools.js';
 
+export const HistoryMessageSchema = z.object({
+  role: z.enum(['user', 'assistant']),
+  content: z.string().trim().min(1),
+});
+
+export type HistoryMessage = z.infer<typeof HistoryMessageSchema>;
+
 /**
  * Schema validado para chamadas POST /invocations no contrato Bedrock AgentCore Runtime.
  */
@@ -15,9 +22,42 @@ export const InvocationPayloadSchema = z.object({
   prompt: z.string().trim().min(1, 'O campo "prompt" é obrigatório.'),
   usuarioId: z.string().trim().min(1).optional(),
   sessionId: z.string().trim().min(1).optional(),
+  history: z.array(HistoryMessageSchema).optional(),
 });
 
 export type InvocationPayload = z.infer<typeof InvocationPayloadSchema>;
+
+/**
+ * Normaliza mensagens anteriores garantindo alternância estrita de papéis exigida pela Bedrock Converse API.
+ */
+export function buildSeedMessages(history?: readonly HistoryMessage[]): MessageData[] {
+  if (!history || history.length === 0) {
+    return [];
+  }
+
+  const merged: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  for (const entry of history) {
+    const text = entry.content.trim();
+    if (!text) continue;
+
+    // A Bedrock Converse API exige que o histórico comece sempre por uma fala do usuário.
+    if (merged.length === 0 && entry.role === 'assistant') {
+      continue;
+    }
+
+    const last = merged[merged.length - 1];
+    if (last && last.role === entry.role) {
+      last.content = `${last.content}\n\n${text}`;
+    } else {
+      merged.push({ role: entry.role, content: text });
+    }
+  }
+
+  return merged.map((msg) => ({
+    role: msg.role,
+    content: [{ text: msg.content }],
+  }));
+}
 
 export interface AgentTurnResult {
   response: string;
@@ -57,10 +97,27 @@ export async function runStrandsTurn(payload: InvocationPayload): Promise<AgentT
     onToolEvent: (event) => toolsUsed.push(event),
   });
 
+  const seedMessages = buildSeedMessages(payload.history);
+  let effectivePrompt = payload.prompt;
+  // Evita dois turnos consecutivos de 'user' na Bedrock Converse API caso a última entrada do seed seja 'user'.
+  const lastSeed = seedMessages[seedMessages.length - 1];
+  if (lastSeed && lastSeed.role === 'user') {
+    const trailingUser = seedMessages.pop();
+    const trailingText = trailingUser?.content
+      .map((block) => ('text' in block ? block.text : ''))
+      .filter(Boolean)
+      .join('\n')
+      .trim();
+    if (trailingText) {
+      effectivePrompt = `${trailingText}\n\n${effectivePrompt}`;
+    }
+  }
+
   const agent = new Agent({
     model,
     systemPrompt: NEXUS_STORE_SYSTEM_PROMPT,
     tools,
+    messages: seedMessages,
     printer: false,
   });
 
@@ -75,7 +132,7 @@ export async function runStrandsTurn(payload: InvocationPayload): Promise<AgentT
         }
       : undefined;
 
-  const result = await agent.invoke(payload.prompt, invokeOptions);
+  const result = await agent.invoke(effectivePrompt, invokeOptions);
 
   return {
     response: extractAssistantText(result),

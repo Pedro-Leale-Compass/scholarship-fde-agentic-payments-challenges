@@ -7,7 +7,12 @@ import {
   DEFAULT_BEDROCK_MODEL_ID,
   NEXUS_STORE_SYSTEM_PROMPT,
 } from './prompt.js';
-import { createServer, type AgentRunner, type InvocationPayload } from './server.js';
+import {
+  buildSeedMessages,
+  createServer,
+  type AgentRunner,
+  type InvocationPayload,
+} from './server.js';
 
 async function withServer(
   runner: AgentRunner,
@@ -154,6 +159,45 @@ describe('AgentCore HTTP Runtime Server', () => {
       assert.doesNotMatch(rawText, /AccessDeniedException|006739439488|internal-secret|Error:/i);
       const body = JSON.parse(rawText) as { error: string };
       assert.match(body.error, /Não foi possível processar sua solicitação/);
+    });
+  });
+
+  it('POST /invocations aceita history e buildSeedMessages garante alternância válida para Bedrock', async () => {
+    const normalized = buildSeedMessages([
+      { role: 'assistant', content: 'Saudação inicial ignorada antes do user' },
+      { role: 'user', content: 'Quero um PS5' },
+      { role: 'user', content: 'Pode ser 1 unidade' },
+      { role: 'assistant', content: 'Intenção int-1 registrada. Confirma?' },
+    ]);
+
+    assert.deepEqual(normalized, [
+      { role: 'user', content: [{ text: 'Quero um PS5\n\nPode ser 1 unidade' }] },
+      { role: 'assistant', content: [{ text: 'Intenção int-1 registrada. Confirma?' }] },
+    ]);
+
+    let receivedHistory: InvocationPayload['history'];
+    const spyRunner: AgentRunner = async (payload) => {
+      receivedHistory = payload.history;
+      return { response: 'Compra confirmada!', stopReason: 'endTurn', tools: [] };
+    };
+
+    await withServer(spyRunner, async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/invocations`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          prompt: 'Confirmo no Pix',
+          usuarioId: 'sub-usuario-123',
+          history: [
+            { role: 'user', content: 'Quero um PS5' },
+            { role: 'assistant', content: 'Intenção int-1 registrada. Confirma?' },
+          ],
+        }),
+      });
+
+      assert.equal(res.status, 200);
+      assert.equal(receivedHistory?.length, 2);
+      assert.equal(receivedHistory?.[1]?.content, 'Intenção int-1 registrada. Confirma?');
     });
   });
 });

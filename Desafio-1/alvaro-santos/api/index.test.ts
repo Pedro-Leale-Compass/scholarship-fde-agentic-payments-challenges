@@ -159,7 +159,61 @@ describe('Chat API Lambda (#17 [API-01])', () => {
     assert.ok(persisted);
     assert.equal(persisted.usuario_id, 'cognito-sub-real-999');
     assert.equal(persisted.expires_at, Math.floor(fixedNowMs / 1000) + 86400);
-    assert.equal((persisted.messages as unknown[]).length, 2);
+    const savedMessages = persisted.messages as Array<{ role: string; content: string }>;
+    assert.equal(savedMessages.length, 2);
+    assert.match(savedMessages[1]!.content, /\[intencao_id: int-1\]/);
+  });
+
+  it('envia o histórico completo de turnos anteriores e preserva intencao_id no segundo turno', async () => {
+    process.env.CONVERSAS_TABLE_NAME = 'alvaro-conversas';
+    process.env.AGENT_RUNTIME_ARN = 'arn:aws:bedrock-agentcore:us-east-1:006739439488:runtime/abc';
+
+    const { store } = createFakeStore({
+      'sub-multi:sessao-multi': {
+        session_id: 'sub-multi:sessao-multi',
+        usuario_id: 'sub-multi',
+        messages: [
+          { role: 'user', content: 'Quero um PS5', timestamp: '2026-11-16T12:00:00.000Z' },
+          {
+            role: 'assistant',
+            content: 'Intenção criada! Confirma no Pix ou cartão?\n[intencao_id: uuid-intencao-42]',
+            timestamp: '2026-11-16T12:00:01.000Z',
+          },
+        ],
+      },
+    });
+
+    let capturedHistory: Array<{ role: string; content: string }> = [];
+    let capturedPrompt = '';
+
+    const handler = createChatHandler({
+      conversationsStore: store,
+      agentInvoker: {
+        async invokeAgent({ prompt, history }) {
+          capturedPrompt = prompt;
+          capturedHistory = history;
+          return { response: 'Pagamento aprovado no Pix!', tools: [] };
+        },
+      },
+    });
+
+    const res = await handler({
+      body: JSON.stringify({
+        sessionId: 'sessao-multi',
+        messages: [
+          { role: 'user', content: 'Quero um PS5' },
+          { role: 'assistant', content: 'Intenção criada! Confirma no Pix ou cartão?' },
+          { role: 'user', content: 'Confirmo no Pix' },
+        ],
+      }),
+      requestContext: { authorizer: { claims: { sub: 'sub-multi' } } },
+    });
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(capturedPrompt, 'Confirmo no Pix');
+    assert.equal(capturedHistory.length, 2);
+    assert.deepEqual(capturedHistory[0], { role: 'user', content: 'Quero um PS5' });
+    assert.match(capturedHistory[1]!.content, /uuid-intencao-42/);
   });
 
   it('retorna 400 para JSON malformado ou sem mensagem do usuário', async () => {

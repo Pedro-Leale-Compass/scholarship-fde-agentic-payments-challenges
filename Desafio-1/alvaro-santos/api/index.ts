@@ -17,6 +17,11 @@ export interface ApiGatewayProxyEvent {
   };
 }
 
+export interface HistoryMessage {
+  readonly role: 'user' | 'assistant';
+  readonly content: string;
+}
+
 export interface AgentCoreInvocationResult {
   readonly response: string;
   readonly stopReason?: string;
@@ -29,6 +34,7 @@ export interface AgentCoreInvoker {
     usuarioId: string;
     sessionId: string;
     runtimeSessionId: string;
+    history: HistoryMessage[];
   }): Promise<AgentCoreInvocationResult>;
 }
 
@@ -84,7 +90,9 @@ export function toRuntimeSessionId(sessionKey: string): string {
 
 function parseChatPayload(
   event: ApiGatewayProxyEvent,
-): { ok: true; prompt: string; rawSessionId: string } | { ok: false; error: string } {
+):
+  | { ok: true; prompt: string; rawSessionId: string; clientHistory: HistoryMessage[] }
+  | { ok: false; error: string } {
   const rawBody = event.body
     ? (event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString('utf8') : event.body).trim()
     : '';
@@ -102,12 +110,33 @@ function parseChatPayload(
   }
 
   let prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
-  if (!prompt && Array.isArray(body.messages)) {
-    const lastUserMsg = [...body.messages]
-      .reverse()
-      .find((m) => m && typeof m === 'object' && m.role === 'user' && typeof m.content === 'string' && m.content.trim());
-    if (lastUserMsg) prompt = String(lastUserMsg.content).trim();
+  let clientHistory: HistoryMessage[] = [];
+
+  if (Array.isArray(body.messages)) {
+    let lastUserIdx = -1;
+    for (let i = body.messages.length - 1; i >= 0; i--) {
+      const m = body.messages[i] as Record<string, unknown> | null;
+      if (m && typeof m === 'object' && m.role === 'user' && typeof m.content === 'string' && m.content.trim()) {
+        lastUserIdx = i;
+        break;
+      }
+    }
+
+    if (!prompt && lastUserIdx !== -1) {
+      prompt = String((body.messages[lastUserIdx] as Record<string, unknown>).content).trim();
+    }
+
+    const historySlice = lastUserIdx !== -1 ? body.messages.slice(0, lastUserIdx) : body.messages;
+    clientHistory = historySlice.flatMap((m): HistoryMessage[] => {
+      if (!m || typeof m !== 'object') return [];
+      const rec = m as Record<string, unknown>;
+      if ((rec.role === 'user' || rec.role === 'assistant') && typeof rec.content === 'string' && rec.content.trim()) {
+        return [{ role: rec.role, content: rec.content.trim() }];
+      }
+      return [];
+    });
   }
+
   if (!prompt) return { ok: false, error: 'Nenhuma mensagem de usuário válida foi encontrada na requisição.' };
 
   const rawSessionId =
@@ -115,7 +144,7 @@ function parseChatPayload(
       ? body.sessionId.trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64) || 'default'
       : 'default';
 
-  return { ok: true, prompt, rawSessionId };
+  return { ok: true, prompt, rawSessionId, clientHistory };
 }
 
 async function readAgentPayloadText(payload: unknown): Promise<string> {
@@ -137,7 +166,7 @@ async function readAgentPayloadText(payload: unknown): Promise<string> {
 
 function createAwsAgentCoreInvoker(): AgentCoreInvoker {
   return {
-    async invokeAgent({ prompt, usuarioId, sessionId, runtimeSessionId }) {
+    async invokeAgent({ prompt, usuarioId, sessionId, runtimeSessionId, history }) {
       const agentRuntimeArn = process.env.AGENT_RUNTIME_ARN?.trim();
       if (!agentRuntimeArn) throw new Error('AGENT_RUNTIME_ARN não configurado.');
 
@@ -148,7 +177,7 @@ function createAwsAgentCoreInvoker(): AgentCoreInvoker {
           runtimeSessionId,
           contentType: 'application/json',
           accept: 'application/json',
-          payload: new TextEncoder().encode(JSON.stringify({ prompt, usuarioId, sessionId })),
+          payload: new TextEncoder().encode(JSON.stringify({ prompt, usuarioId, sessionId, history })),
         }),
       );
 
@@ -160,6 +189,48 @@ function createAwsAgentCoreInvoker(): AgentCoreInvoker {
       return { response: parsed.response, stopReason: parsed.stopReason, tools: parsed.tools ?? [] };
     },
   };
+}
+
+/**
+ * Garante que identificadores [intencao_id: ...] salvos no DynamoDB não se percam entre turnos
+ * caso o texto exibido pelo frontend tenha omitido o UUID bruto da intenção.
+ */
+function enrichHistoryWithIntentIds(
+  clientHistory: HistoryMessage[],
+  priorMessages: ReadonlyArray<{ role: 'user' | 'assistant'; content: string }>,
+): HistoryMessage[] {
+  const base = clientHistory.length > 0 ? clientHistory.map((m) => ({ ...m })) : priorMessages.map(({ role, content }) => ({ role, content }));
+  const priorTags = priorMessages
+    .filter((m) => m.role === 'assistant')
+    .flatMap((m) => Array.from(m.content.matchAll(/\[intencao_id:\s*([^\]]+)\]/g), (match) => match[1].trim()));
+
+  const fullText = base.map((m) => m.content).join('\n');
+  const missingTags = priorTags.filter((id) => id && !fullText.includes(id));
+  if (missingTags.length === 0) return base;
+
+  const lastAssistantIdx = [...base].map((m, idx) => (m.role === 'assistant' ? idx : -1)).filter((idx) => idx !== -1).pop();
+  if (lastAssistantIdx === undefined) return base;
+
+  base[lastAssistantIdx] = {
+    role: 'assistant',
+    content: `${base[lastAssistantIdx].content}\n${missingTags.map((id) => `[intencao_id: ${id}]`).join('\n')}`,
+  };
+  return base;
+}
+
+function appendGeneratedIntentId(
+  responseText: string,
+  tools?: AgentCoreInvocationResult['tools'],
+): string {
+  const intentTool = tools?.find((t) => t.name === 'registrar_intencao');
+  const intencaoId =
+    intentTool?.result && typeof intentTool.result === 'object'
+      ? (intentTool.result as Record<string, unknown>).intencao_id
+      : undefined;
+  if (typeof intencaoId === 'string' && intencaoId.trim() && !responseText.includes(intencaoId.trim())) {
+    return `${responseText}\n[intencao_id: ${intencaoId.trim()}]`;
+  }
+  return responseText;
 }
 
 /**
@@ -226,11 +297,14 @@ export function createStreamingChatHandler(
           ? (existing.Item.messages as Array<{ role: 'user' | 'assistant'; content: string; timestamp: string }>)
           : [];
 
+      const history = enrichHistoryWithIntentIds(parsed.clientHistory, priorMessages);
+
       const agentResult = await agentInvoker.invokeAgent({
         prompt: parsed.prompt,
         usuarioId,
         sessionId: sessionKey,
         runtimeSessionId: toRuntimeSessionId(sessionKey),
+        history,
       });
 
       for (const toolEvent of agentResult.tools ?? []) {
@@ -243,6 +317,7 @@ export function createStreamingChatHandler(
       // 5. Persiste conversa no DynamoDB (TTL 24h) e finaliza o stream
       const nowMs = nowFn();
       const nowIso = new Date(nowMs).toISOString();
+      const assistantContentForDb = appendGeneratedIntentId(agentResult.response, agentResult.tools);
       await activeStore.send(
         new PutCommand({
           TableName: conversasTable,
@@ -252,7 +327,7 @@ export function createStreamingChatHandler(
             messages: [
               ...priorMessages,
               { role: 'user' as const, content: parsed.prompt, timestamp: nowIso },
-              { role: 'assistant' as const, content: agentResult.response, timestamp: nowIso },
+              { role: 'assistant' as const, content: assistantContentForDb, timestamp: nowIso },
             ].slice(-MAX_MENSAGENS),
             updated_at: nowIso,
             expires_at: Math.floor(nowMs / 1000) + CONVERSA_TTL_SEGUNDOS,
