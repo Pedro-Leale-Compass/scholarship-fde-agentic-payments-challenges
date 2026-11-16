@@ -21,7 +21,7 @@ import {
 } from '@aws-sdk/client-lambda';
 
 // Carrega variáveis de ambiente do .env (ignorado pelo git) se existir.
-await import('dotenv').then((m) => m.config?.());
+await import('dotenv').then((m) => m.config?.({ override: true }));
 
 // Modelo temporário: Nova 2 Lite (barato e com tool use). O alvo do desafio é
 // Claude Haiku; troque via BEDROCK_MODEL_ID quando o acesso ao modelo for liberado:
@@ -58,6 +58,10 @@ const CATALOGO_LOCAL: Produto[] = [
   { id: 'p2', nome: 'Teclado Mecânico', preco: 349.9 },
   { id: 'p3', nome: 'Mouse Gamer', preco: 129.9 },
   { id: 'p4', nome: 'Monitor 27"', preco: 1299.0 },
+  { id: 'p5', nome: 'Webcam Full HD', preco: 299.0 },
+  { id: 'p6', nome: 'Cadeira Gamer', preco: 1499.0 },
+  { id: 'p7', nome: 'Headset com Microfone', preco: 249.9 },
+  { id: 'p8', nome: 'Suporte para Monitor', preco: 149.0 },
 ];
 
 const intencoesLocal = new Map<string, Intencao>();
