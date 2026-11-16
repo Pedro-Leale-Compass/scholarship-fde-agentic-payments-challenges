@@ -100,13 +100,18 @@ export async function isComplete(event: ProviderEvent) {
   try {
     const result = await client.send(new GetAgentRuntimeCommand({ agentRuntimeId }));
     const status = result.status;
+    const isComplete = status === 'READY' || status === 'CREATE_FAILED' || status === 'UPDATE_FAILED';
     return {
-      IsComplete: status === 'READY' || status === 'CREATE_FAILED' || status === 'UPDATE_FAILED',
-      Data: {
-        AgentRuntimeArn: result.agentRuntimeArn,
-        AgentRuntimeId: result.agentRuntimeId,
-        AgentRuntimeVersion: result.agentRuntimeVersion,
-      },
+      IsComplete: isComplete,
+      ...(isComplete
+        ? {
+            Data: {
+              AgentRuntimeArn: result.agentRuntimeArn,
+              AgentRuntimeId: result.agentRuntimeId,
+              AgentRuntimeVersion: result.agentRuntimeVersion,
+            },
+          }
+        : {}),
     };
   } catch (_) {
     return { IsComplete: false };
