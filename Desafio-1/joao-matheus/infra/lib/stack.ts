@@ -6,6 +6,7 @@ import { DadosConstruct } from './constructs/dados';
 import { ToolsConstruct } from './constructs/tools';
 import { AgenteConstruct } from './constructs/agente';
 import { ApiConstruct } from './constructs/api';
+import { FrontendDeployConstruct } from './constructs/frontend-deploy';
 
 export class DesafioStack extends cdk.Stack {
   public readonly frontendHosting: FrontendHostingConstruct;
@@ -150,6 +151,17 @@ export class DesafioStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'ConversasFunctionArn', {
       value: this.api.conversasFunction.functionArn,
       description: 'ARN da Lambda de consulta de conversas',
+    });
+
+    // =========================================================================
+    // 7. Deploy do Frontend (Upload dos artefatos + config.json no S3 / CloudFront)
+    // =========================================================================
+    new FrontendDeployConstruct(this, 'FrontendDeploy', {
+      bucket: this.frontendHosting.bucket,
+      distribution: this.frontendHosting.distribution,
+      api: this.api.api,
+      userPool: this.autenticacao.userPool,
+      userPoolClient: this.autenticacao.client,
     });
   }
 }
