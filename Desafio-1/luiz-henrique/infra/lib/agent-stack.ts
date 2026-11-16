@@ -9,7 +9,7 @@ import * as path from 'path';
 
 // Carrega variáveis de ambiente do .env (ignorado pelo git) se existir.
 import dotenv from 'dotenv';
-dotenv.config({ path: path.resolve(__dirname, '..', '..', '..', '.env'), override: true });
+dotenv.config({ path: path.resolve(__dirname, '..', '..', '.env'), override: true });
 
 if (!process.env.BEDROCK_MODEL_ID) {
   throw new Error(
