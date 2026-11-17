@@ -141,8 +141,8 @@ Não reintroduza regex/grounding para “corrigir” IDs. Siga o
 - Logs: `npm run check:logs`. Procure `/aws/bedrock-agentcore/*` e
   `/aws/lambda/luiz-henrique-*`.
 - Eventos úteis do runtime: `guard: fabricated_turn_removed`,
-  `guard: registration_reply_adjusted`, `guard: purchase_reply_adjusted`,
-  `guard: payment_fallback_verified`.
+  `guard: registration_reply_adjusted`, `guard: registration_fallback`,
+  `guard: purchase_reply_adjusted`, `guard: payment_fallback_verified`.
 - Logs das tools mostram `tool: registrar_intencao`/`realizar_compra` e o `intencao_id`.
 
 ## 8. Regras do desafio (resumo)

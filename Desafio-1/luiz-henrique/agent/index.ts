@@ -381,6 +381,77 @@ function applyRegistrationGuard(
   return 'Não registrei nenhuma intenção nesta mensagem (nenhum ID foi criado). Nenhuma cobrança foi feita. Pode repetir qual produto você quer comprar?';
 }
 
+function normalizeText(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+async function fetchCatalogo(): Promise<Produto[]> {
+  if (!TOOL_LISTAR_CATALOGO_ARN) return CATALOGO_LOCAL;
+  try {
+    const result = (await invokeLambda(TOOL_LISTAR_CATALOGO_ARN, {})) as {
+      catalogo?: unknown;
+    };
+    if (Array.isArray(result.catalogo)) return result.catalogo as Produto[];
+  } catch (err) {
+    console.error('registration fallback: catalog error:', err);
+  }
+  return CATALOGO_LOCAL;
+}
+
+function encontrarProduto(text: string, catalogo: Produto[]): Produto | null {
+  const normalized = normalizeText(text);
+  const matches = catalogo.filter((produto) =>
+    normalized.includes(normalizeText(produto.nome)),
+  );
+  return matches.length === 1 ? matches[0] : null;
+}
+
+/**
+ * Rede de segurança para a omissão mais comum do modelo: ele diz "intenção
+ * registrada" sem chamar a tool. Se a última mensagem do usuário citar exatamente
+ * um produto conhecido, registra esse produto na tool real e devolve o ID/preço
+ * retornados pelo backend. Não inventa ID nem preço.
+ */
+async function completeRegistrationFallback(
+  usuarioId: string,
+  state: AgentState,
+  lastUserText: string,
+  reply: string,
+): Promise<string | null> {
+  if (state.registeredThisTurn) return null;
+  if (!REGISTRATION_REPLY_RE.test(reply)) return null;
+
+  const catalogo = await fetchCatalogo();
+  const produto = encontrarProduto(lastUserText, catalogo);
+  if (!produto) return null;
+
+  let result: unknown;
+  if (!TOOL_REGISTRAR_INTENCAO_ARN) {
+    result = registrarIntencaoLocal(usuarioId, [produto], produto.preco);
+  } else {
+    result = await invokeLambda(TOOL_REGISTRAR_INTENCAO_ARN, {
+      usuario_id: usuarioId,
+      produtos: [produto],
+      valor: produto.preco,
+    });
+  }
+
+  const r = (result ?? {}) as {
+    ok?: unknown;
+    intencao_id?: unknown;
+    valor?: unknown;
+  };
+  if (r.ok !== true || typeof r.intencao_id !== 'string') return null;
+
+  state.registeredIntencaoId = r.intencao_id;
+  state.registeredThisTurn = true;
+  const valor = typeof r.valor === 'number' ? r.valor : produto.preco;
+  return `Intenção registrada: ${produto.nome}, R$ ${valor.toFixed(2)}, pendente. ID: ${r.intencao_id}. Cartão ou pix?`;
+}
+
 function createAgent(
   usuario_id: string,
   pendingIntencaoId?: string,
@@ -644,10 +715,32 @@ const app = new BedrockAgentCoreApp({
         if (sanitized !== rawReply) {
           console.log(JSON.stringify({ guard: 'fabricated_turn_removed' }));
         }
-        let reply = applyRegistrationGuard(sanitized, state);
-        if (reply !== sanitized) {
+        let reply = sanitized;
+        try {
+          const fallback = await completeRegistrationFallback(
+            usuario_id,
+            state,
+            lastUserText,
+            sanitized,
+          );
+          if (fallback) {
+            reply = fallback;
+            console.log(
+              JSON.stringify({
+                guard: 'registration_fallback',
+                intencao_id: state.registeredIntencaoId,
+              }),
+            );
+          }
+        } catch (err) {
+          console.error('registration fallback error:', err);
+        }
+
+        const guardedRegistration = applyRegistrationGuard(reply, state);
+        if (guardedRegistration !== reply) {
           console.log(JSON.stringify({ guard: 'registration_reply_adjusted' }));
         }
+        reply = guardedRegistration;
 
         const guarded = applyPurchaseGuard(reply, state.lastPurchase);
         if (guarded !== reply) {

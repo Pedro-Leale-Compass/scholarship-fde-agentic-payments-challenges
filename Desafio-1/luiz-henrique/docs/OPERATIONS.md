@@ -85,8 +85,8 @@ Observações:
   `npm run check:model` e procure o sufixo `-DEFAULT`. Não crie um log group manualmente
   antes de confirmar; logs têm free tier de 5 GB, mas evite retenção infinita.
 - Os logs do agente incluem eventos `guard: fabricated_turn_removed`,
-  `guard: registration_reply_adjusted`, `guard: purchase_reply_adjusted` e
-  `guard: payment_fallback_verified`. Use-os para confirmar o comportamento descrito no
+  `guard: registration_reply_adjusted`, `guard: registration_fallback`,
+  `guard: purchase_reply_adjusted` e `guard: payment_fallback_verified`. Use-os para confirmar o comportamento descrito no
   `PLAN-AGENT-REVAMP.md`. Para filtrar só esses eventos:
 
 ```bash

@@ -84,6 +84,9 @@ sem custo.
    `INTENCAO_JA_PAGA` ou `INTENCAO_INDISPONIVEL`).
 5. Depois da resposta do modelo:
    - `stripFabricatedTurns` corta transcrições fabricadas;
+   - `completeRegistrationFallback` tenta registrar o único produto citado na última
+     mensagem quando o modelo afirma “registrada” sem chamar a tool; usa o catálogo e a
+     tool reais, nunca inventa preço/ID;
    - `applyRegistrationGuard` substitui “intenção registrada” por uma falha visível se
      `registrar_intencao` não retornou `ok: true` nesta invocação;
    - `applyPurchaseGuard` impede afirmar sucesso sem `realizar_compra.ok === true`.
@@ -119,7 +122,8 @@ Correções aplicadas no código:
 - `completePaymentFallback` foi reintroduzido usando apenas o `pending_intencao_id`
   verificado pela API, não o último ID do histórico;
 - `registrar_intencao` só marca registro com `ok: true`;
-- guarda de registro com falha visível;
+- guarda de registro com falha visível e fallback determinístico de registro para o caso
+  “o modelo disse registrada sem chamar a tool”;
 - histórico não esconde mais a falha;
 - códigos terminais separados (`INTENCAO_CANCELADA`, `INTENCAO_EXPIRADA`,
   `INTENCAO_JA_PAGA`, `INTENCAO_INDISPONIVEL`);

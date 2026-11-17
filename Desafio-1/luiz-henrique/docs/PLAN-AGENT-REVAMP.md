@@ -213,7 +213,8 @@ do transcript.
 - [x] Criar/ler item em `Conversas` com `pending_intencao_id`/`pending_status`.
 - [x] Remover `ultima_intencao_id` do caminho de decisão.
 - [x] Remover seed/override/grounding descritos em §3.2.
-- [x] Implementar guarda de registro; fallback de pagamento removido.
+- [x] Implementar guarda de registro e fallback determinístico de registro.
+- [x] Fallback de pagamento usa apenas `pending_intencao_id` verificado.
 - [x] Limpar estado em `paga`/`cancelada`/`expirada`/`indisponível`.
 - Critério: duas compras consecutivas (mesmo após falha) geram IDs distintos; nova
   conversa não herda ID; ID inválido nunca é “corrigido” para outro.

@@ -42,7 +42,7 @@ Plano detalhado: [`PLAN-AGENT-REVAMP.md`](PLAN-AGENT-REVAMP.md).
 - [x] Remover `Usuarios.ultima_intencao_id` do caminho de decisão.
 - [x] Remover seed de `state.lastIntencaoId` e override em `realizar_compra`.
 - [x] Remover `groundIntencaoIds` e o fallback que prefere estado antigo.
-- [x] Implementar guarda de registro (“registrada” só com tool result).
+- [x] Implementar guarda de registro e fallback determinístico de registro.
 - [x] Remover o fallback de pagamento que usava estado antigo.
 - [x] Limpar estado em `paga`/`cancelada`/`expirada`/`indisponível`.
 
