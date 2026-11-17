@@ -1,58 +1,47 @@
+# Infraestrutura AWS
 
-# Welcome to your CDK Python project!
+Esta pasta descreve e publica os recursos da Fase 2 usando **AWS CDK com Python**. Em vez de criar cada serviço manualmente no console, o código define a estrutura da aplicação.
 
-This is a blank project for CDK development with Python.
+## O que ela cria
 
-The `cdk.json` file tells the CDK Toolkit how to execute your app.
+- Cognito para login por convite.
+- APIs protegidas para sessão, perfil e chat.
+- Funções Lambda para as APIs e ferramentas de compra.
+- Tabelas DynamoDB para usuários, catálogo, intenções, transações e conversas.
+- Runtime do agente no AgentCore, permissões e logs.
 
-This project is set up like a standard Python project.  The initialization
-process also creates a virtualenv within this project, stored under the `.venv`
-directory.  To create the virtualenv it assumes that there is a `python3`
-(or `python` for Windows) executable in your path with access to the `venv`
-package. If for any reason the automatic creation of the virtualenv fails,
-you can create the virtualenv manually.
+O frontend continua local. Esta infraestrutura não publica a interface em S3/CloudFront nesta etapa.
 
-To manually create a virtualenv on MacOS and Linux:
+## Arquivos e pastas principais
 
-```
-$ python3 -m venv .venv
-```
+| Local | Função |
+|---|---|
+| `app.py` | Inicia a definição da aplicação CDK. |
+| `infra/` | Define os recursos e suas conexões. |
+| `policies/` | Políticas usadas na preparação das permissões de implantação. |
+| `scripts/` | Empacotamento do agente, catálogo inicial, configuração do frontend e validações. |
+| `tests/` | Testes da infraestrutura, deploy e regras das ferramentas. |
+| `deploy.sh` | Coordena build, publicação AWS e preparação do frontend local. |
 
-After the init process completes and the virtualenv is created, you can use the following
-step to activate your virtualenv.
+## Validar e publicar
 
-```
-$ source .venv/bin/activate
-```
+Para rodar os testes a partir desta pasta, com o ambiente Python preparado:
 
-If you are a Windows platform, you would activate the virtualenv like this:
-
-```
-% .venv\Scripts\activate.bat
-```
-
-Once the virtualenv is activated, you can install the required dependencies.
-
-```
-$ pip install -r requirements.txt
+```bash
+source .venv/bin/activate
+python -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
-At this point you can now synthesize the CloudFormation template for this code.
+Para atualizar o ambiente, a partir da pasta principal do projeto, com Node.js 24, CDK e sessão AWS disponíveis:
 
+```bash
+bash infra/deploy.sh NOME_DO_SEU_PERFIL
 ```
-$ cdk synth
-```
 
-To add additional dependencies, for example other CDK libraries, just add
-them to your `requirements.txt` file and rerun the `python -m pip install -r requirements.txt`
-command.
+**Substitua `NOME_DO_SEU_PERFIL` pelo nome do perfil configurado no AWS CLI** que tem acesso à conta de destino. Não é o número da conta nem o usuário de login da aplicação.
 
-## Useful commands
+Para listar os perfis, use `aws configure list-profiles`. Se o acesso usa SSO, entre com `aws sso login --profile NOME_DO_SEU_PERFIL` e confira a conta de destino com `aws sts get-caller-identity --profile NOME_DO_SEU_PERFIL`.
 
- * `cdk ls`          list all stacks in the app
- * `cdk synth`       emits the synthesized CloudFormation template
- * `cdk deploy`      deploy this stack to your default AWS account/region
- * `cdk diff`        compare deployed stack with current state
- * `cdk docs`        open CDK documentation
+O script publica o backend e gera o frontend local; depois, reconstrua o serviço Docker para incorporar alterações. A preparação inicial, permissões e diagnóstico estão no [README principal](../README.md).
 
-Enjoy!
+Mantenha os recursos disponíveis até a avaliação. A remoção da stack pode apagar usuários e dados; o procedimento de limpeza também está no guia principal.

@@ -81,7 +81,7 @@ Os valores abaixo correspondem aos outputs apresentados após o deploy. Podem mu
 | Item | Valor observado |
 |---|---|
 | Conta AWS | `631570928305` |
-| Perfil CLI | `luisfilipe` |
+| Nome do perfil configurado no AWS CLI | `NOME_DO_SEU_PERFIL` — substitua pelo seu perfil autorizado |
 | Região da stack | `us-east-1` |
 | Stack da aplicação | `luis-filipe-mendes-nogueira-desafio-1` |
 | Stack do bootstrap | `luis-filipe-mendes-nogueira-bootstrap` |
@@ -92,6 +92,8 @@ Os valores abaixo correspondem aos outputs apresentados após o deploy. Podem mu
 | App Client público | `6ccdai8km5lhfo6cbllud51t6b` |
 | AgentCore Runtime ID | `luis_filipe_mendes_nogueira_agent-Guuy8W6O51` |
 | Prefixo dos recursos | `luis-filipe-mendes-nogueira` |
+
+**Substitua `NOME_DO_SEU_PERFIL` pelo nome do seu perfil configurado no AWS CLI**, que seleciona as credenciais de acesso à conta de destino. Não é o número da conta, o usuário Cognito ou o perfil de inferência Bedrock. Liste os perfis com `aws configure list-profiles` e confira a conta e a identidade com `aws sts get-caller-identity --profile NOME_DO_SEU_PERFIL`.
 
 URLs, nomes de recursos e identificadores Cognito são dados públicos de configuração. Senhas, tokens e credenciais não devem ser incluídos em código, documentação ou evidências.
 
@@ -396,8 +398,8 @@ Editar os JSONs locais não publica automaticamente essas políticas. A prepara�
 Na raiz da pasta individual:
 
 ```bash
-aws sso login --profile luisfilipe
-bash infra/deploy.sh luisfilipe
+aws sso login --profile NOME_DO_SEU_PERFIL
+bash infra/deploy.sh NOME_DO_SEU_PERFIL
 ```
 
 O script:
@@ -550,7 +552,7 @@ Quando houver autorização para remover a aplicação, usar o CDK no ambiente p
 cd infra
 source .venv/bin/activate
 nvm use 24
-cdk destroy luis-filipe-mendes-nogueira-desafio-1 --profile luisfilipe
+cdk destroy luis-filipe-mendes-nogueira-desafio-1 --profile NOME_DO_SEU_PERFIL
 ```
 
 Conferir a remoção efetiva das APIs, Lambdas, runtime, tabelas, User Pool, roles/políticas próprias da stack e logs. A configuração atual de remoção das tabelas e do User Pool é destrutiva; recriá-los muda identificadores e exige novos usuários/convites e atualização da configuração pública.

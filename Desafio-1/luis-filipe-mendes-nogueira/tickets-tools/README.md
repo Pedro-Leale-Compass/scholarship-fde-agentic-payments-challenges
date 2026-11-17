@@ -1,70 +1,26 @@
-# tickets-tools (Servidor MCP de Ferramentas de Pagamento)
+# Ferramentas MCP — legado da Fase 1
 
-![Squad 8 Header](../headers/agentic-payments-fde-workshops-mainheader-squad8.webp)
+Esta pasta guarda as ferramentas de compra da versão local anterior, escritas em TypeScript e acessadas pelo protocolo MCP. O agente antigo de `gemini-chat/` iniciava esse servidor para consultar eventos e processar compras simuladas.
 
-Servidor Model Context Protocol (MCP 1.0) implementado em TypeScript via transporte Stdio, expondo as ferramentas transacionais de catálogo, reserva de assentos e confirmação de pagamentos com soberania de regras no backend.
+**Na Fase 2, as ferramentas equivalentes estão em `tools/` e rodam em AWS Lambda com DynamoDB. Este módulo legado não é necessário para o frontend atual.**
 
-> **Fonte da Verdade:** Para a documentação arquitetural completa, contratos normativos e matriz de testes do ecossistema, consulte o [`README.md`](../README.md) raiz do repositório e o contrato formal em [`docs/contrato-api.md`](../contrato-api.md).
+## Ferramentas disponíveis nesta versão
 
----
+| Ferramenta | O que faz |
+|---|---|
+| `listar_catalogo` | Consulta eventos, preços e vagas. |
+| `registrar_intencao` | Reserva ingressos por cinco minutos e calcula o total no backend. |
+| `realizar_compra` | Valida a intenção e solicita o débito de saldo ao serviço local de autenticação. |
 
-## 1. Ferramentas (Tools) Expostas
+Os dados desta versão ficam em SQLite. O código está em `src/`, incluindo as regras de reserva, pagamento e devolução de vagas de intenções vencidas. Os testes ficam em `tests/`.
 
-O servidor disponibiliza 3 ferramentas estritas via protocolo MCP:
+## Como validar
 
-| Ferramenta | Parâmetros de Entrada | Descrição e Comportamento de Negócio |
-| :--- | :--- | :--- |
-| **`listar_catalogo`** | `categoria` (opcional, string) | Consulta os eventos cadastrados no SQLite. Executa automaticamente a rotina `expirarIntencoesVencidas()` para liberar vagas presas antes da listagem. |
-| **`registrar_intencao`** | `evento_id` (string), `quantidade` (number), `usuario_id` (injetado via sessão) | Reserva atômica de assentos por 5 minutos (`expira_em`). O `valor_total` é calculado exclusivamente no backend via `calcularValorTotal(precoUnitario, quantidade)` em centavos. Decrementa o estoque imediatamente. |
-| **`realizar_compra`** | `intencao_id` (string), `metodo_pagamento` (`"pix"` ou `"cartao"`), `usuario_id` e `token` (injetados) | Confirmação da transação. Valida posse, expiração, unicidade de pagamento, consulta saldo no `auth/`, debita o limite via `PATCH /me/limite` e consolida a baixa atômica contra race conditions (TOCTOU). |
-
----
-
-## 2. Soberania das Regras de Negócio e Segurança
-
-1. **Blindagem de Cálculos Financeiros:** O modelo de IA nunca calcula preços e nem define valores totais. A função `calcularValorTotal()` garante precisão monetária determinística contra imprecisões de ponto flutuante IEEE 754.
-2. **Estorno e Devolução Proativa de Vagas:** A rotina idempotente `expirarIntencoesVencidas()` varre intenções pendentes que ultrapassaram a janela de 5 minutos, devolvendo os assentos ao estoque original.
-3. **Prevenção contra Overbooking e TOCTOU:** Transições de status de compra exigem condição atômica no banco de dados (`WHERE status = 'pendente'`).
-4. **Códigos Padronizados de Erro (`ErroTool`):** Retornos de erro estruturados com os códigos normativos: `INTENCAO_INVALIDA`, `VAGAS_INSUFICIENTES`, `INTENCAO_JA_PAGA`, `INTENCAO_EXPIRADA`, `LIMITE_EXCEDIDO`, `METODO_INVALIDO` e `ERRO_INTERNO`.
-5. **Trilha de Auditoria:** Cada invocação de ferramenta gera um registro auditável estruturado em `src/logs/audit.ts`.
-
----
-
-## 3. Banco de Dados e Seeds
-
-O módulo utiliza SQLite com modo WAL (Write-Ahead Logging) para garantir alta performance e concorrência:
-
-```bash
-# 1. Instalação de dependências
-npm install
-
-# 2. Criação das tabelas e carga do catálogo inicial
-npm run db:seed
-
-# 3. Compilação do servidor para distribuição (dist/server.js)
-npm run build
-```
-
----
-
-## 4. Execução
-
-```bash
-# Execução em modo desenvolvimento via ts-node-dev
-npm run dev
-
-# Execução em produção a partir do build compilado
-npm start
-```
-
----
-
-## 5. Testes Automatizados
-
-A suíte de testes cobre cálculos decimais, contratos de ferramentas, estornos automáticos, resiliência contra concorrência e tentativas de jailbreak (`tests/jailbreak.test.ts`):
+A partir desta pasta e com as dependências instaladas:
 
 ```bash
 npm test
+npm run build
 ```
 
-* **Total:** 44 testes automatizados com 100% de aprovação no Vitest.
+O servidor usa entrada e saída padrão para conversar com o agente; ele não é uma API HTTP para o navegador. Consulte a [documentação da Fase 1](../docs/fase1/README.md) para a arquitetura anterior e o [guia principal](../README.md) para a aplicação atual.

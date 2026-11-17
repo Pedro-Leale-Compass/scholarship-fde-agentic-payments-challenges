@@ -1,7 +1,12 @@
 import asyncio
+import sys
+from pathlib import Path
 import json
 
 import boto3
+
+# Permite executar este script diretamente de qualquer diretório.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from agente import REGIAO, criar_agente
 

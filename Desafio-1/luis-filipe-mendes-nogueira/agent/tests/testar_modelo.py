@@ -1,9 +1,14 @@
 import asyncio
+import sys
+from pathlib import Path
 
 import boto3
 from botocore.config import Config
 from strands import Agent
 from strands.models import BedrockModel
+
+# Permite executar este script diretamente de qualquer diretório.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from agente import MODELO_ID, REGIAO
 

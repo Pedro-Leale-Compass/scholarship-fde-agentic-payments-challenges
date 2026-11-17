@@ -69,7 +69,9 @@ IAM Access Analyzer a sinalize como `INVALID_ACTION`. Não ampliar para
 
 ## Preparação e publicação
 
-`bash infra/deploy.sh luisfilipe` carrega Node 24 quando necessário, ativa
+No comando abaixo, **substitua `NOME_DO_SEU_PERFIL` pelo nome do perfil configurado no AWS CLI** que seleciona as credenciais de implantação. Não é o número da conta ou o usuário Cognito. Para conferir os nomes disponíveis, use `aws configure list-profiles`; para verificar a conta, use `aws sts get-caller-identity --profile NOME_DO_SEU_PERFIL`.
+
+`bash infra/deploy.sh NOME_DO_SEU_PERFIL` carrega Node 24 quando necessário, ativa
 `infra/.venv`, reconstrói o ZIP ARM64, publica os assets e a stack pelo CDK e
 executa a carga condicional do catálogo. Esse comando altera a AWS e pode
 gerar cobrança por uso/armazenamento. Não é um comando de validação local.

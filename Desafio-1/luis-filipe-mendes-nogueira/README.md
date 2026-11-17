@@ -194,11 +194,13 @@ infra/.venv/bin/python -m pip install \
 python3.13 -m venv agent/.venv
 agent/.venv/bin/python -m pip install -r agent/requirements.txt
 
-aws sso login --profile luisfilipe
-aws sts get-caller-identity --profile luisfilipe
+aws sso login --profile NOME_DO_SEU_PERFIL
+aws sts get-caller-identity --profile NOME_DO_SEU_PERFIL
 ```
 
-O perfil `luisfilipe` deve ter sido configurado para o acesso SSO autorizado. Ele não é o login Cognito dos usuários da aplicação.
+Em todos os comandos deste guia, **substitua `NOME_DO_SEU_PERFIL` pelo nome do perfil configurado no AWS CLI** que tem acesso à conta de destino. Esse perfil seleciona as credenciais de acesso à AWS; não é o número da conta, o usuário Cognito nem o perfil de inferência do Bedrock.
+
+Para listar os nomes disponíveis, execute `aws configure list-profiles`. Para conferir a conta e a identidade associadas, use `aws sts get-caller-identity --profile NOME_DO_SEU_PERFIL`. O perfil escolhido precisa ter acesso à conta de destino e às permissões exigidas pelo deploy.
 
 ### Conta, região e preparação inicial
 
@@ -218,7 +220,7 @@ Criação inicial da política de execução:
 
 ```bash
 aws iam create-policy \
-  --profile luisfilipe \
+  --profile NOME_DO_SEU_PERFIL \
   --policy-name luis-filipe-mendes-nogueira-cfn-execution \
   --policy-document file://infra/policies/cloudformation-execution.json \
   --query Policy.Arn \
@@ -230,7 +232,7 @@ Bootstrap individual, executado da pasta do participante, antes de entrar em `in
 
 ```bash
 cdk bootstrap aws://631570928305/us-east-1 \
-  --profile luisfilipe \
+  --profile NOME_DO_SEU_PERFIL \
   --toolkit-stack-name luis-filipe-mendes-nogueira-bootstrap \
   --qualifier luisfn001 \
   --cloudformation-execution-policies arn:aws:iam::631570928305:policy/luis-filipe-mendes-nogueira-cfn-execution
@@ -240,7 +242,7 @@ Política complementar das APIs REST na role de execução criada pelo bootstrap
 
 ```bash
 aws iam put-role-policy \
-  --profile luisfilipe \
+  --profile NOME_DO_SEU_PERFIL \
   --role-name cdk-luisfn001-cfn-exec-role-631570928305-us-east-1 \
   --policy-name luis-filipe-mendes-nogueira-chat-deploy \
   --policy-document file://infra/policies/cloudformation-chat.json \
@@ -254,7 +256,7 @@ A conta também precisa ter concluído os requisitos de acesso ao modelo Anthrop
 ### Comando de deploy do ambiente preparado
 
 ```bash
-bash infra/deploy.sh luisfilipe
+bash infra/deploy.sh NOME_DO_SEU_PERFIL
 ```
 
 Esse comando:
@@ -312,7 +314,7 @@ Com acesso administrativo autorizado, substitua as duas ocorrências de `EMAIL_D
 
 ```bash
 aws cognito-idp admin-create-user \
-  --profile luisfilipe \
+  --profile NOME_DO_SEU_PERFIL \
   --region us-east-1 \
   --user-pool-id us-east-1_tYHumks4h \
   --username 'EMAIL_DO_USUARIO' \
@@ -536,7 +538,7 @@ As capturas estão em [`docs/evidencias/`](docs/evidencias/). Clique em uma imag
 | Login funciona, mas o chat é recusado | Confira a API afetada e a mensagem; uma sessão Cognito existente não garante autorização da chamada |
 | `SESSAO_INVALIDA` na Lambda REST | A expiração pode chegar como data UTC; a normalização está implementada e testada em `api/chat/src/autenticacao.mjs` |
 | Conversa processando ou incerta | Use a consulta de resultado; não solicite novamente o pagamento automaticamente |
-| Credenciais SSO expiradas durante deploy | Execute `aws sso login --profile luisfilipe` |
+| Credenciais SSO expiradas durante deploy | Execute `aws sso login --profile NOME_DO_SEU_PERFIL` |
 | Falha de permissão ao criar recursos | Leia os eventos CloudFormation e o CloudTrail; no diagnóstico do AgentCore, o detalhe estava em `responseElements.message` |
 
 Logs locais:
@@ -549,7 +551,7 @@ Logs da Lambda do chat, com acesso AWS autorizado:
 
 ```bash
 aws logs tail /aws/lambda/luis-filipe-mendes-nogueira-chat \
-  --profile luisfilipe \
+  --profile NOME_DO_SEU_PERFIL \
   --region us-east-1 \
   --since 20m \
   --no-cli-pager
@@ -611,7 +613,7 @@ Para remover a stack AWS depois da correção, dentro da pasta individual e com 
 cd infra
 source .venv/bin/activate
 nvm use 24
-cdk destroy luis-filipe-mendes-nogueira-desafio-1 --profile luisfilipe
+cdk destroy luis-filipe-mendes-nogueira-desafio-1 --profile NOME_DO_SEU_PERFIL
 ```
 
 A configuração de remoção é destrutiva para tabelas e User Pool: dados e usuários podem ser apagados. Conferir a exclusão das APIs, Lambdas, runtime, tabelas, logs e recursos próprios da stack.
