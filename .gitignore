@@ -1,0 +1,23 @@
+# Ignorar diretório de agentes e contexto interno
+agents/
+
+# Dependências e caches comuns
+node_modules/
+.env
+.env*.local
+*.log
+
+# IaC & AWS
+.aws/
+cdk.out/
+.terraform/
+*.tfstate
+*.tfstate.*
+.serverless/
+
+# Builds
+dist/
+build/
+.next/
+out/
+
