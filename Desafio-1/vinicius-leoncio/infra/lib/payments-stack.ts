@@ -15,7 +15,9 @@ import * as agentcore from 'aws-cdk-lib/aws-bedrockagentcore'
 
 export interface PaymentsStackProps extends cdk.StackProps {
   defaultUserLimit: number
+  deployFrontend?: boolean
   frontendDirectory?: string
+  localFrontendOrigin?: string
 }
 
 export class PaymentsStack extends cdk.Stack {
@@ -63,15 +65,15 @@ export class PaymentsStack extends cdk.Stack {
       removalPolicy,
     })
 
-    const frontendBucket = new s3.Bucket(this, 'FrontendBucket', {
+    const frontendBucket = props.deployFrontend ? new s3.Bucket(this, 'FrontendBucket', {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
       enforceSSL: true,
       versioned: false,
       autoDeleteObjects: true,
       removalPolicy,
-    })
-    const distribution = new cloudfront.Distribution(this, 'FrontendDistribution', {
+    }) : undefined
+    const distribution = frontendBucket ? new cloudfront.Distribution(this, 'FrontendDistribution', {
       defaultRootObject: 'index.html',
       defaultBehavior: {
         origin: origins.S3BucketOrigin.withOriginAccessControl(frontendBucket),
@@ -82,7 +84,10 @@ export class PaymentsStack extends cdk.Stack {
         { httpStatus: 403, responseHttpStatus: 200, responsePagePath: '/index.html', ttl: cdk.Duration.minutes(1) },
         { httpStatus: 404, responseHttpStatus: 200, responsePagePath: '/index.html', ttl: cdk.Duration.minutes(1) },
       ],
-    })
+    }) : undefined
+    const frontendOrigin = distribution
+      ? `https://${distribution.distributionDomainName}`
+      : props.localFrontendOrigin ?? 'http://localhost:3000'
     const toolsDir = path.join(fellowRoot, 'tools')
     const toolsBundle = path.join(toolsDir, 'build', 'lambda')
     const appLogGroup = (id: string) => new logs.LogGroup(this, id, {
@@ -132,6 +137,11 @@ export class PaymentsStack extends cdk.Stack {
           `arn:${this.partition}:bedrock:${region}::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0`),
       ],
     }))
+    runtimeRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['aws-marketplace:ViewSubscriptions', 'aws-marketplace:Subscribe', 'aws-marketplace:Unsubscribe'],
+      resources: ['*'],
+      conditions: { StringEquals: { 'aws:CalledViaLast': 'bedrock.amazonaws.com' } },
+    }))
     toolFunctions.forEach((fn) => fn.grantInvoke(runtimeRole))
     const agentCodeDirectory = path.join(fellowRoot, 'agent', 'build', 'site')
     const agentArtifact = agentcore.AgentRuntimeArtifact.fromCodeAsset({
@@ -163,11 +173,11 @@ export class PaymentsStack extends cdk.Stack {
       environment: {
         CONVERSATIONS_TABLE_NAME: conversationsTable.tableName,
         AGENT_RUNTIME_ARN: runtime.agentRuntimeArn,
-        FRONTEND_ORIGIN: `https://${distribution.distributionDomainName}`,
+        FRONTEND_ORIGIN: frontendOrigin,
       },
     })
     apiHandler.addToRolePolicy(new iam.PolicyStatement({
-      actions: ['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:UpdateItem', 'dynamodb:TransactWriteItems'],
+      actions: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:Query', 'dynamodb:UpdateItem', 'dynamodb:TransactWriteItems'],
       resources: [conversationsTable.tableArn],
       conditions: { 'ForAllValues:StringLike': { 'dynamodb:LeadingKeys': ['USER#*'] } },
     }))
@@ -203,35 +213,36 @@ export class PaymentsStack extends cdk.Stack {
     conversationResource.addMethod('GET', integration, { authorizer })
 
     chatResource.addCorsPreflight({
-      allowOrigins: [`https://${distribution.distributionDomainName}`],
+      allowOrigins: [frontendOrigin],
       allowMethods: ['POST', 'OPTIONS'], allowHeaders: ['Authorization', 'Content-Type'],
     })
     conversationResource.addCorsPreflight({
-      allowOrigins: [`https://${distribution.distributionDomainName}`],
+      allowOrigins: [frontendOrigin],
       allowMethods: ['GET', 'OPTIONS'], allowHeaders: ['Authorization', 'Content-Type'],
     })
     api.addGatewayResponse('ApiClientErrorCors', {
       type: apigw.ResponseType.DEFAULT_4XX,
       responseHeaders: {
-        'Access-Control-Allow-Origin': `'https://${distribution.distributionDomainName}'`,
+        'Access-Control-Allow-Origin': `'${frontendOrigin}'`,
         'Access-Control-Allow-Headers': "'Authorization,Content-Type'",
         'Access-Control-Allow-Methods': "'GET,POST,OPTIONS'",
       },
     })
 
-    new s3deploy.BucketDeployment(this, 'DeployFrontend', {
-      sources: [
-        s3deploy.Source.asset(frontendDirectory),
-        s3deploy.Source.data('config.json', JSON.stringify({ apiUrl: api.url, userPoolId: pool.userPoolId, userPoolClientId: userClient.userPoolClientId })),
-      ],
-      destinationBucket: frontendBucket,
-      distribution,
-      distributionPaths: ['/*'],
-      prune: true,
-    })
+    if (frontendBucket && distribution) {
+      new s3deploy.BucketDeployment(this, 'DeployFrontend', {
+        sources: [
+          s3deploy.Source.asset(frontendDirectory),
+          s3deploy.Source.data('config.json', JSON.stringify({ apiUrl: api.url, userPoolId: pool.userPoolId, userPoolClientId: userClient.userPoolClientId })),
+        ],
+        destinationBucket: frontendBucket,
+        distribution,
+        distributionPaths: ['/*'],
+        prune: true,
+      })
 
-
-    new cdk.CfnOutput(this, 'FrontendUrl', { value: `https://${distribution.distributionDomainName}` })
+      new cdk.CfnOutput(this, 'FrontendUrl', { value: `https://${distribution.distributionDomainName}` })
+    }
     new cdk.CfnOutput(this, 'ApiUrl', { value: api.url })
     new cdk.CfnOutput(this, 'UserPoolId', { value: pool.userPoolId })
     new cdk.CfnOutput(this, 'UserPoolClientId', { value: userClient.userPoolClientId })

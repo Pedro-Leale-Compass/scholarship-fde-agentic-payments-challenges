@@ -191,13 +191,22 @@ export default function Page() {
   const [configError, setConfigError] = useState('')
 
   useEffect(() => {
-    void fetch('/config.json', { cache: 'no-store' })
-      .then(async (response) => {
-        if (!response.ok) throw new Error('A configuração da aplicação não foi publicada.')
-        return await response.json() as RuntimeConfig
-      })
+    const localConfig: RuntimeConfig = {
+      apiUrl: process.env.NEXT_PUBLIC_PAYMENTS_API_URL ?? '',
+      userPoolId: process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID ?? '',
+      userPoolClientId: process.env.NEXT_PUBLIC_COGNITO_USER_POOL_CLIENT_ID ?? '',
+    }
+    const hasLocalConfig = Object.values(localConfig).every(Boolean)
+    const configPromise = hasLocalConfig
+      ? Promise.resolve(localConfig)
+      : fetch('/config.json', { cache: 'no-store' }).then(async (response) => {
+          if (!response.ok) throw new Error('Configure frontend/.env.local ou publique a configuração da aplicação.')
+          return await response.json() as RuntimeConfig
+        })
+
+    void configPromise
       .then((value) => {
-        if (!value.apiUrl || !value.userPoolId || !value.userPoolClientId) throw new Error('A configuração publicada está incompleta.')
+        if (!value.apiUrl || !value.userPoolId || !value.userPoolClientId) throw new Error('A configuração da aplicação está incompleta.')
         Amplify.configure({ Auth: { Cognito: { userPoolId: value.userPoolId, userPoolClientId: value.userPoolClientId } } })
         setConfig(value)
       })

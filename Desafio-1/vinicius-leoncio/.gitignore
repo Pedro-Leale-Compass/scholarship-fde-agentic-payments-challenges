@@ -6,4 +6,5 @@ agent/build/
 tools/build/
 api/build/
 infra/build/
+.env*.local
 *.tsbuildinfo
