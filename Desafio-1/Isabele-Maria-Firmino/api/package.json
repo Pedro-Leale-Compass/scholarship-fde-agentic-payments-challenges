@@ -1,0 +1,25 @@
+{
+  "name": "isabele-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Lambdas da API do webchat: chat com streaming e histórico de conversas",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "db:local": "docker run --rm -d -p 8000:8000 --name isabele-dynamodb-local amazon/dynamodb-local:latest -jar DynamoDBLocal.jar -inMemory",
+    "db:local:parar": "docker stop isabele-dynamodb-local",
+    "test": "DYNAMODB_ENDPOINT=http://localhost:8000 node --test test/*.test.ts",
+    "check": "npm run typecheck && npm test"
+  },
+  "dependencies": {
+    "@aws-sdk/client-bedrock-agentcore": "^3.1169.0",
+    "@aws-sdk/client-dynamodb": "^3.1169.0",
+    "@aws-sdk/lib-dynamodb": "^3.1169.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.164",
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.0"
+  }
+}

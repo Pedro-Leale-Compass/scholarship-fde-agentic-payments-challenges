@@ -1,0 +1,15 @@
+{
+  "app": "npx tsx bin/app.ts",
+  "watch": {
+    "include": ["bin/**", "lib/**"],
+    "exclude": ["node_modules", "cdk.out", "test"]
+  },
+  "context": {
+    "@aws-cdk/aws-iam:minimizePolicies": true,
+    "@aws-cdk/aws-apigateway:disableCloudWatchRole": true,
+    "@aws-cdk/aws-lambda:useCdkManagedLogGroup": true,
+    "@aws-cdk/aws-s3:publicAccessBlockedByDefault": true,
+    "@aws-cdk/aws-cloudfront:defaultViewerProtocolPolicyRedirectToHttps": true,
+    "@aws-cdk/core:checkSecretUsage": true
+  }
+}

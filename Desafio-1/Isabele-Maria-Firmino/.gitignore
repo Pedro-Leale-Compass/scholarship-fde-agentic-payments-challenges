@@ -1,0 +1,32 @@
+# Segredos e configuração local — nunca vão para o Git
+.env
+.env.*
+!.env.example
+.envrc
+
+# Dependências
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Build
+dist/
+build/
+*.tsbuildinfo
+
+# CDK / Terraform
+cdk.out/
+cdk.context.json
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# Config gerada no deploy (vai para o S3, não para o repo)
+frontend/public/config.json
+infra/cdk-outputs.json
+
+# Ferramentas locais
+.bedrock_agentcore/
+.DS_Store
