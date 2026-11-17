@@ -38,8 +38,8 @@ Não faça commit em `main`, `develop`, `master` ou outra branch. Antes de commi
 - Agente Strands no Bedrock AgentCore Runtime; runtime criado por `CustomResource`
   (`infra/lambda/agent-runtime/index.ts`), não por `CfnResource`.
 - Tools em 3 Lambdas: `listar_catalogo`, `registrar_intencao`, `realizar_compra`.
-- DynamoDB: `Usuarios`, `Conversas`, `Intencoes`, `Catalogo`. `Conversas` existe, mas ainda
-  não é gravada.
+- DynamoDB: `Usuarios`, `Conversas`, `Intencoes`, `Catalogo`. `Conversas` guarda o
+  `pending_intencao_id` por conversa.
 - Modelo: Bedrock Claude Haiku 4.5 via `BEDROCK_MODEL_ID` (runtime v12, confirmado em
   2026-11-17); fallback do código é `global.amazon.nova-2-lite-v1:0` se a variável não
   existir.
@@ -108,11 +108,13 @@ A reutilização de `intencao_id` do `v0.0.2` foi removida do código:
 - falha visível no lugar de reescrita silenciosa;
 - status terminais têm códigos distintos.
 
-Validado com `npm run test:local` (Haiku, fallback). Ainda falta:
+Validado com `npm run test:local` (Haiku, fallback). Estado por conversa (`conversa_id`)
+implementado em `Conversas`, com fallback de pagamento usando apenas ID pendente verificado.
+Ainda falta:
 
 - validar na stack implantada (`npm run test:agent`);
-- estado por conversa (`conversa_id`) em `Conversas`;
-- preço resolvido pelo catálogo.
+- preço resolvido pelo catálogo;
+- histórico completo em `Conversas`.
 
 Não reintroduza regex/grounding para “corrigir” IDs. Siga o
 [`docs/PLAN-AGENT-REVAMP.md`](docs/PLAN-AGENT-REVAMP.md).
@@ -139,7 +141,8 @@ Não reintroduza regex/grounding para “corrigir” IDs. Siga o
 - Logs: `npm run check:logs`. Procure `/aws/bedrock-agentcore/*` e
   `/aws/lambda/luiz-henrique-*`.
 - Eventos úteis do runtime: `guard: fabricated_turn_removed`,
-  `guard: registration_reply_adjusted`, `guard: purchase_reply_adjusted`.
+  `guard: registration_reply_adjusted`, `guard: purchase_reply_adjusted`,
+  `guard: payment_fallback_verified`.
 - Logs das tools mostram `tool: registrar_intencao`/`realizar_compra` e o `intencao_id`.
 
 ## 8. Regras do desafio (resumo)

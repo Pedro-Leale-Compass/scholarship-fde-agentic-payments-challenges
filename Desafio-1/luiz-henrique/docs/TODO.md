@@ -37,14 +37,14 @@ Plano detalhado: [`PLAN-AGENT-REVAMP.md`](PLAN-AGENT-REVAMP.md).
 
 ## 3. Estado autoritativo da intenção
 
-- [ ] Adicionar `conversa_id` ao payload do frontend e da Lambda do chat.
-- [ ] Criar/ler estado em `Conversas` (`pending_intencao_id`, `pending_status`).
+- [x] Adicionar `conversa_id` ao payload do frontend e da Lambda do chat.
+- [x] Criar/ler estado em `Conversas` (`pending_intencao_id`, `pending_status`).
 - [x] Remover `Usuarios.ultima_intencao_id` do caminho de decisão.
 - [x] Remover seed de `state.lastIntencaoId` e override em `realizar_compra`.
 - [x] Remover `groundIntencaoIds` e o fallback que prefere estado antigo.
 - [x] Implementar guarda de registro (“registrada” só com tool result).
 - [x] Remover o fallback de pagamento que usava estado antigo.
-- [ ] Limpar estado em `paga`/`cancelada`/`expirada` (depende de `Conversas`).
+- [x] Limpar estado em `paga`/`cancelada`/`expirada`/`indisponível`.
 
 ## 4. Tools e dados
 
@@ -63,7 +63,7 @@ Plano detalhado: [`PLAN-AGENT-REVAMP.md`](PLAN-AGENT-REVAMP.md).
 - [x] Adicionar teste: registro fabricado é bloqueado.
 - [x] Rodar o cenário local sem ARNs (`npm run test:local` passou).
 - [ ] Adicionar teste: compra paga → novo produto → novo ID (coberto no local; falta na API).
-- [ ] Adicionar teste: duas conversas isoladas (depende de `conversa_id`).
+- [ ] Adicionar teste: duas conversas isoladas (estado já existe; falta cobrir na API).
 - [ ] Rodar `npm run test:agent` na stack implantada.
 
 ## 6. Evidências e entrega

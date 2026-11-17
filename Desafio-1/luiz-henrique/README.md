@@ -155,8 +155,8 @@ Tabelas prefixadas com `luiz-henrique` (on-demand). Detalhes em
 - `Usuarios` — PK `usuario_id` (`sub`): `email`, `limite_centavos` (saldo),
   `gasto_total_centavos`, `status`, `origem`, timestamps. `ultima_intencao_id` é legado e
   **não é mais lido nem escrito** pelo chat; o plano substitui por estado em `Conversas`.
-- `Conversas` — PK `conversa_id`, SK `usuario_id`, GSI `usuario_id-index`. Existe, mas
-  ainda não é gravada; será usada para estado por conversa.
+- `Conversas` — PK `conversa_id`, SK `usuario_id`, GSI `usuario_id-index`. Guarda o
+  `pending_intencao_id`/`pending_status` por conversa; o frontend envia `conversa_id`.
 - `Intencoes` — PK `intencao_id`: `usuario_id`, `produtos`, `valor`, `valor_centavos`,
   `status`, `expira_em`, `created_at`, `forma_pagamento`, `pago_em`, `motivo_falha`.
 - `Catalogo` — PK `id`: `nome`, `preco` (seed do CDK).
@@ -188,7 +188,8 @@ Regras de escrita:
 
 - Frontend local; sem URL pública S3/CloudFront/OAC (SCP da conta).
 - API REST sem streaming/WebSocket.
-- `Conversas` existe, mas o histórico e o estado por conversa ainda não são persistidos.
+- `Conversas` guarda o estado de checkout; o histórico completo de mensagens ainda não é
+  persistido.
 - A reutilização de `intencao_id` foi removida do código e validada localmente
   (`npm run test:local`); falta validar na stack implantada.
 - `registrar_intencao` ainda aceita preço/produto vindos do modelo; o plano move para o

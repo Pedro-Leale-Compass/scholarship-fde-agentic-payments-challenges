@@ -14,6 +14,7 @@ const EXPECT_MODEL = process.env.EXPECT_MODEL || '';
 
 const messages = [];
 const failures = [];
+let pendingIntencaoId = null;
 
 function check(condition, message) {
   if (!condition) failures.push(message);
@@ -27,7 +28,12 @@ async function say(text) {
       'content-type': 'application/json',
       'x-amzn-bedrock-agentcore-runtime-session-id': SESSION,
     },
-    body: JSON.stringify({ prompt: text, usuario_id: USER, messages }),
+    body: JSON.stringify({
+      prompt: text,
+      usuario_id: USER,
+      pending_intencao_id: pendingIntencaoId,
+      messages,
+    }),
   });
   const raw = await res.text();
   let envelope;
@@ -59,6 +65,25 @@ async function say(text) {
     })}`,
   );
   messages.push({ role: 'assistant', content: [{ text: reply }] });
+
+  if (typeof payload.registered_intencao_id === 'string') {
+    pendingIntencaoId = payload.registered_intencao_id;
+  }
+  const code = payload.purchase?.code;
+  if (
+    payload.purchase?.ok === true ||
+    [
+      'LIMITE_EXCEDIDO',
+      'INTENCAO_JA_PAGA',
+      'INTENCAO_CANCELADA',
+      'INTENCAO_EXPIRADA',
+      'INTENCAO_INDISPONIVEL',
+      'USUARIO_NAO_ENCONTRADO',
+    ].includes(code)
+  ) {
+    pendingIntencaoId = null;
+  }
+
   return payload;
 }
 

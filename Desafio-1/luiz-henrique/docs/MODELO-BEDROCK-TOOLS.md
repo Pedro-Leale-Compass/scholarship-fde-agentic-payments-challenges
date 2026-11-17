@@ -71,8 +71,9 @@ sem custo.
 
 ## 3. Fluxo do runtime (atual, pós-remoção dos overrides)
 
-1. A Lambda do chat envia `prompt`, `messages` e `usuario_id`. **Não envia mais**
-   `intencao_id` nem persiste `Usuarios.ultima_intencao_id`.
+1. A Lambda do chat envia `prompt`, `messages`, `usuario_id`, `conversa_id` e
+   `pending_intencao_id` (apenas se a intenção ainda estiver pendente e for do usuário).
+   **Não envia** `ultima_intencao_id`.
 2. O runtime cria um `Agent` novo por requisição. O estado começa com
    `registeredIntencaoId = null` e `registeredThisTurn = false`.
 3. `registrar_intencao` só atualiza o estado quando o tool result tem `ok: true` e um
@@ -86,12 +87,18 @@ sem custo.
    - `applyRegistrationGuard` substitui “intenção registrada” por uma falha visível se
      `registrar_intencao` não retornou `ok: true` nesta invocação;
    - `applyPurchaseGuard` impede afirmar sucesso sem `realizar_compra.ok === true`.
-   - **Não existe** `groundIntencaoIds` nem `completePaymentFallback`.
+   - **Não existe** `groundIntencaoIds`. O fallback de pagamento usa somente o
+     `pending_intencao_id` verificado pela API (`completePaymentFallback`), nunca IDs do
+     histórico/prompt.
 6. A resposta inclui `registered_intencao_id` (ID criado nesta invocação, ou `null`) e
    `registered` (boolean). O campo `intencao_id` continua como alias do ID novo para
    compatibilidade, mas nunca é um ID antigo.
 7. A API mantém as últimas 12 mensagens **sem filtrar falhas**: o modelo precisa ver que a
-   intenção foi cancelada.
+   intenção foi cancelada. Depois da resposta, grava `registered_intencao_id` em
+   `Conversas.pending_intencao_id` e limpa o estado em `paga`/`cancelada`/`expirada`.
+8. Se o usuário confirmar cartão/pix e o modelo não chamar `realizar_compra`, o runtime paga
+   **apenas** o `pending_intencao_id` verificado (`guard: payment_fallback_verified`).
+   Nunca usa um ID do histórico/prompt.
 
 ## 4. Falhas do `v0.0.2` e o que mudou
 
@@ -108,8 +115,9 @@ O transcript de `v0.0.2` reutilizou `INT-E36C946B` porque:
 
 Correções aplicadas no código:
 
-- removidos `groundIntencaoIds`, `completePaymentFallback`, o seed de `ultima_intencao_id`
-  e todos os overrides de ID;
+- removidos `groundIntencaoIds`, o seed de `ultima_intencao_id` e todos os overrides de ID;
+- `completePaymentFallback` foi reintroduzido usando apenas o `pending_intencao_id`
+  verificado pela API, não o último ID do histórico;
 - `registrar_intencao` só marca registro com `ok: true`;
 - guarda de registro com falha visível;
 - histórico não esconde mais a falha;
@@ -118,9 +126,9 @@ Correções aplicadas no código:
 - exemplo do prompt sem ID concreto;
 - `realizar_compra` devolve `409` com o status real quando a intenção não está `pendente`.
 
-Ainda falta o estado por conversa (`conversa_id`). Sem ele, o modelo precisa chamar
-`registrar_intencao` novamente ao escolher um produto novo; se omitir, a guarda mostra a
-falha em vez de inventar um ID.
+O estado por conversa (`conversa_id`) foi implementado. A guarda de registro continua
+mostrando falha visível se o modelo não chamar `registrar_intencao` ao escolher um produto
+novo.
 
 Evidência histórica do `v0.0.2` no log group
 `/aws/bedrock-agentcore/runtimes/luiz_henrique_agent-AD3mRGF7e9-DEFAULT`:
@@ -136,9 +144,9 @@ existem mais.
 
 ## 5. O que ainda NÃO está implementado
 
-- Estado por conversa (`conversa_id`) no caminho de checkout.
 - `registrar_intencao` resolvendo preço pelo catálogo.
-- Persistência de histórico em `Conversas`.
+- Persistência do **histórico de mensagens** em `Conversas` (o estado de checkout já é
+  persistido).
 - Streaming/WebSocket.
 - Validação na stack implantada desta rodada (o fluxo local já passou).
 
@@ -161,12 +169,13 @@ O que o local **não** exercita: API Gateway, JWT, CORS, DynamoDB real, IAM, ima
 sessão do AgentCore e logs do runtime. Para iterar prompt/tool loop, é simétrico o
 suficiente; para validar persistência, use a stack implantada.
 
-O harness `npm run test:local` sobe o agente, executa o transcript de regressão
-(monitor → `LIMITE_EXCEDIDO` → fone → pix) e falha se o ID antigo reaparecer. Ele carrega o
-`.env` da raiz e prefere credenciais estáticas do `aws-creds.sh` ao `AWS_PROFILE` do `.env`.
+O harness `npm run test:local` sobe o agente, simula o `pending_intencao_id` da conversa e
+executa o transcript de regressão (monitor → `LIMITE_EXCEDIDO` → fone → pix). Ele falha se
+o ID antigo reaparecer. Carrega o `.env` da raiz e prefere credenciais estáticas do
+`aws-creds.sh` ao `AWS_PROFILE` do `.env`.
 
 ## 7. Próximo passo
 
-Ver [`PLAN-AGENT-REVAMP.md`](PLAN-AGENT-REVAMP.md). Em resumo: remover o ID do payload,
-usar estado por conversa, só aceitar ID de tool result, remover `groundIntencaoIds`, separar
-códigos e cobrir o transcript atual com teste de regressão.
+Ver [`PLAN-AGENT-REVAMP.md`](PLAN-AGENT-REVAMP.md). O estado por conversa, a remoção dos
+overrides/grounding, a guarda de registro e os códigos distintos já foram implementados. O
+próximo passo é resolver preço pelo catálogo, persistir histórico e validar na stack.

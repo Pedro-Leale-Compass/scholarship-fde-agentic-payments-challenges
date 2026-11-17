@@ -59,9 +59,9 @@ O transcript de `v0.0.2` reutilizava `INT-E36C946B` ao comprar outro produto dep
 - o histórico não esconde mais a mensagem de falha;
 - `cancelada`/`expirada`/`paga` têm códigos distintos.
 
-Ainda falta validar na stack implantada (`npm run test:agent`) e implementar estado por
-conversa (`conversa_id`). O plano detalhado está em
-[`PLAN-AGENT-REVAMP.md`](PLAN-AGENT-REVAMP.md).
+O estado por conversa (`conversa_id`) e o fallback de pagamento com ID pendente verificado
+foram implementados. Falta validar na stack implantada (`npm run test:agent`). O plano
+detalhado está em [`PLAN-AGENT-REVAMP.md`](PLAN-AGENT-REVAMP.md).
 
 ## 5. Desvio autorizado: frontend local
 

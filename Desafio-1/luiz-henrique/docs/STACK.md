@@ -21,7 +21,7 @@ API Gateway REST (prod) + autorizador JWT Cognito
 Lambda do chat (Node 20, 256 MB, 2 min)
   ├─ valida o sub do token
   ├─ cria/atualiza o item lazy em Usuarios
-  ├─ não envia intencao_id (o estado por conversa ainda não existe — ver plano)
+  ├─ envia pending_intencao_id verificado ao runtime
   └─ InvokeAgentRuntime
         │
         ▼
@@ -81,8 +81,8 @@ Comandos:
 
 ## 4. IAM (resumo real)
 
-- **Chat Lambda:** `bedrock-agentcore:InvokeAgentRuntime` no runtime e
-  `dynamodb:GetItem/PutItem/UpdateItem` em `Usuarios`.
+- **Chat Lambda:** `bedrock-agentcore:InvokeAgentRuntime` no runtime;
+  `GetItem/PutItem/UpdateItem` em `Usuarios` e `Conversas`; `GetItem` em `Intencoes`.
 - **`listar_catalogo`:** `dynamodb:GetItem/Scan` em `Catalogo`.
 - **`registrar_intencao`:** `dynamodb:PutItem` em `Intencoes`.
 - **`realizar_compra`:** `dynamodb:GetItem/UpdateItem/TransactWriteItems` em `Intencoes` e
@@ -96,9 +96,8 @@ Comandos:
 
 - Frontend local; sem URL pública S3/CloudFront.
 - API REST sem streaming/WebSocket (o PDF pede “Stream ou WebSocket”).
-- `Conversas` existe, mas o chat ainda não grava histórico nela.
-- O estado de checkout não é persistido por conversa; o modelo usa o histórico + tool
-  results. `Usuarios.ultima_intencao_id` não é mais lido/escrito. Falta implementar
-  `Conversas` conforme `PLAN-AGENT-REVAMP.md`.
+- `Conversas` guarda o `pending_intencao_id` por conversa; o histórico completo de mensagens
+  ainda não é persistido.
+- `Usuarios.ultima_intencao_id` é legado e não é mais lido/escrito.
 - O fallback local do agente replica os contratos das Lambdas, mas não substitui um teste
   de integração com DynamoDB real.

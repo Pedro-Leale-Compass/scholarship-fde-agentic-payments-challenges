@@ -5,6 +5,24 @@ import { fetchAuthSession } from 'aws-amplify/auth';
 
 import type { ChatMessage, RuntimeConfig } from '@/lib/chat';
 
+const CONVERSA_KEY = 'desafio1_conversa_id';
+
+function newConversaId(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+  return `conv-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function getOrCreateConversaId(): string {
+  if (typeof window === 'undefined') return newConversaId();
+  const existing = window.localStorage.getItem(CONVERSA_KEY);
+  if (existing) return existing;
+  const id = newConversaId();
+  window.localStorage.setItem(CONVERSA_KEY, id);
+  return id;
+}
+
 async function readError(response: Response): Promise<string> {
   const body = await response.json().catch(() => null);
   return body?.error || body?.message || `HTTP ${response.status}`;
@@ -13,6 +31,7 @@ async function readError(response: Response): Promise<string> {
 export function useChat(config: RuntimeConfig) {
   const [token, setToken] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [conversaId, setConversaId] = useState<string>(() => getOrCreateConversaId());
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -32,8 +51,10 @@ export function useChat(config: RuntimeConfig) {
   }, []);
 
   const reset = useCallback(() => {
+    const next = newConversaId();
+    window.localStorage.setItem(CONVERSA_KEY, next);
+    setConversaId(next);
     setMessages([]);
-    setToken(null);
   }, []);
 
   const send = useCallback(
@@ -54,6 +75,7 @@ export function useChat(config: RuntimeConfig) {
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
+            conversa_id: conversaId,
             messages: history.map((message) => ({
               role: message.role,
               content: [{ text: message.content }],
@@ -69,6 +91,10 @@ export function useChat(config: RuntimeConfig) {
         }
 
         const data = await response.json();
+        if (typeof data.conversa_id === 'string' && data.conversa_id) {
+          window.localStorage.setItem(CONVERSA_KEY, data.conversa_id);
+          setConversaId(data.conversa_id);
+        }
         const reply = data.reply || data.message || '(resposta vazia do modelo)';
         setMessages([...history, { role: 'assistant', content: reply }]);
       } catch (err) {
@@ -78,7 +104,7 @@ export function useChat(config: RuntimeConfig) {
         setLoading(false);
       }
     },
-    [config.apiUrl, loading, messages, token],
+    [config.apiUrl, conversaId, loading, messages, token],
   );
 
   return { token, messages, loading, send, reset };

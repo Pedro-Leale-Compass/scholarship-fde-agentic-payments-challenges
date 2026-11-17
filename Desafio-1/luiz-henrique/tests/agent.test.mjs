@@ -108,14 +108,17 @@ async function login(email, password) {
   return token;
 }
 
-async function chat(token, messages) {
+async function chat(token, messages, conversaId) {
   const res = await fetch(`${API_URL}/chat`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({
+      messages,
+      ...(conversaId ? { conversa_id: conversaId } : {}),
+    }),
   });
   const text = await res.text();
   let json;
@@ -377,9 +380,10 @@ test('agente não confirma compra enquanto a intenção está pendente', async (
     token = await login(user.email, user.password);
 
     const history = [];
+    const conversaId = randomUUID();
     const say = async (text) => {
       history.push({ role: 'user', content: [{ text }] });
-      const res = await chat(token, history);
+      const res = await chat(token, history, conversaId);
       const reply =
         res.json?.reply ?? res.json?.message ?? JSON.stringify(res.json);
       assert.doesNotMatch(

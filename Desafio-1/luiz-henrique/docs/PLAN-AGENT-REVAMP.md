@@ -209,12 +209,12 @@ do transcript.
 
 ### Fase 3 — Estado autoritativo da conversa
 
-- [ ] Adicionar `conversa_id` ao payload do frontend e à Lambda do chat.
-- [ ] Criar/ler item em `Conversas` com `pending_intencao_id`/`pending_status`.
+- [x] Adicionar `conversa_id` ao payload do frontend e à Lambda do chat.
+- [x] Criar/ler item em `Conversas` com `pending_intencao_id`/`pending_status`.
 - [x] Remover `ultima_intencao_id` do caminho de decisão.
 - [x] Remover seed/override/grounding descritos em §3.2.
 - [x] Implementar guarda de registro; fallback de pagamento removido.
-- [ ] Limpar estado em `paga`/`cancelada`/`expirada`.
+- [x] Limpar estado em `paga`/`cancelada`/`expirada`/`indisponível`.
 - Critério: duas compras consecutivas (mesmo após falha) geram IDs distintos; nova
   conversa não herda ID; ID inválido nunca é “corrigido” para outro.
 

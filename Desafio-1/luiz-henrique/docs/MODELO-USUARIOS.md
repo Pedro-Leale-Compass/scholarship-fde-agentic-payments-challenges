@@ -31,11 +31,14 @@ legado; o plano substitui por estado em `Conversas`. Não use para decidir pagam
 PK: `conversa_id` (S); SK: `usuario_id` (S). GSI `usuario_id-index`
 (PK `usuario_id`, SK `conversa_id`).
 
-Estado atual: a tabela existe, mas **nada grava ou lê** nela. O PDF exige histórico por
-usuário; isso está pendente. O plano propõe usar esta tabela para o estado de checkout e,
-se necessário, para o histórico de mensagens.
+Estado atual: a Lambda do chat grava/lê o **estado de checkout** por conversa
+(`pending_intencao_id`, `pending_status`). O frontend gera `conversa_id` no `localStorage` e
+envia no `POST /chat`. A API verifica em `Intencoes` se o ID existe, pertence ao usuário,
+está `pendente` e não expirou; só então envia ao runtime. O estado é limpo em
+`paga`/`cancelada`/`expirada`/`indisponível`. O histórico completo de mensagens ainda não é
+persistido.
 
-Item alvo (proposto):
+Item atual:
 
 ```json
 {
@@ -47,13 +50,12 @@ Item alvo (proposto):
 }
 ```
 
-Regras propostas:
+Regras atuais:
 
 - `pending_intencao_id` só é gravado após `registrar_intencao` retornar `ok: true`.
 - É limpo em `paga`, `cancelada` ou `expirada`.
 - É lido no início do turno só se a intenção ainda estiver `pendente` e não expirada.
-- `conversa_id` deve vir do frontend (localStorage) ou ser criado no backend no primeiro
-  turno e devolvido ao cliente.
+- `conversa_id` vem do frontend (localStorage) ou é criado no backend e devolvido na resposta.
 
 ## 3. `Intencoes`
 
@@ -126,4 +128,5 @@ Cognito (template `userInvitation`); nenhuma senha/token é gravado no DynamoDB.
 - `Intencoes` existentes sem `conversa_id` continuam válidas; o estado novo só se aplica a
   conversas iniciadas após o deploy.
 - Nenhuma mudança destrutiva de chave é necessária.
-- `Conversas` pode começar vazia; o primeiro turno de cada conversa cria o item.
+- `Conversas` começa vazia; o primeiro `POST /chat` cria o item. Conversas antigas sem
+  `pending_intencao_id` continuam válidas; o modelo registra uma nova intenção.

@@ -17,6 +17,7 @@ import {
   DynamoDBClient,
   GetItemCommand,
   PutItemCommand,
+  UpdateItemCommand,
 } from "@aws-sdk/client-dynamodb";
 import { randomUUID } from "crypto";
 
@@ -29,6 +30,8 @@ const ddb = new DynamoDBClient({
 });
 
 const USUARIOS_TABLE = process.env.USUARIOS_TABLE;
+const CONVERSAS_TABLE = process.env.CONVERSAS_TABLE;
+const INTENCOES_TABLE = process.env.INTENCOES_TABLE;
 const LIMITE_INICIAL_CENTAVOS =
   Number(process.env.LIMITE_INICIAL_CENTAVOS) || 50000;
 
@@ -54,6 +57,7 @@ interface Message {
 
 interface ChatEventBody {
   messages?: Message[];
+  conversa_id?: string;
 }
 
 interface LambdaResponse {
@@ -138,6 +142,155 @@ function extractUsuarioId(headers: Record<string, string> | undefined): string |
   }
 }
 
+
+function intencaoExpirou(expiraEm: unknown): boolean {
+  if (typeof expiraEm !== "string") return false;
+  const timestamp = Date.parse(expiraEm);
+  return Number.isFinite(timestamp) && timestamp <= Date.now();
+}
+
+/**
+ * Lê o estado de checkout da conversa e só devolve o ID se a intenção ainda
+ * existir, pertencer ao usuário, estiver pendente e não tiver expirado.
+ * Qualquer outro caso limpa o estado para não reaproveitar ID terminal.
+ */
+async function getPendingIntencao(
+  usuarioId: string,
+  conversaId: string,
+): Promise<string | undefined> {
+  if (!CONVERSAS_TABLE || !INTENCOES_TABLE) return undefined;
+
+  try {
+    const conversa = await ddb.send(
+      new GetItemCommand({
+        TableName: CONVERSAS_TABLE,
+        Key: {
+          conversa_id: { S: conversaId },
+          usuario_id: { S: usuarioId },
+        },
+        ProjectionExpression: "pending_intencao_id",
+      }),
+    );
+    const pending = (
+      conversa.Item?.pending_intencao_id as { S?: string } | undefined
+    )?.S;
+    if (!pending) return undefined;
+
+    const intencao = await ddb.send(
+      new GetItemCommand({
+        TableName: INTENCOES_TABLE,
+        Key: { intencao_id: { S: pending } },
+        ProjectionExpression: "usuario_id, #status, expira_em",
+        ExpressionAttributeNames: { "#status": "status" },
+      }),
+    );
+    const item = intencao.Item;
+    const dono = (item?.usuario_id as { S?: string } | undefined)?.S;
+    const status = (item?.status as { S?: string } | undefined)?.S;
+    const expiraEm = (item?.expira_em as { S?: string } | undefined)?.S;
+
+    if (!item || dono !== usuarioId || status !== "pendente" || intencaoExpirou(expiraEm)) {
+      await clearPendingIntencao(usuarioId, conversaId);
+      return undefined;
+    }
+
+    return pending;
+  } catch (err) {
+    console.error("getPendingIntencao error:", err);
+    return undefined;
+  }
+}
+
+async function setPendingIntencao(
+  usuarioId: string,
+  conversaId: string,
+  intencaoId: string,
+): Promise<void> {
+  if (!CONVERSAS_TABLE) return;
+  const now = new Date().toISOString();
+  try {
+    await ddb.send(
+      new UpdateItemCommand({
+        TableName: CONVERSAS_TABLE,
+        Key: {
+          conversa_id: { S: conversaId },
+          usuario_id: { S: usuarioId },
+        },
+        UpdateExpression:
+          "SET pending_intencao_id = :id, pending_status = :status, atualizado_em = :now, criado_em = if_not_exists(criado_em, :now)",
+        ExpressionAttributeValues: {
+          ":id": { S: intencaoId },
+          ":status": { S: "pendente" },
+          ":now": { S: now },
+        },
+      }),
+    );
+  } catch (err) {
+    console.error("setPendingIntencao error:", err);
+  }
+}
+
+async function clearPendingIntencao(
+  usuarioId: string,
+  conversaId: string,
+): Promise<void> {
+  if (!CONVERSAS_TABLE) return;
+  const now = new Date().toISOString();
+  try {
+    await ddb.send(
+      new UpdateItemCommand({
+        TableName: CONVERSAS_TABLE,
+        Key: {
+          conversa_id: { S: conversaId },
+          usuario_id: { S: usuarioId },
+        },
+        UpdateExpression:
+          "REMOVE pending_intencao_id, pending_status SET atualizado_em = :now",
+        ExpressionAttributeValues: { ":now": { S: now } },
+      }),
+    );
+  } catch (err) {
+    console.error("clearPendingIntencao error:", err);
+  }
+}
+
+const TERMINAL_PURCHASE_CODES = new Set([
+  "COMPRA_APROVADA",
+  "LIMITE_EXCEDIDO",
+  "INTENCAO_JA_PAGA",
+  "INTENCAO_CANCELADA",
+  "INTENCAO_EXPIRADA",
+  "INTENCAO_INDISPONIVEL",
+  "USUARIO_NAO_ENCONTRADO",
+]);
+
+async function syncConversationState(
+  usuarioId: string,
+  conversaId: string,
+  responseBody: unknown,
+): Promise<void> {
+  if (typeof responseBody !== "object" || responseBody === null) return;
+  const payload = responseBody as {
+    registered_intencao_id?: unknown;
+    purchase?: { ok?: unknown; code?: unknown } | null;
+  };
+
+  const registered =
+    typeof payload.registered_intencao_id === "string"
+      ? payload.registered_intencao_id
+      : undefined;
+  if (registered) {
+    await setPendingIntencao(usuarioId, conversaId, registered);
+  }
+
+  const purchase = payload.purchase;
+  if (!purchase || typeof purchase !== "object") return;
+  const code = typeof purchase.code === "string" ? purchase.code : undefined;
+  if (purchase.ok === true || (code && TERMINAL_PURCHASE_CODES.has(code))) {
+    await clearPendingIntencao(usuarioId, conversaId);
+  }
+}
+
 exports.handler = async (event: {
   headers?: Record<string, string>;
   body?: string;
@@ -165,6 +318,11 @@ exports.handler = async (event: {
   }
 
   const messages = body.messages || [];
+  const conversaId =
+    typeof body.conversa_id === "string" && body.conversa_id.trim()
+      ? body.conversa_id.trim().slice(0, 128)
+      : randomUUID();
+  const pendingIntencaoId = await getPendingIntencao(usuario_id, conversaId);
 
   // Histórico longo degrada a aderência do modelo. Mantemos as últimas mensagens,
   // inclusive falhas: esconder o erro faz o modelo achar que a intenção continua pendente.
@@ -181,10 +339,12 @@ exports.handler = async (event: {
       JSON.stringify({
         prompt,
         usuario_id,
+        conversa_id: conversaId,
+        pending_intencao_id: pendingIntencaoId,
         messages: history,
       }),
     ),
-    runtimeSessionId: `desafio1-${usuario_id}-${randomUUID()}`.slice(0, 200),
+    runtimeSessionId: `desafio1-${usuario_id}-${conversaId}`.slice(0, 200),
     contentType: "application/json",
     accept: "application/json",
     qualifier: "DEFAULT",
@@ -212,10 +372,17 @@ exports.handler = async (event: {
       };
     }
 
+    await syncConversationState(usuario_id, conversaId, responseBody);
+
+    const finalBody =
+      typeof responseBody === "object" && responseBody !== null
+        ? { ...responseBody, conversa_id: conversaId }
+        : { conversa_id: conversaId, result: responseBody };
+
     return {
       statusCode: 200,
       headers: CORS_HEADERS,
-      body: JSON.stringify(responseBody),
+      body: JSON.stringify(finalBody),
     };
   } catch (err) {
     console.error("agent runtime invoke error:", err);

@@ -12,6 +12,8 @@ export interface ApiStackProps {
   stackPrefix: string;
   agentRuntimeArn: string;
   usuariosTable: dynamodb.Table;
+  conversasTable: dynamodb.Table;
+  intencoesTable: dynamodb.Table;
   frontendUrl: string;
 }
 
@@ -26,7 +28,7 @@ export class ApiStack extends Construct {
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id);
 
-    const { stackPrefix, agentRuntimeArn, usuariosTable, frontendUrl } = props;
+    const { stackPrefix, agentRuntimeArn, usuariosTable, conversasTable, intencoesTable, frontendUrl } = props;
     const prefix = `${stackPrefix}-`;
 
     this.userPool = new cognito.UserPool(this, 'UserPool', {
@@ -65,6 +67,8 @@ export class ApiStack extends Construct {
       environment: {
         AGENT_RUNTIME_ARN: agentRuntimeArn,
         USUARIOS_TABLE: usuariosTable.tableName,
+        CONVERSAS_TABLE: conversasTable.tableName,
+        INTENCOES_TABLE: intencoesTable.tableName,
         LIMITE_INICIAL_CENTAVOS: '50000',
         FRONTEND_URL: frontendUrl,
       },
@@ -91,6 +95,22 @@ export class ApiStack extends Construct {
       new iam.PolicyStatement({
         actions: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem'],
         resources: [usuariosTable.tableArn],
+      })
+    );
+
+    // Estado de checkout por conversa: pending_intencao_id.
+    this.chatFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem'],
+        resources: [conversasTable.tableArn],
+      })
+    );
+
+    // A Lambda verifica se o pending_intencao_id ainda está pendente.
+    this.chatFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['dynamodb:GetItem'],
+        resources: [intencoesTable.tableArn],
       })
     );
 

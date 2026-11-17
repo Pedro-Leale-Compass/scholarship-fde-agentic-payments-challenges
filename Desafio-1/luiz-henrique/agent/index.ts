@@ -245,6 +245,7 @@ interface AgentState {
   lastPurchase: PurchaseResult | null;
   registeredIntencaoId: string | null;
   registeredThisTurn: boolean;
+  verifiedPendingId: string | null;
 }
 
 const SUCCESS_REPLY =
@@ -287,6 +288,83 @@ function applyPurchaseGuard(
 
 const INTENCAO_ID_RE =
   /^(?:INT-[0-9A-F]{8}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+const PAYMENT_CONFIRM_RE =
+  /^(pode\s+)?(confirmar|confirmo|pagar|pode\s+ser|finalizar|fechar|cart[aã]o|pix|sim)\b|.*\b(pagar|confirmar|finalizar|fechar)\b.*\b(cart[aã]o|pix)\b/i;
+
+function paymentMethod(text: string): 'cartao' | 'pix' | null {
+  if (/pix/i.test(text)) return 'pix';
+  if (/cart[aã]o/i.test(text)) return 'cartao';
+  return null;
+}
+
+function purchaseFallbackMessage(
+  purchase: PurchaseResult,
+  intencaoId: string,
+  method: 'cartao' | 'pix',
+): string {
+  if (purchase.ok) {
+    const valor =
+      purchase.valor !== undefined
+        ? ` no valor de R$ ${purchase.valor.toFixed(2)}`
+        : '';
+    return `Compra aprovada${valor}! Intenção ${intencaoId}, pagamento via ${
+      method === 'pix' ? 'pix' : 'cartão'
+    }.`;
+  }
+
+  const code = purchase.code || 'ERRO_DESCONHECIDO';
+  const explica: Record<string, string> = {
+    LIMITE_EXCEDIDO:
+      'o limite/saldo foi excedido; a intenção foi cancelada. Registre uma nova intenção ou escolha outro produto.',
+    INTENCAO_CANCELADA:
+      'a intenção já estava cancelada. Registre uma nova intenção.',
+    INTENCAO_EXPIRADA:
+      'a intenção expirou. Registre uma nova intenção.',
+    INTENCAO_JA_PAGA:
+      'a intenção já foi paga. Registre uma nova intenção para outro produto.',
+    INTENCAO_INDISPONIVEL:
+      'a intenção não está mais pendente. Registre uma nova intenção.',
+    INTENCAO_INVALIDA:
+      'o ID da intenção não é válido. Registre a intenção novamente.',
+    METODO_INVALIDO: 'a forma de pagamento deve ser cartão ou pix.',
+    USUARIO_NAO_ENCONTRADO: 'o usuário não foi encontrado no cadastro.',
+  };
+  return `O pagamento não foi concluído (${code}): ${
+    explica[code] || 'não foi possível concluir a compra.'
+  } Nenhuma cobrança foi confirmada.`;
+}
+
+/**
+ * Rede de segurança determinística: se o usuário confirmar cartão/pix e o modelo
+ * não tiver chamado realizar_compra, paga apenas o ID pendente verificado pela API
+ * na conversa. Nunca usa IDs do histórico/prompt.
+ */
+async function completePaymentFallback(
+  usuarioId: string,
+  state: AgentState,
+  lastUserText: string,
+): Promise<string | null> {
+  if (!state.verifiedPendingId) return null;
+  if (!PAYMENT_CONFIRM_RE.test(lastUserText)) return null;
+  const method = paymentMethod(lastUserText);
+  if (!method) return null;
+
+  let result: unknown;
+  if (!TOOL_REALIZAR_COMPRA_ARN) {
+    result = realizarCompraLocal(usuarioId, state.verifiedPendingId, method);
+  } else {
+    result = await invokeLambda(TOOL_REALIZAR_COMPRA_ARN, {
+      usuario_id: usuarioId,
+      intencao_id: state.verifiedPendingId,
+      forma_pagamento: method,
+    });
+  }
+
+  const purchase = normalizePurchase(result);
+  state.lastPurchase = purchase;
+  return purchaseFallbackMessage(purchase, state.verifiedPendingId, method);
+}
+
 const REGISTRATION_REPLY_RE =
   /(inten[çc][ãa]o\s+(?:foi\s+)?(?:registrada|criada)|registrei\s+(?:a\s+)?inten[çc][ãa]o)/i;
 /**
@@ -303,11 +381,18 @@ function applyRegistrationGuard(
   return 'Não registrei nenhuma intenção nesta mensagem (nenhum ID foi criado). Nenhuma cobrança foi feita. Pode repetir qual produto você quer comprar?';
 }
 
-function createAgent(usuario_id: string): { agent: Agent; state: AgentState } {
+function createAgent(
+  usuario_id: string,
+  pendingIntencaoId?: string,
+): { agent: Agent; state: AgentState } {
   const state: AgentState = {
     lastPurchase: null,
     registeredIntencaoId: null,
     registeredThisTurn: false,
+    verifiedPendingId:
+      pendingIntencaoId && INTENCAO_ID_RE.test(pendingIntencaoId)
+        ? pendingIntencaoId
+        : null,
   };
   const listarCatalogoTool = new ZodTool({
     name: 'listar_catalogo',
@@ -440,6 +525,7 @@ interface AgentRequest {
   prompt?: unknown;
   usuario_id?: unknown;
   messages?: unknown;
+  pending_intencao_id?: unknown;
 }
 
 function toConversation(
@@ -527,8 +613,19 @@ const app = new BedrockAgentCoreApp({
       }
 
       try {
-        const { agent, state } = createAgent(usuario_id);
         const conversation = toConversation(payload.messages);
+        const { agent, state } = createAgent(
+          usuario_id,
+          typeof payload.pending_intencao_id === 'string'
+            ? payload.pending_intencao_id
+            : undefined,
+        );
+        const lastUserText = [...conversation]
+          .reverse()
+          .find((message) => message.role === 'user')
+          ?.content.map((block) => block.text)
+          .join(' ')
+          .trim() || prompt.split('\n').filter((line) => /^user:/i.test(line)).pop()?.replace(/^user:\s*/i, '').trim() || '';
         const chunks: string[] = [];
         for await (const event of agent.stream(
           conversation.length > 0 ? conversation : prompt,
@@ -563,6 +660,28 @@ const app = new BedrockAgentCoreApp({
         }
         reply = guarded;
 
+        if (!state.lastPurchase) {
+          try {
+            const fallback = await completePaymentFallback(
+              usuario_id,
+              state,
+              lastUserText,
+            );
+            if (fallback) {
+              reply = fallback;
+              console.log(
+                JSON.stringify({
+                  guard: 'payment_fallback_verified',
+                  intencao_id: state.verifiedPendingId,
+                  purchase: state.lastPurchase,
+                }),
+              );
+            }
+          } catch (err) {
+            console.error('payment fallback error:', err);
+          }
+        }
+
         return JSON.stringify({
           ok: true,
           usuario_id,
@@ -570,6 +689,7 @@ const app = new BedrockAgentCoreApp({
           purchase: state.lastPurchase,
           registered_intencao_id: state.registeredIntencaoId,
           registered: state.registeredThisTurn,
+          pending_intencao_id: state.verifiedPendingId,
           intencao_id: state.registeredIntencaoId,
           model: MODEL_ID,
         });
