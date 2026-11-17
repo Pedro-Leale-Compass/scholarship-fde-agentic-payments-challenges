@@ -9,6 +9,8 @@ from aws_cdk import aws_logs as logs
 from aws_cdk import aws_dynamodb as dynamodb
 from aws_cdk import custom_resources as cr
 from constructs import Construct
+from aws_cdk import aws_cognito as cognito
+from aws_cdk import aws_apigateway as apigw
 
 
 class InfraStack(Stack):
@@ -244,3 +246,109 @@ class InfraStack(Stack):
         logs_agente.node.add_dependency(self.agente)
 
         CfnOutput(self, "AgenteArn", value=self.agente.agent_runtime_arn)
+
+                # ---------------- Cognito (login) ----------------
+
+        self.user_pool = cognito.UserPool(
+            self,
+            "UserPool",
+            user_pool_name="henrick-usuarios",
+            self_sign_up_enabled=False,
+            sign_in_aliases=cognito.SignInAliases(email=True),
+            account_recovery=cognito.AccountRecovery.EMAIL_ONLY,
+            removal_policy=RemovalPolicy.DESTROY,
+        )
+
+        self.app_client = self.user_pool.add_client(
+            "AppClient",
+            user_pool_client_name="henrick-frontend",
+            generate_secret=False,
+            auth_flows=cognito.AuthFlow(user_srp=True, user_password=True),
+        )
+
+        CfnOutput(self, "UserPoolId", value=self.user_pool.user_pool_id)
+        CfnOutput(self, "AppClientId", value=self.app_client.user_pool_client_id)
+
+
+                # ---------------- Lambda do chat ----------------
+
+        pasta_api = Path(__file__).parent.parent.parent / "api"
+        origem_frontend = "http://localhost:5173"
+
+        logs_chat = logs.LogGroup(
+            self,
+            "LogsChat",
+            log_group_name="/aws/lambda/henrick-chat",
+            retention=logs.RetentionDays.ONE_WEEK,
+            removal_policy=RemovalPolicy.DESTROY,
+        )
+
+        self.lambda_chat = lambda_.Function(
+            self,
+            "LambdaChat",
+            function_name="henrick-chat",
+            runtime=lambda_.Runtime.NODEJS_22_X,
+            handler="chat.handler",
+            code=lambda_.Code.from_asset(str(pasta_api)),
+            environment={
+                "AGENTE_ARN": self.agente.agent_runtime_arn,
+                "ORIGEM_PERMITIDA": origem_frontend,
+                "TABELA_USUARIOS": self.tabela_usuarios.table_name,
+                "LIMITE_PADRAO": "1500",
+            },
+            timeout=Duration.seconds(120),
+            memory_size=256,
+            log_group=logs_chat,
+        )
+
+        self.tabela_usuarios.grant(self.lambda_chat, "dynamodb:PutItem")
+        self.agente.grant_invoke_runtime(self.lambda_chat)
+
+        # ---------------- API Gateway ----------------
+
+        self.api = apigw.RestApi(
+            self,
+            "Api",
+            rest_api_name="henrick-api",
+            deploy_options=apigw.StageOptions(stage_name="prod"),
+            cloud_watch_role=False,
+            default_cors_preflight_options=apigw.CorsOptions(
+                allow_origins=[origem_frontend],
+                allow_methods=["POST", "OPTIONS"],
+                allow_headers=["Content-Type", "Authorization"],
+            ),
+        )
+
+        # Erros do proprio API Gateway (como o 401) tambem precisam do cabecalho de CORS.
+        for nome, tipo in [("Erros4xx", apigw.ResponseType.DEFAULT_4_XX), ("Erros5xx", apigw.ResponseType.DEFAULT_5_XX)]:
+            self.api.add_gateway_response(
+                nome,
+                type=tipo,
+                response_headers={"Access-Control-Allow-Origin": f"'{origem_frontend}'"},
+            )
+
+        autorizador = apigw.CognitoUserPoolsAuthorizer(
+            self,
+            "AutorizadorCognito",
+            cognito_user_pools=[self.user_pool],
+            authorizer_name="henrick-cognito",
+        )
+
+        metodo_chat = self.api.root.add_resource("chat").add_method(
+            "POST",
+            apigw.LambdaIntegration(self.lambda_chat, proxy=True),
+            authorizer=autorizador,
+            authorization_type=apigw.AuthorizationType.COGNITO,
+        )
+
+        # Liga o streaming: o CDK ainda nao tem opcao pronta, entao ajustamos o recurso direto.
+        cfn_metodo = metodo_chat.node.default_child
+        cfn_metodo.add_property_override("Integration.ResponseTransferMode", "STREAM")
+        cfn_metodo.add_property_override("Integration.TimeoutInMillis", 120000)
+        cfn_metodo.add_property_override(
+            "Integration.Uri",
+            f"arn:aws:apigateway:{self.region}:lambda:path/2021-11-15/functions/"
+            f"{self.lambda_chat.function_arn}/response-streaming-invocations",
+        )
+
+        CfnOutput(self, "ApiUrl", value=self.api.url_for_path("/chat"))

@@ -112,14 +112,16 @@ app = BedrockAgentCoreApp()
 
 
 @app.entrypoint
-def invoke(payload):
+async def invoke(payload):
     usuario_id = payload.get("usuario_id")
     mensagem = (payload.get("mensagem") or "").strip()
 
     if not usuario_id:
-        return {"erro": "usuario_id ausente"}
+        yield "Erro: usuario nao identificado."
+        return
     if not mensagem:
-        return {"erro": "mensagem vazia"}
+        yield "Erro: mensagem vazia."
+        return
 
     agente = Agent(
         model=BedrockModel(model_id=MODEL_ID, region_name=REGIAO),
@@ -129,10 +131,11 @@ def invoke(payload):
         callback_handler=None,
     )
 
-    resultado = agente(mensagem)
-    salvar_historico(usuario_id, agente.messages)
+    async for evento in agente.stream_async(mensagem):
+        if "data" in evento:
+            yield evento["data"]
 
-    return {"resposta": str(resultado)}
+    salvar_historico(usuario_id, agente.messages)
 
 
 if __name__ == "__main__":
