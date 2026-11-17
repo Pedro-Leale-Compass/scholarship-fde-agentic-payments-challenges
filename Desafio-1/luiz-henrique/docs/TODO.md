@@ -136,6 +136,15 @@ Preencher `Desafio-1/luiz-henrique/README.md` com:
 - [ ] Destruir a stack (único comando de destroy).
 - [ ] Confirmar no console que não restou: bucket, distribuição CloudFront, runtime do AgentCore, imagens no ECR, tabelas DynamoDB, logs.
 
+## 11. Próximos passos (pós-entrega)
+
+Detalhes e opções em `docs/ROADMAP.md`.
+
+- [ ] Revisar o projeto anterior (`docs/MIGRACAO-ANTERIOR.md`) e reescrever o system prompt do agente com política de tools, confirmação e tratamento de erro explícitos.
+- [ ] Pesquisar e implementar verificação/grounding: a resposta final só pode citar produtos, preços, IDs, limite e status que vieram do retorno das tools; adicionar evals cobrindo catálogo, compra, limite excedido e `intencao_id` inválido.
+- [ ] Criar painel administrativo (grupo `admins` no Cognito + rotas autenticadas): resetar limite/gasto por usuário, corrigir catálogo e consultar intenções/compras, com log de auditoria.
+- [ ] Definir o modelo de limite de gasto por usuário: hoje é por compra (`limite`/`LIMITE_COMPRA` = 500) e não acumulado; se for por período, implementar contadores atômicos no DynamoDB, reset pelo admin e testes de concorrência.
+
 ## Status
 
 - [x] Em andamento
