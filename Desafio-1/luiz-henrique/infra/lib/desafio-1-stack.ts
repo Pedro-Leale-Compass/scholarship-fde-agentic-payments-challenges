@@ -78,76 +78,8 @@ export class Desafio1Stack extends cdk.Stack {
       });
     });
 
-    // 7. Cria o usuário do instrutor no Cognito (sem auto cadastro).
-    //    Requer TEST_PASSWORD no ambiente do deploy (não fica no Git).
-    const testEmail = process.env.TEST_EMAIL || '<test-email>';
-    const testPassword = process.env.TEST_PASSWORD;
-
-    if (testPassword) {
-      const createUser = new customResources.AwsCustomResource(this, 'CreateTestUser', {
-        onCreate: {
-          service: 'CognitoIdentityServiceProvider',
-          action: 'adminCreateUser',
-          parameters: {
-            UserPoolId: api.userPool.userPoolId,
-            Username: testEmail,
-            UserAttributes: [
-              { Name: 'email', Value: testEmail },
-              { Name: 'email_verified', Value: 'true' },
-            ],
-            MessageAction: 'SUPPRESS',
-          },
-          physicalResourceId: customResources.PhysicalResourceId.of(`cognito-user-${testEmail}`),
-          ignoreErrorCodesMatching: 'UsernameExistsException',
-        },
-        onUpdate: {
-          service: 'CognitoIdentityServiceProvider',
-          action: 'adminCreateUser',
-          parameters: {
-            UserPoolId: api.userPool.userPoolId,
-            Username: testEmail,
-            UserAttributes: [
-              { Name: 'email', Value: testEmail },
-              { Name: 'email_verified', Value: 'true' },
-            ],
-            MessageAction: 'SUPPRESS',
-          },
-          physicalResourceId: customResources.PhysicalResourceId.of(`cognito-user-${testEmail}`),
-          ignoreErrorCodesMatching: 'UsernameExistsException',
-        },
-        policy: customResources.AwsCustomResourcePolicy.fromSdkCalls({
-          resources: [api.userPool.userPoolArn],
-        }),
-      });
-
-      new customResources.AwsCustomResource(this, 'SetTestPassword', {
-        onCreate: {
-          service: 'CognitoIdentityServiceProvider',
-          action: 'adminSetUserPassword',
-          parameters: {
-            UserPoolId: api.userPool.userPoolId,
-            Username: testEmail,
-            Password: testPassword,
-            Permanent: true,
-          },
-          physicalResourceId: customResources.PhysicalResourceId.of(`cognito-password-${testEmail}`),
-        },
-        onUpdate: {
-          service: 'CognitoIdentityServiceProvider',
-          action: 'adminSetUserPassword',
-          parameters: {
-            UserPoolId: api.userPool.userPoolId,
-            Username: testEmail,
-            Password: testPassword,
-            Permanent: true,
-          },
-          physicalResourceId: customResources.PhysicalResourceId.of(`cognito-password-${testEmail}`),
-        },
-        policy: customResources.AwsCustomResourcePolicy.fromSdkCalls({
-          resources: [api.userPool.userPoolArn],
-        }),
-      }).node.addDependency(createUser);
-    }
+    // 7. O usuário de teste é criado fora do CDK (`npm run dev:create-test-user`),
+    //    que lê TEST_EMAIL/TEST_PASSWORD do .env. Nenhum segredo vai ao template.
 
     // Outputs
     new cdk.CfnOutput(this, 'ApiUrl', { value: api.apiUrl, description: 'API Gateway URL' });

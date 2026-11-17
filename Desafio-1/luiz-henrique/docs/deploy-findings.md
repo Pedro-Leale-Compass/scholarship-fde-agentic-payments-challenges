@@ -29,6 +29,12 @@ Evidence collected with `aws` CLI plus an end-to-end call through API Gateway.
    `{"prompt": "...", "usuario_id": "..."}` payload for console/CLI testing.
 7. **Frontend** — three known UI issues recorded in `docs/TODO.md` (username instead of
    UUID, missing space after "Você", auto-scroll), not fixed yet.
+8. **Identifier scrub** — account id, API/runtime ARNs, REST API id and Cognito ids were
+   removed from the tracked files and from this branch's history. The real values live
+   only in the local, gitignored `.env` (`AWS_ACCOUNT_ID`, `API_URL`,
+   `COGNITO_USER_POOL_ID`, `COGNITO_USER_POOL_CLIENT_ID`, `AGENT_RUNTIME_ID`,
+   `AGENT_RUNTIME_ARN`). `infra/cdk.context.json` (account-keyed) was removed and is now
+   gitignored.
 
 ## Secrets audit (2026-11-17)
 
@@ -42,9 +48,9 @@ Evidence collected with `aws` CLI plus an end-to-end call through API Gateway.
   was rotated in Cognito and the local `.env`/ignored Postman environment were updated.
   The old values remain in git history (history rewrite/force-push was not performed) but
   are no longer valid credentials.
-- **Note:** the `CreateTestUser`/`SetTestPassword` custom resources embed the test password
-  in the synthesized CloudFormation template. Acceptable for a synthetic test user; never
-  use real credentials there.
+- **Note:** test-user creation was moved out of CDK to `scripts/create-test-user.sh`
+  (`npm run dev:create-test-user`); the password is read from `.env` and no longer appears
+  in the synthesized CloudFormation template.
 
 ## Agent invocation contract (console, CLI, API)
 

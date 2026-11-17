@@ -55,6 +55,8 @@ npm run deploy:api-agent
 `npm run deploy` executa `cdk deploy --require-approval never --outputs-file cdk-outputs.json`.
 
 Saídas: `ApiUrl`, `CognitoUserPoolId`, `CognitoUserPoolClientId`, `AgentRuntimeArn`.
+Esses valores ficam apenas no `.env` local (gitignorado) e em `infra/cdk-outputs.json`;
+não são versionados. A documentação e a coleção Postman usam as variáveis do `.env`.
 
 **Comandos disponíveis:**
 - `npm run deploy:api-agent` — API Gateway + Lambda chat + AgentCore Runtime (CORS permite `http://localhost:3000`)

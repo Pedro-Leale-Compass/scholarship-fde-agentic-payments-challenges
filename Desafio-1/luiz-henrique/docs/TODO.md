@@ -91,7 +91,7 @@ Região: `us-east-1`. Prefixo dos recursos: `luiz-henrique`.
 - [x] Um único comando deve criar todo o ambiente: `cdk deploy --require-approval never` (sintetiza corretamente; deploy não executado para evitar custos AWS).
 - [x] Frontend estático no Amplify Hosting (CloudFront/S3+OAC bloqueado por SCP nesta conta).
 - [x] Cognito user pool sem auto cadastro (`AllowAdminCreateUserOnly`); usuários por convite.
-- [x] Usuário do instrutor criado no Cognito pelo CDK (AwsCustomResource).
+- [x] Usuário do instrutor criado no Cognito via `npm run dev:create-test-user` (script, lê TEST_EMAIL/TEST_PASSWORD do `.env`); removido do template CDK para não versionar senha.
 - [x] IAM de menor privilégio para Lambda, AgentCore Runtime, API Gateway, DynamoDB, S3, CloudFront, ECR.
 - [x] Stack/recursos prefixados com `luiz-henrique` para não colidir.
 - [x] Nenhum segredo no Git.

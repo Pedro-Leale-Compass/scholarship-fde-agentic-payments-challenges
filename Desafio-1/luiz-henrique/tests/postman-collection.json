@@ -36,7 +36,9 @@
                 "amazonaws",
                 "com"
               ],
-              "path": [""]
+              "path": [
+                ""
+              ]
             },
             "description": "Faz login no Cognito User Pool usando USER_PASSWORD_AUTH e extrai o IdToken para usar nas requisições seguintes."
           },
@@ -88,8 +90,12 @@
             },
             "url": {
               "raw": "{{apiUrl}}/chat",
-              "host": ["{{apiUrl}}"],
-              "path": ["chat"]
+              "host": [
+                "{{apiUrl}}"
+              ],
+              "path": [
+                "chat"
+              ]
             },
             "description": "Envia uma mensagem para o agente de pagamentos usando o token JWT obtido no login."
           },
@@ -130,8 +136,12 @@
             },
             "url": {
               "raw": "{{apiUrl}}/chat",
-              "host": ["{{apiUrl}}"],
-              "path": ["chat"]
+              "host": [
+                "{{apiUrl}}"
+              ],
+              "path": [
+                "chat"
+              ]
             },
             "description": "Verifica que a API retorna 401 quando nenhuma autorização é enviada."
           },
@@ -168,9 +178,9 @@
     },
     {
       "key": "testEmail",
-      "value": "<test-email>",
+      "value": "",
       "type": "string",
-      "description": "E-mail do usuário de teste (do .env: TEST_EMAIL)"
+      "description": "E-mail do usuário de teste. Defina no environment local (gitignorado) a partir de TEST_EMAIL no .env."
     },
     {
       "key": "testPassword",
@@ -180,15 +190,15 @@
     },
     {
       "key": "userPoolClientId",
-      "value": "<user-pool-client-id>",
+      "value": "",
       "type": "string",
-      "description": "Cognito User Pool Client ID (output CognitoUserPoolClientId do cdk-outputs.json)"
+      "description": "Cognito User Pool Client ID. Defina no environment local (gitignorado) a partir de COGNITO_USER_POOL_CLIENT_ID no .env."
     },
     {
       "key": "apiUrl",
-      "value": "<api-url>/",
+      "value": "",
       "type": "string",
-      "description": "URL da API Gateway (output ApiUrl do cdk-outputs.json)"
+      "description": "URL da API Gateway. Defina no environment local (gitignorado) a partir de API_URL no .env."
     },
     {
       "key": "idToken",
