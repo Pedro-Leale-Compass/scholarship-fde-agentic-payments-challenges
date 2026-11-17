@@ -152,12 +152,63 @@ button:disabled {
   font-size: 0.9rem;
 }
 
-.topo-usuario button {
+.botao-sair {
   padding: 6px 12px;
   background: transparent;
   color: var(--cor-texto);
   border: 1px solid var(--cor-borda);
   border-radius: var(--raio-pequeno);
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(79, 140, 255, 0.18);
+  color: var(--cor-destaque);
+  border: 1px solid var(--cor-borda);
+  font-weight: 600;
+  user-select: none;
+}
+
+.botao-icone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: transparent;
+  color: var(--cor-texto);
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio-pequeno);
+}
+
+.botao-icone:hover {
+  background: var(--cor-superficie);
+}
+
+.so-mobile {
+  display: none;
+}
+
+.seta {
+  transition: transform 0.2s ease;
+}
+
+.seta-aberta {
+  transform: rotate(180deg);
+}
+
+.painel-conversas {
+  display: flex;
+  min-height: 0;
+}
+
+.painel-conversas > .lista-conversas {
+  flex: 1;
 }
 
 .corpo {
@@ -458,22 +509,51 @@ button:disabled {
 }
 
 @media (max-width: 720px) {
-  .corpo {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
+  .so-mobile {
+    display: inline-flex;
   }
 
-  .lista-conversas {
-    max-height: 30dvh;
-    border-right: none;
+  .topo h1 {
+    font-size: 1rem;
+  }
+
+  .topo-usuario {
+    gap: 8px;
+  }
+
+  .corpo {
+    position: relative;
+    grid-template-columns: 1fr;
+  }
+
+  .painel-conversas {
+    display: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    max-height: 60dvh;
+    background: var(--cor-fundo);
     border-bottom: 1px solid var(--cor-borda);
+    border-radius: 0 0 var(--raio) var(--raio);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.35);
+    overflow: hidden;
+  }
+
+  .painel-conversas.aberto {
+    display: flex;
+  }
+
+  .painel-conversas > .lista-conversas {
+    border-right: none;
+  }
+
+  .lista-conversas .botao-nova {
+    display: none;
   }
 
   .mensagem {
     max-width: 92%;
-  }
-
-  .topo-usuario span {
-    display: none;
   }
 }

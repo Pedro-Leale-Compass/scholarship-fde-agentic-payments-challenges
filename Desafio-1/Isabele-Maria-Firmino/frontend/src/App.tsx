@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Authenticator, ThemeProvider, defaultDarkModeOverride, translations, type Theme } from '@aws-amplify/ui-react'
 import { I18n } from 'aws-amplify/utils'
 import type { ConfigApp } from './config.ts'
@@ -67,12 +67,73 @@ type AreaLogadaProps = {
   onSair: () => void
 }
 
+export function getInicial(email?: string): string {
+  const letra = email?.trim().charAt(0)
+  return letra ? letra.toLocaleUpperCase('pt-BR') : '?'
+}
+
+function IconeSeta({ aberta }: { aberta: boolean }) {
+  return (
+    <svg
+      className={aberta ? 'seta seta-aberta' : 'seta'}
+      viewBox="0 0 24 24"
+      width="20"
+      height="20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  )
+}
+
+function IconeMais() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="20"
+      height="20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  )
+}
+
 function AreaLogada({ config, email, onSair }: AreaLogadaProps) {
   const [conversa, setConversa] = useState<ConversaAberta>(createConversaNova)
   const [atualizacao, setAtualizacao] = useState(0)
+  const [listaAberta, setListaAberta] = useState(false)
 
   const handleTurnoFinalizado = useCallback(() => setAtualizacao((valor) => valor + 1), [])
   const handleSessaoExpirada = useCallback(() => onSair(), [onSair])
+
+  useEffect(() => {
+    if (!listaAberta) return
+    const handleTecla = (evento: KeyboardEvent) => {
+      if (evento.key === 'Escape') setListaAberta(false)
+    }
+    window.addEventListener('keydown', handleTecla)
+    return () => window.removeEventListener('keydown', handleTecla)
+  }, [listaAberta])
+
+  function selectConversa(id: string): void {
+    setConversa({ id, nova: false })
+    setListaAberta(false)
+  }
+
+  function createNova(): void {
+    setConversa(createConversaNova())
+    setListaAberta(false)
+  }
 
   return (
     <div className="app">
@@ -82,21 +143,38 @@ function AreaLogada({ config, email, onSair }: AreaLogadaProps) {
           Agente de Pagamentos
         </h1>
         <div className="topo-usuario">
-          {email && <span>{email}</span>}
-          <button type="button" onClick={onSair}>
+          <button
+            type="button"
+            className="botao-icone so-mobile"
+            aria-label="Conversas anteriores"
+            aria-expanded={listaAberta}
+            aria-controls="painel-conversas"
+            onClick={() => setListaAberta((aberta) => !aberta)}
+          >
+            <IconeSeta aberta={listaAberta} />
+          </button>
+          <button type="button" className="botao-icone so-mobile" aria-label="Nova conversa" onClick={createNova}>
+            <IconeMais />
+          </button>
+          <span className="avatar" role="img" title={email} aria-label={email ? `Usuário: ${email}` : 'Usuário'}>
+            {getInicial(email)}
+          </span>
+          <button type="button" className="botao-sair" onClick={onSair}>
             Sair
           </button>
         </div>
       </header>
 
       <div className="corpo">
-        <ListaConversas
-          config={config}
-          conversaAtual={conversa.id}
-          atualizacao={atualizacao}
-          onSelect={(id) => setConversa({ id, nova: false })}
-          onNova={() => setConversa(createConversaNova())}
-        />
+        <div id="painel-conversas" className={listaAberta ? 'painel-conversas aberto' : 'painel-conversas'}>
+          <ListaConversas
+            config={config}
+            conversaAtual={conversa.id}
+            atualizacao={atualizacao}
+            onSelect={selectConversa}
+            onNova={createNova}
+          />
+        </div>
         <Chat
           key={conversa.id}
           config={config}
