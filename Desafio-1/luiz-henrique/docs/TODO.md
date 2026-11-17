@@ -39,12 +39,12 @@ Plano detalhado: [`PLAN-AGENT-REVAMP.md`](PLAN-AGENT-REVAMP.md).
 
 - [ ] Adicionar `conversa_id` ao payload do frontend e da Lambda do chat.
 - [ ] Criar/ler estado em `Conversas` (`pending_intencao_id`, `pending_status`).
-- [ ] Remover `Usuarios.ultima_intencao_id` do caminho de decisão.
-- [ ] Remover seed de `state.lastIntencaoId` e override em `realizar_compra`.
-- [ ] Remover `groundIntencaoIds` e o fallback que prefere estado antigo.
-- [ ] Implementar guarda de registro (“registrada” só com tool result).
-- [ ] Condicionar o fallback de pagamento a intenção pendente verificada.
-- [ ] Limpar estado em `paga`/`cancelada`/`expirada`.
+- [x] Remover `Usuarios.ultima_intencao_id` do caminho de decisão.
+- [x] Remover seed de `state.lastIntencaoId` e override em `realizar_compra`.
+- [x] Remover `groundIntencaoIds` e o fallback que prefere estado antigo.
+- [x] Implementar guarda de registro (“registrada” só com tool result).
+- [x] Remover o fallback de pagamento que usava estado antigo.
+- [ ] Limpar estado em `paga`/`cancelada`/`expirada` (depende de `Conversas`).
 
 ## 4. Tools e dados
 
@@ -53,18 +53,18 @@ Plano detalhado: [`PLAN-AGENT-REVAMP.md`](PLAN-AGENT-REVAMP.md).
 - [ ] Adicionar `conversa_id`, `motivo_falha`, `cancelada_em` em `Intencoes`.
 - [ ] Separar `INTENCAO_CANCELADA`, `INTENCAO_EXPIRADA` e `INTENCAO_JA_PAGA`.
 - [ ] Ajustar IAM mínimo para os novos acessos.
-- [ ] Migrar/ignorar `ultima_intencao_id` com segurança.
+- [x] Parar de ler/escrever `ultima_intencao_id`; campo permanece legado.
 
 ## 5. Prompt e testes
 
-- [ ] Reescrever o prompt conforme §3.4 do plano (sem ID concreto no exemplo).
-- [ ] Adicionar teste de regressão: limite excedido → novo produto → novo ID.
-- [ ] Adicionar teste: compra paga → novo produto → novo ID.
-- [ ] Adicionar teste: ID inválido não é “corrigido” para outro.
-- [ ] Adicionar teste: registro fabricado é bloqueado.
-- [ ] Adicionar teste: duas conversas isoladas.
+- [x] Reescrever o prompt conforme §3.4 do plano (sem ID concreto no exemplo).
+- [x] Adicionar teste de regressão: limite excedido → novo produto → novo ID.
+- [x] Adicionar teste: ID inválido não é “corrigido” para outro.
+- [x] Adicionar teste: registro fabricado é bloqueado.
+- [x] Rodar o cenário local sem ARNs (`npm run test:local` passou).
+- [ ] Adicionar teste: compra paga → novo produto → novo ID (coberto no local; falta na API).
+- [ ] Adicionar teste: duas conversas isoladas (depende de `conversa_id`).
 - [ ] Rodar `npm run test:agent` na stack implantada.
-- [ ] Rodar o cenário local sem ARNs.
 
 ## 6. Evidências e entrega
 
@@ -74,6 +74,7 @@ Plano detalhado: [`PLAN-AGENT-REVAMP.md`](PLAN-AGENT-REVAMP.md).
 - [ ] Compra com Pix.
 - [ ] Limite excedido.
 - [ ] `intencao_id` inválido.
+- [ ] Fazer o deploy e rodar `npm run test:agent`.
 - [ ] Preencher a tabela de evidências do `README.md`.
 - [ ] Convidar o instrutor (`npm run user:invite -- <email> [limite]`).
 - [ ] Manter a API acessível até a correção.

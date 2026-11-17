@@ -85,8 +85,7 @@ Observações:
   `npm run check:model` e procure o sufixo `-DEFAULT`. Não crie um log group manualmente
   antes de confirmar; logs têm free tier de 5 GB, mas evite retenção infinita.
 - Os logs do agente incluem eventos `guard: fabricated_turn_removed`,
-  `guard: intencao_id_grounded`, `guard: payment_fallback` e
-  `guard: purchase_reply_adjusted`. Use-os para confirmar o comportamento descrito no
+  `guard: registration_reply_adjusted` e `guard: purchase_reply_adjusted`. Use-os para confirmar o comportamento descrito no
   `PLAN-AGENT-REVAMP.md`. Para filtrar só esses eventos:
 
 ```bash
@@ -102,7 +101,8 @@ aws logs filter-log-events \
 ## 5. Testes
 
 ```bash
-npm run test:agent
+npm run test:local   # agente local + fallback (Haiku), sem DynamoDB/Lambda
+npm run test:agent   # integração na stack implantada
 ```
 
 Requer stack implantada e credenciais. Cria usuário temporário no Cognito/DynamoDB e limpa
@@ -136,5 +136,5 @@ prefixo `luiz-henrique`/`Desafio1Stack`.
 | Modelo errado (Nova em vez de Haiku) | `.env` com `BEDROCK_MODEL_ID` e redeploy; confirme com `check:model` |
 | Nenhum log do runtime | `check:logs`; confirme o grupo `/aws/bedrock-agentcore/*` |
 | Compra paga duas vezes | `Intencoes.status` e logs de `realizar_compra`; a transação só aceita `pendente` |
-| `INTENCAO_JA_PAGA` em intenção cancelada | comportamento atual; o plano separa `INTENCAO_CANCELADA` |
+| `INTENCAO_JA_PAGA` em intenção cancelada | não deve mais ocorrer; confirme se o deploy tem a versão com `INTENCAO_CANCELADA` |
 | Custo subindo | `check:logs`/Bedrock usage; evite testes repetidos; use fallback local |

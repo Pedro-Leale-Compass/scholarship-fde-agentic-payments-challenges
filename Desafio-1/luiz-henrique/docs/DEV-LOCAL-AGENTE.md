@@ -41,9 +41,10 @@ unset TOOL_LISTAR_CATALOGO_ARN TOOL_REGISTRAR_INTENCAO_ARN TOOL_REALIZAR_COMPRA_
 npm run dev:agent
 ```
 
-> `agent/index.ts` carrega o `.env` com `override: true`: no modo local, o
-> `BEDROCK_MODEL_ID` do `.env` vence o valor exportado no shell. Para testar outro modelo,
-> altere o `.env` ou rode `npx tsx index.ts` sem o `dotenv` (não recomendado).
+> `agent/index.ts` carrega o `.env` da **raiz** do projeto com `override: true`: no modo
+> local, o `BEDROCK_MODEL_ID` do `.env` vence o valor exportado no shell. Para testar outro
+> modelo, altere o `.env`. Se `scripts/aws-creds.sh` exportou credenciais estáticas, o
+> `AWS_PROFILE` do `.env` é removido em runtime para o SDK não tentar resolver o SSO.
 
 Em outro terminal:
 
@@ -77,6 +78,28 @@ reenvie o array `messages` com os turnos anteriores.
 O que ele **não** replica: DynamoDB, IAM, concorrência real, transação atômica, dados
 persistidos entre reinícios e logs do runtime.
 
+## 3.1 Fluxo local completo (sem API Gateway)
+
+```bash
+npm run test:local
+```
+
+O script:
+
+1. sobe o agente local na porta 3031;
+2. executa `monitor → cartão → LIMITE_EXCEDIDO/cancelada → fone → pix`;
+3. verifica que a segunda compra criou um **novo** ID, pagou e não citou o ID antigo;
+4. derruba o agente e mostra o log se algo falhar.
+
+Por padrão usa o fallback em memória: não grava DynamoDB nem invoca Lambdas. Ainda consome
+Bedrock (4 chamadas curtas). Para usar as Lambdas/DynamoDB reais:
+
+```bash
+USE_REAL_TOOLS=1 npm run test:local
+```
+
+O harness é o jeito mais rápido de validar prompt/tool loop antes do deploy.
+
 ## 4. Rodar com as Lambdas reais
 
 Use quando precisar validar persistência, saldo e códigos de erro de verdade. Isso grava
@@ -108,7 +131,7 @@ Use um `usuario_id` que exista em `Usuarios` (ou o `sub` de um usuário de teste
 | Tools | fallback ou Lambdas reais | Lambdas reais |
 | Prompt/tool loop | igual | igual |
 | IDs/códigos | iguais desde esta rodada | iguais |
-| Estado de conversa | memória do processo | `Usuarios.ultima_intencao_id` (atual) |
+| Estado de conversa | memória do processo | histórico + tool results (sem `Conversas` ainda) |
 | API Gateway/JWT/CORS | não | sim |
 | DynamoDB/IAM | não (fallback) | sim |
 | AgentCore session/logs | não | sim |

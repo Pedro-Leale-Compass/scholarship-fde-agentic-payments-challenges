@@ -211,9 +211,9 @@ do transcript.
 
 - [ ] Adicionar `conversa_id` ao payload do frontend e à Lambda do chat.
 - [ ] Criar/ler item em `Conversas` com `pending_intencao_id`/`pending_status`.
-- [ ] Remover `ultima_intencao_id` do caminho de decisão.
-- [ ] Remover seed/override/grounding descritos em §3.2.
-- [ ] Implementar guarda de registro e fallback de pagamento condicionado.
+- [x] Remover `ultima_intencao_id` do caminho de decisão.
+- [x] Remover seed/override/grounding descritos em §3.2.
+- [x] Implementar guarda de registro; fallback de pagamento removido.
 - [ ] Limpar estado em `paga`/`cancelada`/`expirada`.
 - Critério: duas compras consecutivas (mesmo após falha) geram IDs distintos; nova
   conversa não herda ID; ID inválido nunca é “corrigido” para outro.
@@ -224,7 +224,7 @@ do transcript.
 - [ ] Adicionar `conversa_id`, `motivo_falha`, `cancelada_em` em `Intencoes`.
 - [ ] Separar códigos `INTENCAO_CANCELADA`/`INTENCAO_EXPIRADA`/`INTENCAO_JA_PAGA`.
 - [ ] Ajustar IAM mínimo para os novos acessos.
-- [ ] Migrar/ignorar `Usuarios.ultima_intencao_id` com segurança.
+- [x] Parar de ler/escrever `Usuarios.ultima_intencao_id`; campo permanece legado.
 - Critério: preço e produto sempre vêm do catálogo; status terminais são explícitos.
 
 ### Fase 5 — Prompt, testes e evidências
@@ -241,7 +241,8 @@ do transcript.
   8. duas conversas isoladas;
   9. duas abas na mesma conversa;
   10. chamadas de tool em paralelo.
-- [ ] Rodar `npm run test:agent` e um teste local sem AWS (fallback).
+- [x] Rodar `npm run test:local` (fallback, Haiku) — passou.
+- [ ] Rodar `npm run test:agent` na stack implantada após o deploy.
 - [ ] Capturar evidências para o README.
 - Critério: suíte falha se um ID de uma compra anterior aparecer em uma compra nova.
 

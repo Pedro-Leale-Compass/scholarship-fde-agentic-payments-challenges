@@ -15,18 +15,26 @@ import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime';
 import { Agent, BedrockModel, ZodTool } from '@strands-agents/sdk';
 import { z } from 'zod';
 import { randomBytes } from 'crypto';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { config as loadEnv } from 'dotenv';
 import {
   LambdaClient,
   InvokeCommand,
   type InvokeCommandInput,
 } from '@aws-sdk/client-lambda';
 
-// Carrega variáveis de ambiente do .env (ignorado pelo git) se existir.
-await import('dotenv').then((m) => m.config?.({ override: true }));
+// Carrega o .env da raiz do projeto (ignorado pelo git) quando rodando local.
+// No container, o arquivo normalmente não existe e as variáveis vêm do runtime.
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+loadEnv({ path: path.resolve(HERE, '..', '.env'), override: true });
 
-// Modelo temporário: Nova 2 Lite (barato e com tool use). O alvo do desafio é
-// Claude Haiku; troque via BEDROCK_MODEL_ID quando o acesso ao modelo for liberado:
-//   us.anthropic.claude-haiku-4-5-20251001-v1:0
+// Se o shell já exportou credenciais temporárias (aws-creds.sh), elas vencem o
+// AWS_PROFILE do .env. Sem isso, o SDK tenta resolver o perfil SSO e falha.
+if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SESSION_TOKEN) {
+  delete process.env.AWS_PROFILE;
+}
+
 const MODEL_ID = process.env.BEDROCK_MODEL_ID || 'global.amazon.nova-2-lite-v1:0';
 const REGION = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1';
 const SALDO_INICIAL_LOCAL = Number(process.env.SALDO_INICIAL_LOCAL ?? process.env.LIMITE_COMPRA) || 500;
@@ -142,9 +150,15 @@ function realizarCompraLocal(
     };
   }
   if (intencao.status !== 'pendente') {
+    const code =
+      intencao.status === 'paga'
+        ? 'INTENCAO_JA_PAGA'
+        : intencao.status === 'cancelada'
+          ? 'INTENCAO_CANCELADA'
+          : 'INTENCAO_INDISPONIVEL';
     return {
       ok: false,
-      code: 'INTENCAO_JA_PAGA',
+      code,
       error: `intencao ja esta em status: ${intencao.status}`,
       status: intencao.status,
     };
@@ -229,7 +243,8 @@ interface PurchaseResult {
 
 interface AgentState {
   lastPurchase: PurchaseResult | null;
-  lastIntencaoId: string | null;
+  registeredIntencaoId: string | null;
+  registeredThisTurn: boolean;
 }
 
 const SUCCESS_REPLY =
@@ -270,92 +285,29 @@ function applyPurchaseGuard(
   return 'Erro: o agente iria confirmar a compra para você sem registrar no backend. Nenhuma cobrança foi confirmada.';
 }
 
-const INTENCAO_ID_ANY_RE =
-  /\b(?:INT-[0-9A-F]{8}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/gi;
 const INTENCAO_ID_RE =
   /^(?:INT-[0-9A-F]{8}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
-const PLACEHOLDER_INTENCAO_RE = /\bintencao[_-]?\d+\b/gi;
-const SHORT_INTENCAO_RE = /\bINT-[0-9A-Z]+\b/gi;
-const PAYMENT_CONFIRM_RE =
-  /^(pode\s+)?(confirmar|confirmo|pagar|pode\s+ser|finalizar|fechar|cart[aã]o|pix|sim)\b|.*\b(pagar|confirmar|finalizar|fechar)\b.*\b(cart[aã]o|pix)\b/i;
-
-function paymentMethod(text: string): 'cartao' | 'pix' | null {
-  if (/pix/i.test(text)) return 'pix';
-  if (/cart[aã]o/i.test(text)) return 'cartao';
-  return null;
-}
-
-function purchaseFallbackMessage(
-  purchase: PurchaseResult,
-  intencaoId: string,
-  method: 'cartao' | 'pix',
-): string {
-  if (purchase.ok) {
-    const valor =
-      purchase.valor !== undefined
-        ? ` no valor de R$ ${purchase.valor.toFixed(2)}`
-        : '';
-    return `Compra aprovada${valor}! Intenção ${intencaoId}, pagamento via ${
-      method === 'pix' ? 'pix' : 'cartão'
-    }.`;
-  }
-  const reason = purchase.code
-    ? `Motivo: ${purchase.code}.`
-    : 'Não foi possível confirmar o pagamento.';
-  return `O pagamento não foi concluído. ${reason} A intenção continua pendente e nenhuma cobrança foi confirmada.`;
-}
-
+const REGISTRATION_REPLY_RE =
+  /(inten[çc][ãa]o\s+(?:foi\s+)?(?:registrada|criada)|registrei\s+(?:a\s+)?inten[çc][ãa]o)/i;
 /**
- * Quando o usuário confirma o pagamento e o modelo não chama realizar_compra,
- * o runtime executa a ferramenta com o último intencao_id da conversa. Evita que
- * a compra fique pendente por uma omissão do modelo.
+ * Impede que o modelo afirme que registrou uma intenção sem que registrar_intencao
+ * tenha retornado ok: true nesta mesma invocação. Não reescreve IDs para outro
+ * valor: a falha fica visível para o usuário.
  */
-async function completePaymentFallback(
-  usuarioId: string,
+function applyRegistrationGuard(
+  reply: string,
   state: AgentState,
-  prompt: string,
-): Promise<string | null> {
-  const lastUserLine = (
-    prompt
-      .split('\n')
-      .filter((line) => /^user:/i.test(line))
-      .pop() || ''
-  ).replace(/^user:\s*/i, '');
-  if (!PAYMENT_CONFIRM_RE.test(lastUserLine)) return null;
-
-  const method = paymentMethod(lastUserLine);
-  if (!method) return null;
-
-  const ids = prompt.match(INTENCAO_ID_ANY_RE) || [];
-  const intencaoId = state.lastIntencaoId || ids[ids.length - 1];
-  if (!intencaoId) return null;
-
-  let result: unknown;
-  if (!TOOL_REALIZAR_COMPRA_ARN) {
-    result = realizarCompraLocal(usuarioId, intencaoId, method);
-  } else {
-    result = await invokeLambda(TOOL_REALIZAR_COMPRA_ARN, {
-      usuario_id: usuarioId,
-      intencao_id: intencaoId,
-      forma_pagamento: method,
-    });
-  }
-
-  const purchase = normalizePurchase(result);
-  state.lastPurchase = purchase;
-  return purchaseFallbackMessage(purchase, intencaoId, method);
+): string {
+  if (!REGISTRATION_REPLY_RE.test(reply)) return reply;
+  if (state.registeredThisTurn) return reply;
+  return 'Não registrei nenhuma intenção nesta mensagem (nenhum ID foi criado). Nenhuma cobrança foi feita. Pode repetir qual produto você quer comprar?';
 }
 
-function createAgent(
-  usuario_id: string,
-  ultimaIntencaoId?: string,
-): { agent: Agent; state: AgentState } {
+function createAgent(usuario_id: string): { agent: Agent; state: AgentState } {
   const state: AgentState = {
     lastPurchase: null,
-    lastIntencaoId:
-      ultimaIntencaoId && INTENCAO_ID_RE.test(ultimaIntencaoId)
-        ? ultimaIntencaoId
-        : null,
+    registeredIntencaoId: null,
+    registeredThisTurn: false,
   };
   const listarCatalogoTool = new ZodTool({
     name: 'listar_catalogo',
@@ -389,8 +341,11 @@ function createAgent(
           valor,
         });
       }
-      const r = (result ?? {}) as { intencao_id?: unknown };
-      if (typeof r.intencao_id === 'string') state.lastIntencaoId = r.intencao_id;
+      const r = (result ?? {}) as { ok?: unknown; intencao_id?: unknown };
+      if (r.ok === true && typeof r.intencao_id === 'string') {
+        state.registeredIntencaoId = r.intencao_id;
+        state.registeredThisTurn = true;
+      }
       return result;
     },
   });
@@ -404,26 +359,12 @@ function createAgent(
       forma_pagamento: z.enum(['cartao', 'pix']).describe('Forma de pagamento: cartao ou pix'),
     }),
     callback: async ({ intencao_id, forma_pagamento }) => {
-      // O modelo às vezes inventa um ID (ex.: "intencao_1"). Se houver um ID real
-      // registrado nesta invocação, use ele; caso contrário, recuse sem chamar a tool.
-      let id = intencao_id;
-      if (!INTENCAO_ID_RE.test(id) && state.lastIntencaoId) {
-        id = state.lastIntencaoId;
-      }
-      // Se uma intenção acabou de ser registrada nesta invocação, ela é a que
-      // vale; ignora UUIDs divergentes inventados pelo modelo.
-      if (
-        state.lastIntencaoId &&
-        id.toLowerCase() !== state.lastIntencaoId.toLowerCase()
-      ) {
-        id = state.lastIntencaoId;
-      }
-      if (!INTENCAO_ID_RE.test(id)) {
+      if (!INTENCAO_ID_RE.test(intencao_id)) {
         const result = {
           ok: false,
           code: 'INTENCAO_INVALIDA',
           error:
-            'intencao_id deve ser o UUID retornado por registrar_intencao. Registre a intenção novamente.',
+            'intencao_id deve ser exatamente o ID retornado por registrar_intencao. Registre a intenção novamente.',
         };
         state.lastPurchase = normalizePurchase(result);
         return result;
@@ -431,11 +372,11 @@ function createAgent(
 
       let result: unknown;
       if (!TOOL_REALIZAR_COMPRA_ARN) {
-        result = realizarCompraLocal(usuario_id, id, forma_pagamento);
+        result = realizarCompraLocal(usuario_id, intencao_id, forma_pagamento);
       } else {
         result = await invokeLambda(TOOL_REALIZAR_COMPRA_ARN, {
           usuario_id,
-          intencao_id: id,
+          intencao_id,
           forma_pagamento,
         });
       }
@@ -466,15 +407,18 @@ Fale só da loja: catálogo, preços, disponibilidade e compras. Fora disso, dig
 
 ## Fluxo
 1. Usuário pede produto/preço → listar_catalogo.
-2. Usuário escolhe produto → registrar_intencao agora. Mostre o intencao_id retornado e pergunte: cartão ou pix?
-3. Usuário responde cartão/pix → realizar_compra com esse intencao_id.
+2. Usuário escolhe produto → registrar_intencao agora. Use exatamente o intencao_id retornado. Mostre o ID e pergunte: cartão ou pix?
+3. Usuário responde cartão/pix → realizar_compra com o intencao_id retornado por registrar_intencao.
 4. Responda com o retorno:
    - ok: true → "Compra aprovada" + valor, forma e intencao_id.
-   - ok: false → explique o code e o próximo passo.
+   - ok: false → mostre o code e o próximo passo. Não esconda a falha.
 
 ## Regras
-- Nunca invente id, preço ou status. Copie o intencao_id da ferramenta.
+- Nunca invente id, preço ou status. Só mencione um intencao_id retornado por uma ferramenta nesta conversa; não copie IDs de exemplos.
+- Se o usuário escolher um produto novo, ou se a intenção anterior estiver paga/cancelada/expirada, chame registrar_intencao de novo. Nunca reutilize o ID anterior.
+- Só diga "registrada" se registrar_intencao retornou ok: true nesta mensagem.
 - Só diga "aprovada", "confirmada" ou "paga" se realizar_compra retornou ok: true.
+- Se uma ferramenta falhar, explique o code e diga o que o usuário pode fazer. Uma falha visível é melhor que inventar sucesso.
 - Responda só à última mensagem. Nunca escreva "user:" ou "assistant:".
 - Uma ferramenta por vez.
 - Preço em R$ 0,00.
@@ -482,9 +426,9 @@ Fale só da loja: catálogo, preços, disponibilidade e compras. Fora disso, dig
 
 ## Exemplo
 Usuário: Quero comprar o Fone Bluetooth.
-Você: Intenção INT-1A2B3C4D registrada: Fone Bluetooth, R$ 199,90, pendente. Cartão ou pix?
+Você: (chame registrar_intencao; use o ID retornado) Intenção registrada: Fone Bluetooth, R$ 199,90, pendente. Cartão ou pix?
 Usuário: Pix.
-Você: Compra aprovada! Fone Bluetooth, R$ 199,90, pix, intenção INT-1A2B3C4D.
+Você: (chame realizar_compra com o ID retornado) Compra aprovada! Fone Bluetooth, R$ 199,90, pix.
 `.trim(),
     }),
   };
@@ -496,7 +440,6 @@ interface AgentRequest {
   prompt?: unknown;
   usuario_id?: unknown;
   messages?: unknown;
-  intencao_id?: unknown;
 }
 
 function toConversation(
@@ -546,33 +489,6 @@ function stripFabricatedTurns(reply: string): string {
   );
 }
 
-/**
- * Impede IDs inventados na resposta: qualquer UUID diferente do último
- * intencao_id real vira o ID real; placeholders como "intencao_1" também.
- */
-function groundIntencaoIds(reply: string, realId: string | null): string {
-  if (!realId) return reply;
-  const real = realId.toLowerCase();
-  let changed = false;
-
-  let out = reply.replace(INTENCAO_ID_ANY_RE, (id) => {
-    if (id.toLowerCase() === real) return id;
-    changed = true;
-    return realId;
-  });
-  out = out.replace(PLACEHOLDER_INTENCAO_RE, () => {
-    changed = true;
-    return realId;
-  });
-  out = out.replace(SHORT_INTENCAO_RE, (id) => {
-    if (id.toUpperCase() === realId.toUpperCase()) return id;
-    changed = true;
-    return realId;
-  });
-
-  return changed ? out : reply;
-}
-
 function jsonError(
   statusCode: number,
   code: string,
@@ -611,12 +527,7 @@ const app = new BedrockAgentCoreApp({
       }
 
       try {
-        const { agent, state } = createAgent(
-          usuario_id,
-          typeof payload.intencao_id === 'string'
-            ? payload.intencao_id
-            : undefined,
-        );
+        const { agent, state } = createAgent(usuario_id);
         const conversation = toConversation(payload.messages);
         const chunks: string[] = [];
         for await (const event of agent.stream(
@@ -636,39 +547,13 @@ const app = new BedrockAgentCoreApp({
         if (sanitized !== rawReply) {
           console.log(JSON.stringify({ guard: 'fabricated_turn_removed' }));
         }
-        const grounded = groundIntencaoIds(sanitized, state.lastIntencaoId);
-        if (grounded !== sanitized) {
-          console.log(
-            JSON.stringify({
-              guard: 'intencao_id_grounded',
-              intencao_id: state.lastIntencaoId,
-            }),
-          );
-        }
-        let reply = applyPurchaseGuard(grounded, state.lastPurchase);
-
-        if (!state.lastPurchase) {
-          try {
-            const fallback = await completePaymentFallback(
-              usuario_id,
-              state,
-              prompt,
-            );
-            if (fallback) {
-              reply = fallback;
-              console.log(
-                JSON.stringify({
-                  guard: 'payment_fallback',
-                  purchase: state.lastPurchase,
-                }),
-              );
-            }
-          } catch (err) {
-            console.error('payment fallback error:', err);
-          }
+        let reply = applyRegistrationGuard(sanitized, state);
+        if (reply !== sanitized) {
+          console.log(JSON.stringify({ guard: 'registration_reply_adjusted' }));
         }
 
-        if (reply !== rawReply) {
+        const guarded = applyPurchaseGuard(reply, state.lastPurchase);
+        if (guarded !== reply) {
           console.log(
             JSON.stringify({
               guard: 'purchase_reply_adjusted',
@@ -676,13 +561,16 @@ const app = new BedrockAgentCoreApp({
             }),
           );
         }
+        reply = guarded;
 
         return JSON.stringify({
           ok: true,
           usuario_id,
           reply,
           purchase: state.lastPurchase,
-          intencao_id: state.lastIntencaoId,
+          registered_intencao_id: state.registeredIntencaoId,
+          registered: state.registeredThisTurn,
+          intencao_id: state.registeredIntencaoId,
           model: MODEL_ID,
         });
       } catch (err) {

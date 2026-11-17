@@ -21,7 +21,7 @@ API Gateway REST (prod) + autorizador JWT Cognito
 Lambda do chat (Node 20, 256 MB, 2 min)
   ├─ valida o sub do token
   ├─ cria/atualiza o item lazy em Usuarios
-  ├─ lê Usuarios.ultima_intencao_id (comportamento atual; será removido — ver plano)
+  ├─ não envia intencao_id (o estado por conversa ainda não existe — ver plano)
   └─ InvokeAgentRuntime
         │
         ▼
@@ -97,7 +97,8 @@ Comandos:
 - Frontend local; sem URL pública S3/CloudFront.
 - API REST sem streaming/WebSocket (o PDF pede “Stream ou WebSocket”).
 - `Conversas` existe, mas o chat ainda não grava histórico nela.
-- O estado de checkout é por usuário (`Usuarios.ultima_intencao_id`), não por conversa; isso
-  causa a reutilização de IDs descrita em `PLAN-AGENT-REVAMP.md`.
+- O estado de checkout não é persistido por conversa; o modelo usa o histórico + tool
+  results. `Usuarios.ultima_intencao_id` não é mais lido/escrito. Falta implementar
+  `Conversas` conforme `PLAN-AGENT-REVAMP.md`.
 - O fallback local do agente replica os contratos das Lambdas, mas não substitui um teste
   de integração com DynamoDB real.

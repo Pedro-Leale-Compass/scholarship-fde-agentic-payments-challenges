@@ -47,21 +47,21 @@ Legenda: ✅ atende · 🟡 parcial · ❌ não atende · ⏸ adiado por decisã
 | Destroy + limpeza | ✅ | `npm run destroy` + `scripts/destroy-cleanup.sh` + `destroy-cleanup.md` |
 | Extras (MCP Gateway, Memory, Guardrails, traces) | ⏸ | não previstos |
 
-## 4. Defeito conhecido que afeta a correção
+## 4. Defeito corrigido no código (deploy pendente)
 
-A conversa de `v0.0.2` reutiliza `INT-E36C946B` ao comprar outro produto depois de um
-`LIMITE_EXCEDIDO`. Causa e correção proposta estão em
-[`PLAN-AGENT-REVAMP.md`](PLAN-AGENT-REVAMP.md). Resumo:
+O transcript de `v0.0.2` reutilizava `INT-E36C946B` ao comprar outro produto depois de um
+`LIMITE_EXCEDIDO`. Correções aplicadas e validadas localmente com `npm run test:local`:
 
-- `Usuarios.ultima_intencao_id` é por usuário, nunca é invalidado e é enviado em todo turno;
-- o histórico remove a mensagem de falha, então o modelo não sabe que a intenção foi
-  cancelada;
-- `groundIntencaoIds` troca qualquer ID divergente pelo ID antigo;
-- `realizar_compra` sobrescreve o ID do modelo com o estado antigo;
-- `INTENCAO_JA_PAGA` é usado para `cancelada`, mascarando o status real.
+- o chat não envia mais `Usuarios.ultima_intencao_id`;
+- `groundIntencaoIds`, `completePaymentFallback` e os overrides de ID foram removidos;
+- `registrar_intencao` só marca registrado com `ok: true`;
+- guarda de registro devolve falha visível;
+- o histórico não esconde mais a mensagem de falha;
+- `cancelada`/`expirada`/`paga` têm códigos distintos.
 
-Enquanto o plano não for implementado, não trate o fluxo de compra como confiável para
-evidência de “compra com cartão/Pix” em sequência.
+Ainda falta validar na stack implantada (`npm run test:agent`) e implementar estado por
+conversa (`conversa_id`). O plano detalhado está em
+[`PLAN-AGENT-REVAMP.md`](PLAN-AGENT-REVAMP.md).
 
 ## 5. Desvio autorizado: frontend local
 

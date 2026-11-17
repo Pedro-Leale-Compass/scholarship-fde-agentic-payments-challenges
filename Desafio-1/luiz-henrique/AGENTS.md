@@ -84,6 +84,7 @@ npm run dev                    # frontend local :3000
 npm run dev:agent              # agente local :3031 (Bedrock real)
 npm run deploy:api-agent       # deploy backend/agente
 npm run diff                   # cdk diff antes do deploy
+npm run test:local             # fluxo local do agente (fallback, Haiku)
 npm run test:agent             # testes na stack implantada
 npm run check:model            # modelo vivo (control plane, read-only)
 npm run check:logs             # logs do agente/tools (read-only)
@@ -97,20 +98,24 @@ aws sso login --profile desafio-1
 eval "$(scripts/aws-creds.sh)"
 ```
 
-## 5. Foco atual e defeito conhecido
+## 5. Foco atual
 
-O fluxo de compra reutiliza `intencao_id` depois de `LIMITE_EXCEDIDO` ou de uma compra
-paga. Causas:
+A reutilização de `intencao_id` do `v0.0.2` foi removida do código:
 
-- `Usuarios.ultima_intencao_id` é por usuário, nunca é invalidado e é enviado em todo turno;
-- a mensagem de falha é filtrada do histórico, então o modelo não vê o cancelamento;
-- `groundIntencaoIds` troca qualquer ID divergente pelo ID antigo;
-- `realizar_compra` sobrescreve o ID do modelo com o estado antigo;
-- `INTENCAO_JA_PAGA` é usado para `cancelada`.
+- o chat não envia mais `Usuarios.ultima_intencao_id`;
+- `groundIntencaoIds`, `completePaymentFallback` e os overrides de ID foram removidos;
+- `registrar_intencao` só marca registrado com `ok: true`;
+- falha visível no lugar de reescrita silenciosa;
+- status terminais têm códigos distintos.
 
-Não “conserte” isso com mais regex/grounding. Siga o
-[`docs/PLAN-AGENT-REVAMP.md`](docs/PLAN-AGENT-REVAMP.md): estado por conversa, ID só de tool
-result, sem reescrita silenciosa, códigos de status corretos.
+Validado com `npm run test:local` (Haiku, fallback). Ainda falta:
+
+- validar na stack implantada (`npm run test:agent`);
+- estado por conversa (`conversa_id`) em `Conversas`;
+- preço resolvido pelo catálogo.
+
+Não reintroduza regex/grounding para “corrigir” IDs. Siga o
+[`docs/PLAN-AGENT-REVAMP.md`](docs/PLAN-AGENT-REVAMP.md).
 
 ## 6. Custos (importante)
 
@@ -129,10 +134,12 @@ result, sem reescrita silenciosa, códigos de status corretos.
 - Confirme o modelo vivo: `npm run check:model`.
 - O `.env` com Haiku não garante que o runtime implantado usa Haiku. O CDK lê
   `BEDROCK_MODEL_ID` no synth; deploy sem `.env` usa Nova.
+- No modo local, `agent/index.ts` carrega o `.env` da raiz; se `aws-creds.sh` exportou
+  credenciais estáticas, o `AWS_PROFILE` do `.env` é ignorado.
 - Logs: `npm run check:logs`. Procure `/aws/bedrock-agentcore/*` e
   `/aws/lambda/luiz-henrique-*`.
-- Eventos úteis do runtime: `guard: intencao_id_grounded`, `guard: payment_fallback`,
-  `guard: fabricated_turn_removed`, `guard: purchase_reply_adjusted`.
+- Eventos úteis do runtime: `guard: fabricated_turn_removed`,
+  `guard: registration_reply_adjusted`, `guard: purchase_reply_adjusted`.
 - Logs das tools mostram `tool: registrar_intencao`/`realizar_compra` e o `intencao_id`.
 
 ## 8. Regras do desafio (resumo)

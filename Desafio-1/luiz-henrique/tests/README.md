@@ -2,12 +2,24 @@
 
 Verificado em **2026-11-17**.
 
-Duas frentes:
+Três frentes:
 
-1. **Suíte Node** (`npm run test:agent`) — integração real com API/Cognito/DynamoDB.
-2. **Coleção Postman** — login Cognito e testes manuais do `/chat`.
+1. **Fluxo local** (`npm run test:local`) — agente local + fallback ou Lambdas, sem API.
+2. **Suíte Node** (`npm run test:agent`) — integração real com API/Cognito/DynamoDB.
+3. **Coleção Postman** — login Cognito e testes manuais do `/chat`.
 
-## 1. Suíte Node
+## 1. Fluxo local
+
+```bash
+npm run test:local
+USE_REAL_TOOLS=1 npm run test:local   # usa Lambdas/DynamoDB reais
+```
+
+Sobe o agente em `:3031`, executa `monitor → cartão → LIMITE_EXCEDIDO/cancelada → fone →
+pix` e falha se o ID antigo reaparecer. Por padrão usa o fallback em memória; consome
+Bedrock (Haiku) em 4 chamadas curtas. É o teste de regressão mais rápido.
+
+## 2. Suíte Node
 
 ```bash
 cd Desafio-1/luiz-henrique
@@ -32,14 +44,13 @@ no backend.
 | `realizar_compra: saldo, idempotência e códigos` | `COMPRA_APROVADA`, débito do saldo, retry `INTENCAO_JA_PAGA`, `LIMITE_EXCEDIDO`, `INTENCAO_INVALIDA` (inexistente e dono errado), `INTENCAO_EXPIRADA`, `METODO_INVALIDO` |
 | `agente não confirma compra enquanto a intenção está pendente` | intenção pendente não é narrada como paga; o agente informa o ID; pagamento vira `paga` e debita saldo; compra acima do limite não é narrada como aprovada; segunda compra após uma compra paga funciona |
 
-### Lacunas conhecidas
+### Cobertura de regressão
 
-A suíte atual **não** cobre o defeito do transcript de `v0.0.2`:
+A suíte agora inclui, após `LIMITE_EXCEDIDO`, um novo produto e verifica que ele cria um
+**novo** ID e paga. O fluxo local também cobre esse cenário.
 
-- compra após `LIMITE_EXCEDIDO` (intenção cancelada) → novo produto deve gerar **novo** ID;
-- compra após uma compra paga → novo produto deve gerar **novo** ID;
-- ID inválido não pode ser trocado silenciosamente por outro;
-- “intenção registrada” sem tool result deve ser bloqueado;
+Lacunas:
+
 - duas conversas (`conversa_id`) devem ser isoladas;
 - duas abas na mesma conversa;
 - chamadas de tool em paralelo.
@@ -54,7 +65,7 @@ Adicionar esses casos faz parte da Fase 5 do
 - O teste usa `aws` CLI e `fetch`; não precisa de Postman.
 - Custo: cria/deleta itens DynamoDB e faz chamadas Bedrock reais. Rode com moderação.
 
-## 2. Coleção Postman
+## 3. Coleção Postman
 
 Arquivos:
 
@@ -78,7 +89,7 @@ Como usar:
 
 `postman-environment.json` é gitignorado. Não commite credenciais.
 
-## 3. Pré-requisitos e atualização
+## 4. Pré-requisitos e atualização
 
 - `infra/cdk-outputs.json` gerado por `npm run deploy:api-agent`.
 - Usuário de teste no Cognito (via `.env`/script ou console).

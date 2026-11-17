@@ -109,6 +109,7 @@ Copie `.env.example` para `.env` e preencha o necessário. As principais:
 | `npm run dev:agent` | agente local em `http://localhost:3031` (Bedrock real) |
 | `npm run deploy:api-agent` | deploy do backend/agente (CDK) |
 | `npm run diff` | `cdk diff` |
+| `npm run test:local` | sobe o agente local e roda o fluxo de regressão (fallback, Haiku) |
 | `npm run test:agent` | testes de integração na stack implantada |
 | `npm run check:model` | lê o `BEDROCK_MODEL_ID` do runtime (read-only, sem custo de Bedrock) |
 | `npm run check:logs` | lista log groups/streams do agente e das Lambdas (read-only) |
@@ -152,8 +153,8 @@ Tabelas prefixadas com `luiz-henrique` (on-demand). Detalhes em
 [`docs/MODELO-USUARIOS.md`](docs/MODELO-USUARIOS.md).
 
 - `Usuarios` — PK `usuario_id` (`sub`): `email`, `limite_centavos` (saldo),
-  `gasto_total_centavos`, `status`, `origem`, timestamps. `ultima_intencao_id` é legado
-  problemático e será removido do fluxo (ver plano).
+  `gasto_total_centavos`, `status`, `origem`, timestamps. `ultima_intencao_id` é legado e
+  **não é mais lido nem escrito** pelo chat; o plano substitui por estado em `Conversas`.
 - `Conversas` — PK `conversa_id`, SK `usuario_id`, GSI `usuario_id-index`. Existe, mas
   ainda não é gravada; será usada para estado por conversa.
 - `Intencoes` — PK `intencao_id`: `usuario_id`, `produtos`, `valor`, `valor_centavos`,
@@ -187,11 +188,11 @@ Regras de escrita:
 
 - Frontend local; sem URL pública S3/CloudFront/OAC (SCP da conta).
 - API REST sem streaming/WebSocket.
-- `Conversas` existe, mas o histórico não é persistido.
-- Reutilização de `intencao_id` após falha/compra paga — corrigir pelo plano.
+- `Conversas` existe, mas o histórico e o estado por conversa ainda não são persistidos.
+- A reutilização de `intencao_id` foi removida do código e validada localmente
+  (`npm run test:local`); falta validar na stack implantada.
 - `registrar_intencao` ainda aceita preço/produto vindos do modelo; o plano move para o
   catálogo.
-- `realizar_compra` retorna `INTENCAO_JA_PAGA` para `cancelada`.
 - Evidências de login/401/compras ainda não foram anexadas.
 
 ## Evidências

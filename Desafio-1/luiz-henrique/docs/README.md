@@ -10,8 +10,9 @@ Baseline: tag `v0.0.2` — “chat works sometimes” (`d854762`)
 - Modelo: `us.anthropic.claude-haiku-4-5-20251001-v1:0` (Claude Haiku 4.5).
 - Logs: `/aws/bedrock-agentcore/runtimes/luiz_henrique_agent-AD3mRGF7e9-DEFAULT` e
   `/aws/lambda/luiz-henrique-*`.
-- Defeito conhecido: reutilização de `intencao_id` após `LIMITE_EXCEDIDO`/compra paga;
-  evidência nos logs e no DynamoDB em `PLAN-AGENT-REVAMP.md` §1.1.
+- Bug do `v0.0.2` (reutilização de `intencao_id`): corrigido no código e validado com
+  `npm run test:local`; falta deploy/validação na stack. Evidência histórica em
+  `PLAN-AGENT-REVAMP.md` §1.1.
 
 ## Comece por aqui
 

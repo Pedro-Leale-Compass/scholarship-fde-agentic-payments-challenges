@@ -505,18 +505,59 @@ test('agente não confirma compra enquanto a intenção está pendente', async (
       `o agente afirmou compra paga acima do limite: ${sexto.reply}`,
     );
 
+    const cancelada = (await getIntencoes(user.sub)).find(
+      (i) =>
+        i.status?.S === 'cancelada' &&
+        i.motivo_falha?.S === 'LIMITE_EXCEDIDO',
+    );
+    assert.ok(
+      cancelada,
+      `intenção acima do limite deveria ser cancelada: ${JSON.stringify(await getIntencoes(user.sub))}`,
+    );
+    const canceladaId = cancelada.intencao_id.S;
+
+    // Regressão do transcript: novo produto após cancelamento deve criar novo ID.
+    const setimo = await say(
+      'Quero comprar o Fone Bluetooth. Apenas registre a intenção; não finalize.',
+    );
+    assert.equal(setimo.status, 200, setimo.reply);
+    assert.doesNotMatch(
+      setimo.reply,
+      new RegExp(canceladaId),
+      `o agente reutilizou o ID cancelado ${canceladaId}: ${setimo.reply}`,
+    );
+
+    const nova = (await getIntencoes(user.sub)).find(
+      (i) => i.status?.S === 'pendente',
+    );
+    assert.ok(
+      nova,
+      `nova intenção não ficou pendente: ${JSON.stringify(await getIntencoes(user.sub))}`,
+    );
+    assert.notEqual(
+      nova.intencao_id.S,
+      canceladaId,
+      'novo produto reutilizou o ID da intenção cancelada',
+    );
+
+    const oitavo = await say('Pix.');
+    assert.equal(oitavo.status, 200, oitavo.reply);
+    assert.doesNotMatch(
+      oitavo.reply,
+      new RegExp(canceladaId),
+      `a resposta de pagamento citou o ID cancelado ${canceladaId}: ${oitavo.reply}`,
+    );
+    const fonePago = (await getIntencoes(user.sub)).find(
+      (i) => i.intencao_id.S === nova.intencao_id.S,
+    );
+    assert.ok(fonePago, 'intenção nova desapareceu');
+    assert.equal(fonePago.status.S, 'paga', oitavo.reply);
+    assert.equal(fonePago.forma_pagamento.S, 'pix');
+
     const pagas = (await getIntencoes(user.sub)).filter(
       (i) => i.status?.S === 'paga',
     );
-    assert.equal(pagas.length, 2, JSON.stringify(pagas));
-
-    const canceladas = (await getIntencoes(user.sub)).filter(
-      (i) => i.status?.S === 'cancelada',
-    );
-    assert.ok(
-      canceladas.length >= 1,
-      `intenção acima do limite deveria ser cancelada: ${JSON.stringify(canceladas)}`,
-    );
+    assert.equal(pagas.length, 3, JSON.stringify(pagas));
   } finally {
     await user.cleanup();
   }

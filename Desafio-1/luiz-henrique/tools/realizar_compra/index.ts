@@ -144,7 +144,18 @@ exports.handler = async (event: RealizarCompraEvent): Promise<LambdaResponse> =>
 
     const status = fromDynamoString(item, "status") || "";
     if (status !== "pendente") {
-      return fail(409, "INTENCAO_JA_PAGA", `intencao ja esta em status: ${status}`);
+      const code =
+        status === "paga"
+          ? "INTENCAO_JA_PAGA"
+          : status === "cancelada"
+            ? "INTENCAO_CANCELADA"
+            : status === "expirada"
+              ? "INTENCAO_EXPIRADA"
+              : "INTENCAO_INDISPONIVEL";
+      return fail(409, code, `intencao ja esta em status: ${status}`, {
+        intencao_id,
+        status,
+      });
     }
 
     const expiraEm = fromDynamoString(item, "expira_em");
@@ -243,7 +254,12 @@ exports.handler = async (event: RealizarCompraEvent): Promise<LambdaResponse> =>
 
       const intencaoReason = reasons?.[1];
       if (intencaoReason?.Code === "ConditionalCheckFailed") {
-        return fail(409, "INTENCAO_JA_PAGA", "intencao nao esta disponivel para compra");
+        return fail(
+          409,
+          "INTENCAO_INDISPONIVEL",
+          "intencao nao esta mais pendente; registre novamente se necessario",
+          { intencao_id },
+        );
       }
 
       const usuarioReason = reasons?.[0];
@@ -267,7 +283,12 @@ exports.handler = async (event: RealizarCompraEvent): Promise<LambdaResponse> =>
     }
 
     if (name === "ConditionalCheckFailedException") {
-      return fail(409, "INTENCAO_JA_PAGA", "intencao nao esta disponivel para compra");
+      return fail(
+        409,
+        "INTENCAO_INDISPONIVEL",
+        "intencao nao esta mais pendente; registre novamente se necessario",
+        { intencao_id },
+      );
     }
 
     console.error("realizar_compra error:", err);

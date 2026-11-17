@@ -64,58 +64,65 @@ sem custo.
   `TransactWriteItems`.
 - Em `LIMITE_EXCEDIDO` e `INTENCAO_EXPIRADA`, cancela a intenção.
 - Códigos atuais: `COMPRA_APROVADA`, `INTENCAO_INVALIDA`, `INTENCAO_JA_PAGA`,
-  `INTENCAO_EXPIRADA`, `LIMITE_EXCEDIDO`, `METODO_INVALIDO`, `USUARIO_NAO_ENCONTRADO`.
-- **Problema:** qualquer status diferente de `pendente` (inclusive `cancelada`) vira
-  `INTENCAO_JA_PAGA` (`tools/realizar_compra/index.ts:145-148`). Isso engana o usuário.
+  `INTENCAO_CANCELADA`, `INTENCAO_EXPIRADA`, `INTENCAO_INDISPONIVEL`, `LIMITE_EXCEDIDO`,
+  `METODO_INVALIDO`, `USUARIO_NAO_ENCONTRADO`.
+- `INTENCAO_JA_PAGA` só para `status = paga`; `cancelada` e `expirada` têm códigos próprios.
+  `INTENCAO_INDISPONIVEL` cobre mudança concorrente de status.
 
-## 3. Fluxo do runtime (atual)
+## 3. Fluxo do runtime (atual, pós-remoção dos overrides)
 
-1. A Lambda do chat monta `prompt` (texto achatado) e `messages` estruturados, e envia
-   `intencao_id` persistido em `Usuarios.ultima_intencao_id` (`api/index.ts:214-228`).
-2. O runtime cria um `Agent` novo por requisição. O histórico vem de `messages`; o `prompt`
-   é usado pelo fallback de pagamento.
-3. `createAgent` inicializa `state.lastIntencaoId` com o `intencao_id` recebido
-   (`createAgent`, `agent/index.ts:353-359`).
-4. `registrar_intencao` atualiza `state.lastIntencaoId` quando retorna um ID.
-5. `realizar_compra` **sobrescreve** qualquer ID do modelo com `state.lastIntencaoId` se ele
-   existir (`realizar_compra` callback, `agent/index.ts:409-421`).
-6. Depois da resposta do modelo:
+1. A Lambda do chat envia `prompt`, `messages` e `usuario_id`. **Não envia mais**
+   `intencao_id` nem persiste `Usuarios.ultima_intencao_id`.
+2. O runtime cria um `Agent` novo por requisição. O estado começa com
+   `registeredIntencaoId = null` e `registeredThisTurn = false`.
+3. `registrar_intencao` só atualiza o estado quando o tool result tem `ok: true` e um
+   `intencao_id` string. Esse é o único ID “novo” da invocação.
+4. `realizar_compra` usa **exatamente** o `intencao_id` que o modelo passou. Não existe
+   override para o “último ID”. ID malformado devolve `INTENCAO_INVALIDA`; ID válido mas
+   terminal é decidido pelo backend (`INTENCAO_CANCELADA`, `INTENCAO_EXPIRADA`,
+   `INTENCAO_JA_PAGA` ou `INTENCAO_INDISPONIVEL`).
+5. Depois da resposta do modelo:
    - `stripFabricatedTurns` corta transcrições fabricadas;
-   - `groundIntencaoIds` troca qualquer ID divergente pelo “real”
-     (`groundIntencaoIds`, `agent/index.ts:553-574`);
-   - `applyPurchaseGuard` impede afirmar sucesso sem `realizar_compra.ok === true`;
-   - `completePaymentFallback` tenta pagar se a última linha do usuário parecer confirmação
-     e o modelo não tiver chamado a tool (`completePaymentFallback`, `agent/index.ts:313-347`).
-7. A resposta sempre inclui `intencao_id: state.lastIntencaoId`, mesmo quando nenhuma
-   intenção nova foi criada (`agent/index.ts:685`). A API persiste esse valor
-   (`api/index.ts:252-256`).
+   - `applyRegistrationGuard` substitui “intenção registrada” por uma falha visível se
+     `registrar_intencao` não retornou `ok: true` nesta invocação;
+   - `applyPurchaseGuard` impede afirmar sucesso sem `realizar_compra.ok === true`.
+   - **Não existe** `groundIntencaoIds` nem `completePaymentFallback`.
+6. A resposta inclui `registered_intencao_id` (ID criado nesta invocação, ou `null`) e
+   `registered` (boolean). O campo `intencao_id` continua como alias do ID novo para
+   compatibilidade, mas nunca é um ID antigo.
+7. A API mantém as últimas 12 mensagens **sem filtrar falhas**: o modelo precisa ver que a
+   intenção foi cancelada.
 
-## 4. Falhas conhecidas (por que o transcript reutiliza ID)
+## 4. Falhas do `v0.0.2` e o que mudou
 
-1. **`ultima_intencao_id` é por usuário e nunca é invalidado.** Depois de uma compra paga ou
-   cancelada, o ID antigo continua sendo enviado em todo turno. Um chat novo herda o ID.
-2. **O histórico remove a mensagem de falha.** A API filtra respostas que contêm
-   “Nenhuma cobrança foi confirmada” (`api/index.ts:200-208`). O modelo deixa de ver que a
-   intenção foi cancelada e trata o novo produto como troca da intenção antiga.
-3. **`groundIntencaoIds` fabrica a resposta.** Se o modelo copia o ID do exemplo
-   `INT-1A2B3C4D`, usa um placeholder ou inventa outro, o runtime troca pelo ID antigo. A
-   resposta “Intenção ... registrada” passa a parecer verdadeira.
-4. **`realizar_compra` ignora o ID correto do modelo.** Mesmo que o modelo passe um ID novo
-   válido, o callback usa `state.lastIntencaoId` se ele existir.
-5. **Fallback de pagamento usa estado antigo primeiro.** `state.lastIntencaoId ||
-   ids[último]` (`agent/index.ts:330`) nunca prefere um ID novo do prompt quando há
-   estado persistido.
-6. **Não existe guarda de registro.** Só o sucesso de compra é verificado; “intenção
-   registrada” sem tool result passa.
-7. **O prompt atual não proíbe reutilizar intenção terminal.** O exemplo usa um ID concreto
-   (`agent/index.ts:481-486`), o que favorece cópia.
-8. **“Uma ferramenta por vez” é só texto.** O SDK pode emitir chamadas em paralelo; a ordem
-   dos callbacks não é uma garantia de estado.
-9. **Status terminal é mascarado.** `cancelada` vira `INTENCAO_JA_PAGA`.
-10. **A mensagem de fallback sempre diz “continua pendente”** (`agent/index.ts:305`), mesmo
-    quando o backend cancelou.
+O transcript de `v0.0.2` reutilizou `INT-E36C946B` porque:
 
-Evidência de 2026-11-17 no log group
+1. a API enviava `Usuarios.ultima_intencao_id` em todo turno;
+2. a mensagem de falha era removida do histórico;
+3. `groundIntencaoIds` reescrevia qualquer ID divergente para o ID antigo;
+4. `realizar_compra` sobrescrevia o ID do modelo com o estado antigo;
+5. o fallback de pagamento preferia o estado antigo;
+6. não havia guarda de registro;
+7. o exemplo do prompt usava `INT-1A2B3C4D`, que o modelo copiava;
+8. `cancelada` era mascarado como `INTENCAO_JA_PAGA`.
+
+Correções aplicadas no código:
+
+- removidos `groundIntencaoIds`, `completePaymentFallback`, o seed de `ultima_intencao_id`
+  e todos os overrides de ID;
+- `registrar_intencao` só marca registro com `ok: true`;
+- guarda de registro com falha visível;
+- histórico não esconde mais a falha;
+- códigos terminais separados (`INTENCAO_CANCELADA`, `INTENCAO_EXPIRADA`,
+  `INTENCAO_JA_PAGA`, `INTENCAO_INDISPONIVEL`);
+- exemplo do prompt sem ID concreto;
+- `realizar_compra` devolve `409` com o status real quando a intenção não está `pendente`.
+
+Ainda falta o estado por conversa (`conversa_id`). Sem ele, o modelo precisa chamar
+`registrar_intencao` novamente ao escolher um produto novo; se omitir, a guarda mostra a
+falha em vez de inventar um ID.
+
+Evidência histórica do `v0.0.2` no log group
 `/aws/bedrock-agentcore/runtimes/luiz_henrique_agent-AD3mRGF7e9-DEFAULT`:
 
 - `Intenção INT-1A2B3C4D registrada` — o modelo copiou o ID do exemplo do prompt;
@@ -124,14 +131,16 @@ Evidência de 2026-11-17 no log group
 - `{"guard":"payment_fallback",...,"intencao_id":"INT-E36C946B","status":"cancelada"}`;
 - `{"guard":"purchase_reply_adjusted","purchase":{"ok":false,"code":"INTENCAO_JA_PAGA"}}`.
 
-## 5. O que NÃO está implementado
+Esses eventos são históricos: os guards `intencao_id_grounded` e `payment_fallback` não
+existem mais.
+
+## 5. O que ainda NÃO está implementado
 
 - Estado por conversa (`conversa_id`) no caminho de checkout.
 - `registrar_intencao` resolvendo preço pelo catálogo.
-- Código distinto `INTENCAO_CANCELADA`.
-- Guarda de registro.
 - Persistência de histórico em `Conversas`.
 - Streaming/WebSocket.
+- Validação na stack implantada desta rodada (o fluxo local já passou).
 
 Logs do runtime **estão confirmados** no CloudWatch (runtime v12, 2026-11-17); ver
 `OPERATIONS.md`.
@@ -151,6 +160,10 @@ Desde esta rodada, o fallback local replica:
 O que o local **não** exercita: API Gateway, JWT, CORS, DynamoDB real, IAM, imagem Docker,
 sessão do AgentCore e logs do runtime. Para iterar prompt/tool loop, é simétrico o
 suficiente; para validar persistência, use a stack implantada.
+
+O harness `npm run test:local` sobe o agente, executa o transcript de regressão
+(monitor → `LIMITE_EXCEDIDO` → fone → pix) e falha se o ID antigo reaparecer. Ele carrega o
+`.env` da raiz e prefere credenciais estáticas do `aws-creds.sh` ao `AWS_PROFILE` do `.env`.
 
 ## 7. Próximo passo
 

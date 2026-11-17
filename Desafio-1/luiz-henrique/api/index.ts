@@ -17,7 +17,6 @@ import {
   DynamoDBClient,
   GetItemCommand,
   PutItemCommand,
-  UpdateItemCommand,
 } from "@aws-sdk/client-dynamodb";
 import { randomUUID } from "crypto";
 
@@ -71,21 +70,21 @@ interface LambdaResponse {
 async function ensureUsuario(
   usuarioId: string,
   email?: string,
-): Promise<string | undefined> {
+): Promise<void> {
   if (!USUARIOS_TABLE) {
     console.warn("USUARIOS_TABLE not configured; skipping user registration");
-    return undefined;
+    return;
   }
 
   const existing = await ddb.send(
     new GetItemCommand({
       TableName: USUARIOS_TABLE,
       Key: { usuario_id: { S: usuarioId } },
-      ProjectionExpression: "usuario_id, ultima_intencao_id",
+      ProjectionExpression: "usuario_id",
     }),
   );
   if (existing.Item) {
-    return (existing.Item.ultima_intencao_id as { S?: string } | undefined)?.S;
+    return;
   }
 
   const now = new Date().toISOString();
@@ -109,37 +108,10 @@ async function ensureUsuario(
     console.log(`usuario registrado: ${usuarioId}`);
   } catch (err) {
     if (err instanceof Error && err.name === "ConditionalCheckFailedException") {
-      return undefined;
+      return;
     }
     // Não bloqueia o chat: a próxima requisição tenta registrar de novo.
     console.error("ensureUsuario error:", err);
-  }
-  return undefined;
-}
-
-/**
- * Persiste o último intencao_id em Usuarios, para que a próxima mensagem não
- * dependa do modelo de lembrar o ID (nem do histórico corrompido).
- */
-async function persistUltimaIntencao(
-  usuarioId: string,
-  intencaoId: string,
-): Promise<void> {
-  if (!USUARIOS_TABLE) return;
-  try {
-    await ddb.send(
-      new UpdateItemCommand({
-        TableName: USUARIOS_TABLE,
-        Key: { usuario_id: { S: usuarioId } },
-        UpdateExpression: "SET ultima_intencao_id = :id, atualizado_em = :agora",
-        ExpressionAttributeValues: {
-          ":id": { S: intencaoId },
-          ":agora": { S: new Date().toISOString() },
-        },
-      }),
-    );
-  } catch (err) {
-    console.error("persistUltimaIntencao error:", err);
   }
 }
 
@@ -183,7 +155,7 @@ exports.handler = async (event: {
     };
   }
 
-  const ultimaIntencaoId = await ensureUsuario(usuario_id, claims?.email);
+  await ensureUsuario(usuario_id, claims?.email);
 
   let body: ChatEventBody = {};
   try {
@@ -194,18 +166,10 @@ exports.handler = async (event: {
 
   const messages = body.messages || [];
 
-  // Histórico longo degrada a aderência do modelo (IDs inventados, turnos
-  // fabricados). Mantemos só as últimas mensagens; o usuário pode limpar a conversa.
-  // Mensagens do guard de "não finalizada" também saem: elas viram few-shot de erro.
+  // Histórico longo degrada a aderência do modelo. Mantemos as últimas mensagens,
+  // inclusive falhas: esconder o erro faz o modelo achar que a intenção continua pendente.
   const MAX_HISTORY_MESSAGES = 12;
-  const GUARD_MARK = "Nenhuma cobrança foi confirmada";
-  const history = messages
-    .slice(-MAX_HISTORY_MESSAGES)
-    .filter((m) => {
-      if (m.role !== "assistant") return true;
-      const text = m.content.map((c) => c.text).join(" ");
-      return !text.includes(GUARD_MARK);
-    });
+  const history = messages.slice(-MAX_HISTORY_MESSAGES);
 
   const prompt = history
     .map((m) => `${m.role}: ${m.content.map((c) => c.text).join(" ")}`)
@@ -218,7 +182,6 @@ exports.handler = async (event: {
         prompt,
         usuario_id,
         messages: history,
-        intencao_id: ultimaIntencaoId,
       }),
     ),
     runtimeSessionId: `desafio1-${usuario_id}-${randomUUID()}`.slice(0, 200),
@@ -247,13 +210,6 @@ exports.handler = async (event: {
         headers: CORS_HEADERS,
         body: JSON.stringify((responseBody as { body?: unknown }).body || responseBody),
       };
-    }
-
-    if (typeof responseBody === "object" && responseBody !== null) {
-      const intencaoId = (responseBody as { intencao_id?: unknown }).intencao_id;
-      if (typeof intencaoId === "string" && intencaoId) {
-        await persistUltimaIntencao(usuario_id, intencaoId);
-      }
     }
 
     return {

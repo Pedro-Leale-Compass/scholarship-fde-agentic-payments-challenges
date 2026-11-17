@@ -22,10 +22,9 @@ PK: `usuario_id` (= `sub` do Cognito). Sem SK.
 | `convite_enviado_em` | S | não | auditoria |
 | `ultima_intencao_id` | S | não | **legado problemático**; ver §5 |
 
-`ultima_intencao_id` é escrito pela Lambda do chat e lido em todo turno. Ele não é escopado
-por conversa e não é invalidado quando a intenção vira `paga`/`cancelada`/`expirada`. É a
-causa direta da reutilização de ID no transcript. O plano substitui isso por estado em
-`Conversas`. Até a migração, **não confie nesse campo** para decidir pagamento.
+`ultima_intencao_id` era escrito/lido pela Lambda do chat e causou a reutilização de ID no
+`v0.0.2`. O chat atual **não lê nem escreve** esse campo. Ele permanece apenas como dado
+legado; o plano substitui por estado em `Conversas`. Não use para decidir pagamento.
 
 ## 2. `Conversas`
 
@@ -122,7 +121,8 @@ Cognito (template `userInvitation`); nenhuma senha/token é gravado no DynamoDB.
 
 ## 7. Migração
 
-- `ultima_intencao_id` permanece por compatibilidade, mas deixa de ser lido no fluxo novo.
+- `ultima_intencao_id` permanece por compatibilidade, mas não é mais lido/escrito no fluxo
+  atual.
 - `Intencoes` existentes sem `conversa_id` continuam válidas; o estado novo só se aplica a
   conversas iniciadas após o deploy.
 - Nenhuma mudança destrutiva de chave é necessária.
