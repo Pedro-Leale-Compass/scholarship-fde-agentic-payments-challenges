@@ -1,0 +1,50 @@
+:root { color-scheme: light; --amplify-colors-brand-primary-80: #1d4ed8; --amplify-colors-brand-primary-90: #1e40af; }
+* { box-sizing: border-box; }
+body { margin: 0; color: #17243b; background: #f4f7fb; font-family: Arial, Helvetica, sans-serif; }
+main { max-width: 760px; margin: 0 auto; padding: 56px 24px; }
+header { margin-bottom: 32px; }
+h1 { margin: 12px 0; font-size: clamp(28px, 5vw, 40px); letter-spacing: -1px; }
+h2 { margin: 0; font-size: 23px; }
+h3 { margin-top: 0; }
+p { line-height: 1.65; }
+.eyebrow { font-size: 11px; letter-spacing: 2px; color: #405b7d; font-weight: bold; }
+.session-panel { padding: 28px; border: 1px solid #d7e0ec; background: white; border-radius: 14px; }
+.panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+button { padding: 10px 18px; border: 0; border-radius: 7px; background: #1d4ed8; color: white; font: inherit; cursor: pointer; }
+button:hover { background: #1e40af; }
+button.secondary { background: #edf2f8; color: #17243b; }
+button:focus-visible { outline: 3px solid #5586e8; outline-offset: 3px; }
+.badge { display: inline-block; padding: 7px 12px; border-radius: 20px; color: #14532d; background: #dcfce7; font-size: 14px; font-weight: bold; }
+.error { color: #a31a1a; }
+.coming-soon { margin-top: 28px; padding-top: 24px; border-top: 1px solid #d7e0ec; color: #4c5f78; }
+footer { margin-top: 32px; color: #53657d; font-size: 13px; line-height: 1.6; }
+.purchase-fields { border: 0; padding: 0; margin: 16px 0; display: grid; gap: 16px; min-width: 0; }
+.coming-soon label { display: grid; gap: 8px; font-weight: bold; min-width: 0; }
+.coming-soon select, .coming-soon input { width: 100%; min-width: 0; padding: 10px; border: 1px solid #9baec6; border-radius: 6px; font: inherit; background: white; color: #17243b; }
+.intent-summary { border-top: 1px solid #d7e0ec; margin-top: 24px; padding-top: 12px; }
+.purchase-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+button:disabled { opacity: .55; cursor: not-allowed; }
+.chat-panel { border-top: 1px solid #d7e0ec; margin-top: 28px; padding-top: 24px; }
+.chat-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
+.chat-panel label { display: block; margin: 14px 0 8px; font-weight: bold; }
+.chat-panel select, .chat-panel textarea { width: 100%; min-width: 0; padding: 10px; border: 1px solid #9baec6; border-radius: 6px; background: white; color: #17243b; font: inherit; }
+.chat-panel textarea { resize: vertical; margin-bottom: 12px; }
+.chat-messages { max-height: 520px; overflow-y: auto; overflow-wrap: anywhere; }
+.chat-message { background: #f1f5f9; border-radius: 10px; margin: 14px 0; padding: 14px; }
+.chat-message.user { background: #e8efff; }
+.chat-message p { white-space: pre-wrap; margin: 8px 0 0; }
+.chat-markdown { margin-top: 8px; }
+.chat-markdown p { white-space: normal; }
+.chat-markdown ul, .chat-markdown ol { padding-left: 24px; margin: 12px 0; }
+.chat-markdown li { line-height: 1.65; margin: 4px 0; }
+.chat-markdown h1, .chat-markdown h2, .chat-markdown h3 { font-size: 18px; letter-spacing: normal; margin: 16px 0 8px; }
+.chat-markdown pre { overflow-x: auto; padding: 12px; background: #e2e8f0; border-radius: 6px; }
+.chat-markdown code { overflow-wrap: anywhere; }
+.chat-markdown blockquote { margin: 12px 0; border-left: 3px solid #9baec6; padding-left: 12px; }
+.chat-table { overflow-x: auto; max-width: 100%; margin: 12px 0; }
+.chat-table table { border-collapse: collapse; width: 100%; min-width: 400px; font-size: 14px; }
+.chat-table th, .chat-table td { padding: 10px; border: 1px solid #cbd5e1; text-align: left; }
+.chat-table th { background: #e2e8f0; }
+.chat-confirmation { padding: 16px; background: #f0fdf4; border: 1px solid #86efac; border-radius: 10px; }
+[data-amplify-authenticator] { --amplify-components-authenticator-router-box-shadow: none; --amplify-components-authenticator-router-border-color: #d7e0ec; }
+@media (max-width: 480px) { main { padding: 32px 16px; } .session-panel { padding: 20px; } }
