@@ -562,6 +562,23 @@ test('agente não confirma compra enquanto a intenção está pendente', async (
       (i) => i.status?.S === 'paga',
     );
     assert.equal(pagas.length, 3, JSON.stringify(pagas));
+
+    // GET /conversas: histórico persistido e protegido pelo autorizador.
+    const historyRes = await fetch(
+      `${API_URL}/conversas?conversa_id=${encodeURIComponent(conversaId)}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    assert.equal(historyRes.status, 200);
+    const stored = await historyRes.json();
+    assert.ok(Array.isArray(stored.messages), JSON.stringify(stored));
+    assert.ok(stored.messages.length >= 2, JSON.stringify(stored.messages));
+    assert.ok(stored.messages.some((m) => m.role === 'user'));
+    assert.ok(stored.messages.some((m) => m.role === 'assistant'));
+
+    const historyNoToken = await fetch(
+      `${API_URL}/conversas?conversa_id=${encodeURIComponent(conversaId)}`,
+    );
+    assert.equal(historyNoToken.status, 401);
   } finally {
     await user.cleanup();
   }

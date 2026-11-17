@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchAuthSession } from 'aws-amplify/auth';
 
 import type { ChatMessage, RuntimeConfig } from '@/lib/chat';
@@ -33,6 +33,7 @@ export function useChat(config: RuntimeConfig) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [conversaId, setConversaId] = useState<string>(() => getOrCreateConversaId());
   const [loading, setLoading] = useState(false);
+  const historyLoadedFor = useRef<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -49,6 +50,52 @@ export function useChat(config: RuntimeConfig) {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!token) return;
+    if (historyLoadedFor.current === conversaId) return;
+    historyLoadedFor.current = conversaId;
+    let mounted = true;
+    (async () => {
+      try {
+        const response = await fetch(
+          `${config.apiUrl}/conversas?conversa_id=${encodeURIComponent(conversaId)}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        if (!response.ok) return;
+        const data = await response.json();
+        const loaded: ChatMessage[] = Array.isArray(data.messages)
+          ? data.messages
+              .map(
+                (message: {
+                  role?: unknown;
+                  content?: Array<{ text?: unknown }>;
+                }) => ({
+                  role: message.role === 'assistant' ? 'assistant' : 'user',
+                  content: Array.isArray(message.content)
+                    ? message.content
+                        .map((block) =>
+                          typeof block.text === 'string' ? block.text : '',
+                        )
+                        .join(' ')
+                    : '',
+                }),
+              )
+              .filter((message: ChatMessage) => message.content.trim())
+          : [];
+        // Nunca sobrescreve uma mensagem recém-enviada; o GET é best-effort
+        // e pode chegar depois da resposta do chat.
+        if (mounted && loaded.length > 0) {
+          setMessages((current) => (current.length === 0 ? loaded : current));
+        }
+      } catch {
+        // histórico é best-effort; o chat continua funcionando
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [config.apiUrl, conversaId, token]);
 
   const reset = useCallback(() => {
     const next = newConversaId();

@@ -34,14 +34,14 @@ Não faça commit em `main`, `develop`, `master` ou outra branch. Antes de commi
 - Frontend Next.js roda **local** em `http://localhost:3000`. Não há S3 de site,
   CloudFront, OAC, Amplify Hosting, VPC ou NAT Gateway no repositório.
   `infra/dist/lib/frontend-stack.*` é artefato antigo de build e não é usado.
-- API Gateway **REST** com `POST /chat` e autorizador JWT Cognito. Não há
-  `GET /conversas`, streaming ou WebSocket. O histórico completo é enviado pelo frontend,
-  mas ainda não é persistido em `Conversas`.
+- API Gateway **REST** com `POST /chat`, `GET /conversas` e autorizador JWT Cognito. Há uma
+  API WebSocket **parcial** (`$connect`/`$disconnect`; `$default` falha — ver
+  `docs/WS-NEXT.md`). Sem streaming. `Conversas.mensagens_json` guarda o histórico.
 - Agente Strands no Bedrock AgentCore Runtime; runtime criado por `CustomResource`
   (`infra/lambda/agent-runtime/index.ts`), não por `CfnResource`.
 - Tools em 3 Lambdas: `listar_catalogo`, `registrar_intencao`, `realizar_compra`.
-- DynamoDB: `Usuarios`, `Conversas`, `Intencoes`, `Catalogo`. `Conversas` guarda o
-  `pending_intencao_id` por conversa.
+- DynamoDB: `Usuarios`, `Conversas`, `Intencoes`, `Catalogo`, `Conexoes`. `Conversas` guarda
+  `pending_intencao_id` e `mensagens_json`; `Conexoes` guarda conexões WebSocket.
 - Modelo: Bedrock Claude Haiku 4.5 via `BEDROCK_MODEL_ID` (runtime v15, confirmado em
   2026-11-17); fallback do código é `global.amazon.nova-2-lite-v1:0` se a variável não
   existir.
@@ -64,7 +64,9 @@ Comece por [`docs/README.md`](docs/README.md).
 | `docs/DEV-LOCAL-AGENTE.md` | agente local e paridade |
 | `docs/OPERATIONS.md` | deploy, modelo, logs, custos, destroy |
 | `docs/REQUISITOS-PDF-E-AUDITORIA.md` | requisitos × estado atual |
-| `docs/TEST-STRATEGY.md` | suíte futura de 100+ casos e caso de recusa/catálogo |
+| `docs/TEST-STRATEGY.md` | suíte futura de 100+ casos, custo e caso de recusa/catálogo |
+| `docs/WS-NEXT.md` | continuação do WebSocket parcial |
+| `docs/apresentacao/README.md` | roteiro de 5 min e capturas |
 | `docs/TODO.md` | somente lista de tarefas |
 | `docs/archive/` | histórico; **não** usar como estado atual |
 
@@ -89,6 +91,7 @@ npm run deploy:api-agent       # deploy backend/agente
 npm run diff                   # cdk diff antes do deploy
 npm run test:local             # fluxo local do agente (fallback, Haiku)
 npm run test:agent             # testes na stack implantada
+npm run test:ws                # smoke WebSocket (parcial)
 npm run check:model            # modelo vivo (control plane, read-only)
 npm run check:logs             # logs do agente/tools (read-only)
 npm run destroy                # destroy + cleanup
@@ -115,8 +118,8 @@ Validado com `npm run test:local` e `npm run test:agent` (3/3 em 2026-11-17). Es
 conversa (`conversa_id`) implementado em `Conversas`, com fallbacks usando apenas dados
 verificados. O agente funcionou nos primeiros pedidos reais. Ainda falta:
 
-- `GET /conversas` e histórico de mensagens em `Conversas`;
-- API Gateway Stream/WebSocket;
+- WebSocket completo (`$default`); ver `WS-NEXT.md`;
+- API Gateway Stream;
 - preço resolvido pelo catálogo;
 - suíte ampla de 100+ casos (inclui loop de recusa; ver `docs/TEST-STRATEGY.md`);
 - convite do instrutor e capturas de tela/Postman.

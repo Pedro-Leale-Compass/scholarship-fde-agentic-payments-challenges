@@ -54,6 +54,7 @@ export class Desafio1Stack extends cdk.Stack {
       agentRuntimeArn: agent.agentRuntimeArn,
       usuariosTable: database.usuariosTable,
       conversasTable: database.conversasTable,
+      conexoesTable: database.conexoesTable,
       frontendUrl,
     });
 
@@ -69,6 +70,7 @@ export class Desafio1Stack extends cdk.Stack {
               id: { S: produto.id },
               nome: { S: produto.nome },
               preco: { N: String(produto.preco) },
+              preco_centavos: { N: String(Math.round(produto.preco * 100)) },
             },
           },
           physicalResourceId: customResources.PhysicalResourceId.of(`catalogo-${produto.id}`),
@@ -84,6 +86,10 @@ export class Desafio1Stack extends cdk.Stack {
 
     // Outputs
     new cdk.CfnOutput(this, 'ApiUrl', { value: api.apiUrl, description: 'API Gateway URL' });
+    new cdk.CfnOutput(this, 'WebSocketUrl', {
+      value: api.webSocketUrl,
+      description: 'WebSocket URL (Cognito ID token na query)',
+    });
     new cdk.CfnOutput(this, 'CognitoUserPoolId', {
       value: api.userPool.userPoolId,
       description: 'Cognito User Pool ID',

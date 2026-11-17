@@ -12,7 +12,8 @@ Verificado contra o código em **2026-11-17** (baseline `v0.0.2`).
 ```
 Frontend Next.js local (http://localhost:3000)
   └─ login Cognito (Amplify Authenticator, sem auto cadastro)
-  └─ POST /chat  Authorization: Bearer <IdToken>
+  ├─ POST /chat  Authorization: Bearer <IdToken>
+  └─ GET /conversas?conversa_id=...  (histórico)
         │
         ▼
 API Gateway REST (prod) + autorizador JWT Cognito
@@ -43,13 +44,14 @@ Bedrock AgentCore Runtime (container arm64 no ECR)
 | Chat | Lambda Node 20 que chama o AgentCore Runtime | `api/index.ts` |
 | Agente | Strands no AgentCore Runtime; imagem Docker arm64 | `agent/`, `infra/lib/agent-stack.ts` |
 | Tools | 3 Lambdas Node 20, uma por tool | `tools/`, `infra/lib/tools-stack.ts` |
-| Dados | DynamoDB on-demand: `Usuarios`, `Conversas`, `Intencoes`, `Catalogo` | `infra/lib/database-stack.ts` |
+| Dados | DynamoDB on-demand: `Usuarios`, `Conversas`, `Intencoes`, `Catalogo`, `Conexoes` | `infra/lib/database-stack.ts` |
+| WebSocket | API Gateway WebSocket **parcial** (`$connect`/`$disconnect`; `$default` falha) | `infra/lib/api-stack.ts`, `api/websocket/index.ts` |
 | Imagem | `DockerImageAsset` no ECR; build feito pelo CDK | `infra/lib/agent-stack.ts` |
 | Runtime | `CustomResource` com `CreateAgentRuntime`/`UpdateAgentRuntime`/`DeleteAgentRuntime` | `infra/lambda/agent-runtime/index.ts` |
 | Modelo | Bedrock Claude Haiku 4.5 via `BEDROCK_MODEL_ID` (runtime v15, confirmado em 2026-11-17); fallback Nova 2 Lite | `agent/index.ts`, `infra/lib/agent-stack.ts` |
 
 Não existem neste repositório: `FrontendStack`, S3 de site, CloudFront, OAC, VPC, NAT
-Gateway, Amplify Hosting, API WebSocket ou streaming. `infra/dist/lib/frontend-stack.*` é
+Gateway, Amplify Hosting ou streaming. `infra/dist/lib/frontend-stack.*` é
 artefato antigo de build e não é usado pelo CDK atual.
 
 ## 3. Deploy
@@ -82,8 +84,10 @@ Comandos:
 ## 4. IAM (resumo real)
 
 - **Chat Lambda:** `bedrock-agentcore:InvokeAgentRuntime` no runtime;
-  `GetItem/PutItem/UpdateItem` em `Usuarios` e `Conversas`. Sem acesso a `Intencoes`,
-  transações ou Bedrock.
+  `GetItem/PutItem/UpdateItem/Query` em `Usuarios` e `Conversas` (inclui o GSI). Sem acesso
+  a `Intencoes`, transações ou Bedrock.
+- **WebSocket Lambda:** `GetItem/PutItem/DeleteItem` em `Conexoes`,
+  `lambda:InvokeFunction` na ChatFn e `execute-api:ManageConnections` no WebSocket.
 - **`listar_catalogo`:** `dynamodb:GetItem/Scan` em `Catalogo`.
 - **`registrar_intencao`:** `dynamodb:PutItem` em `Intencoes`.
 - **`realizar_compra`:** `dynamodb:GetItem/UpdateItem/TransactWriteItems` em `Intencoes` e
@@ -96,9 +100,9 @@ Comandos:
 ## 5. Limitações atuais
 
 - Frontend local; sem URL pública S3/CloudFront.
-- API REST sem streaming/WebSocket (o PDF pede “Stream ou WebSocket”).
-- `Conversas` guarda o `pending_intencao_id` por conversa; o histórico completo de mensagens
-  ainda não é persistido.
+- API REST com `GET /conversas`; WebSocket **parcial** (`$connect` funciona, `$default`
+  retorna `Internal server error`). Sem streaming. Continuação em `WS-NEXT.md`.
+- `Conversas` guarda `pending_intencao_id` e `mensagens_json` (histórico completo).
 - `Usuarios.ultima_intencao_id` é legado e não é mais lido/escrito.
 - O fallback local do agente replica os contratos das Lambdas, mas não substitui um teste
   de integração com DynamoDB real.

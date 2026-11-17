@@ -1,0 +1,46 @@
+Demonstração — transcrição resumida (2026-11-17)
+
+USER: catalogo
+ASSISTANT:
+Catálogo:
+- Fone Bluetooth (p1) - R$ 199,90
+- Teclado Mecânico (p2) - R$ 349,90
+- Monitor 27" (p4) - R$ 1.299,00
+- Cadeira Gamer (p6) - R$ 1.499,00
+...
+Qual produto te interessa?
+
+USER: quero comprar o fone bluetooth
+ASSISTANT:
+Intenção registrada: Fone Bluetooth, R$ 199,90, pendente.
+ID: INT-0CB9196A
+Cartão ou pix?
+
+USER: pix
+ASSISTANT:
+Compra aprovada!
+Fone Bluetooth - R$ 199,90 - Pix
+ID: INT-0CB9196A
+
+USER: quero comprar o monitor 27
+ASSISTANT:
+Intenção registrada: Monitor 27", R$ 1.299,00, pendente.
+ID: INT-153FF886
+Cartão ou pix?
+
+USER: cartao
+ASSISTANT:
+Compra não aprovada. Motivo: limite excedido — saldo disponível insuficiente.
+A intenção foi cancelada.
+
+USER: quero comprar o teclado mecanico
+ASSISTANT:
+Intenção registrada: Teclado Mecânico, R$ 349,90, pendente.
+Cartão ou pix?
+
+USER: cartao
+ASSISTANT:
+Compra aprovada!
+Teclado Mecânico - R$ 349,90 - Cartão
+
+Observação: valores e IDs são simulados. Não há cobrança real.

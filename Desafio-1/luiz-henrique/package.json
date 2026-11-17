@@ -22,7 +22,8 @@
     "user:reset-limit": "eval \"$(bash scripts/aws-creds.sh)\" && bash scripts/set-limit.sh reset",
     "test": "node --test tests/agent.test.mjs",
     "test:agent": "node --test tests/agent.test.mjs",
-    "test:local": "bash scripts/local-flow.sh"
+    "test:local": "bash scripts/local-flow.sh",
+    "test:ws": "eval \"$(bash scripts/aws-creds.sh)\" && set -a && . ./.env && set +a && unset AWS_PROFILE && node scripts/ws-smoke.mjs"
   },
   "devDependencies": {
     "aws-cdk": "2.160.0",

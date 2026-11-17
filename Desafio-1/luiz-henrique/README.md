@@ -34,6 +34,8 @@ Frontend Next.js local (http://localhost:3000 · login Cognito/Amplify)
         │  POST /chat + Authorization: Bearer <IdToken>
         ▼
 API Gateway REST (prod) + autorizador JWT Cognito
+  ├─ POST /chat
+  └─ GET /conversas
         ▼
 Lambda do chat
   ├─ valida o sub do token
@@ -47,8 +49,9 @@ AgentCore Runtime (container arm64 no ECR)
        └─ realizar_compra    → Lambda → TransactWriteItems (Intencoes + Usuarios)
 ```
 
-Não há S3/CloudFront/OAC, VPC, NAT Gateway, Amplify Hosting, WebSocket ou streaming neste
-repositório. O frontend roda local. Ver [`docs/STACK.md`](docs/STACK.md).
+Não há S3/CloudFront/OAC, VPC, NAT Gateway, Amplify Hosting ou streaming neste repositório.
+Há uma API Gateway WebSocket **parcial** (`$connect` funciona; `$default` ainda falha); o
+chat principal usa REST. Ver [`docs/WS-NEXT.md`](docs/WS-NEXT.md). O frontend roda local.
 
 ## Para o instrutor
 
@@ -137,6 +140,7 @@ Copie `.env.example` para `.env` e preencha o necessário. As principais:
 | `npm run diff` | `cdk diff` |
 | `npm run test:local` | sobe o agente local e roda o fluxo de regressão (fallback, Haiku) |
 | `npm run test:agent` | testes de integração na stack implantada |
+| `npm run test:ws` | smoke do WebSocket (parcial; requer `TEST_EMAIL`/`TEST_PASSWORD`) |
 | `npm run check:model` | lê o `BEDROCK_MODEL_ID` do runtime (read-only, sem custo de Bedrock) |
 | `npm run check:logs` | lista log groups/streams do agente e das Lambdas (read-only) |
 | `npm run user:invite -- <email> [limite]` | cria usuário no Cognito + saldo + convite |
@@ -181,11 +185,14 @@ Tabelas prefixadas com `luiz-henrique` (on-demand). Detalhes em
 - `Usuarios` — PK `usuario_id` (`sub`): `email`, `limite_centavos` (saldo),
   `gasto_total_centavos`, `status`, `origem`, timestamps. `ultima_intencao_id` é legado e
   **não é mais lido nem escrito** pelo chat; o plano substitui por estado em `Conversas`.
-- `Conversas` — PK `conversa_id`, SK `usuario_id`, GSI `usuario_id-index`. Guarda o
-  `pending_intencao_id`/`pending_status` por conversa; o frontend envia `conversa_id`.
+- `Conversas` — PK `conversa_id`, SK `usuario_id`, GSI `usuario_id-index`. Guarda
+  `pending_intencao_id`/`pending_status` e `mensagens_json` (histórico completo). O frontend
+  envia `conversa_id` e carrega o histórico via `GET /conversas`.
 - `Intencoes` — PK `intencao_id`: `usuario_id`, `produtos`, `valor`, `valor_centavos`,
   `status`, `expira_em`, `created_at`, `forma_pagamento`, `pago_em`, `motivo_falha`.
-- `Catalogo` — PK `id`: `nome`, `preco` (seed do CDK).
+- `Catalogo` — PK `id`: `nome`, `preco` (reais, exibição) e `preco_centavos` (fonte de
+  verdade; seed do CDK).
+- `Conexoes` — PK `connection_id`, TTL `expira_em`: conexões WebSocket efêmeras.
 
 Regras de escrita:
 
@@ -206,6 +213,8 @@ Regras de escrita:
 - `registrar_intencao`: `PutItem` em `Intencoes`.
 - `realizar_compra`: `GetItem`/`UpdateItem`/`TransactWriteItems` em `Intencoes` e
   `Usuarios`.
+- WebSocket Lambda: `GetItem/PutItem/DeleteItem` em `Conexoes`, `lambda:InvokeFunction` na
+  chat, `execute-api:ManageConnections` no WebSocket.
 - AgentCore Runtime: Bedrock + invocação das 3 tools + ECR pull + logs
   (`AWSLambdaBasicExecutionRole`), sem acesso direto às tabelas.
 - Nenhum segredo no Git.
@@ -214,13 +223,15 @@ Regras de escrita:
 
 - Frontend local; sem URL pública S3/CloudFront/OAC (SCP da conta) e sem deploy de frontend
   no comando IaC. Decisão registrada em `docs/REQUISITOS-PDF-E-AUDITORIA.md`.
-- API REST sem streaming/WebSocket (requisito do PDF ainda não coberto).
-- `GET /conversas` e o histórico completo de mensagens em `Conversas` ainda não estão
-  implementados; `Conversas` guarda apenas o estado de checkout.
+- API Gateway WebSocket **parcial**: `$connect`/`$disconnect` funcionam; `$default` retorna
+  `Internal server error`. O chat usa REST. Continuação em `docs/WS-NEXT.md`.
+- Não há streaming; o PDF pede “Stream ou WebSocket”.
+- `GET /conversas` e o histórico em `Conversas.mensagens_json` estão implementados e
+  validados no teste de integração.
 - A reutilização de `intencao_id` foi removida e validada localmente (`npm run test:local`)
   e na stack implantada (`npm run test:agent`, 2026-11-17).
-- `registrar_intencao` ainda aceita preço/produto vindos do modelo; o próximo passo é
-  resolver preço pelo catálogo.
+- `registrar_intencao` resolve produto/preço pelo `Catalogo`; o modelo envia apenas
+  `produto_id`/`quantidade`.
 - A suíte ampla de 100+ casos e o redirecionamento para catálogo estão planejados em
   `docs/TEST-STRATEGY.md` (caso `REFUSAL-LOOP-01`).
 - Capturas de tela/Postman ainda não foram anexadas; os resultados da suíte estão na tabela
@@ -236,6 +247,8 @@ Regras de escrita:
 | Compra com Pix | Intenção paga e saldo debitado | teste de integração passou (2026-11-17) |
 | Limite excedido | Compra rejeitada com `LIMITE_EXCEDIDO` | teste de integração passou (2026-11-17) |
 | `intencao_id` inválido | `INTENCAO_INVALIDA` | teste de ferramenta passou (2026-11-17) |
+| `GET /conversas` | Histórico do usuário, sem vazar outra conversa | teste de integração passou (2026-11-17) |
+| WebSocket | `$connect` autenticado; chat pelo WS | parcial; `$default` falha (ver `docs/WS-NEXT.md`) |
 | Novo produto após cancelamento | Novo ID, sem reutilizar o cancelado | teste de regressão passou; ex.: `INT-B7E0ED4D` cancelada → `INT-F7F74EB2` paga |
 | Uso real inicial | Agente responde catálogo, registra intenção, cartão/Pix e limite | relato do usuário em 2026-11-17; suíte ampla pendente |
 | Convite por e-mail | Usuário no Cognito + item em `Usuarios` | pendente |
@@ -264,7 +277,7 @@ DynamoDB, log groups, roles IAM ou REST API. Detalhes:
 
 ## Documentação
 
-Comece por [`docs/README.md`](docs/README.md). Docs históricos estão em
+Comece por [`docs/README.md`](docs/README.md). Apresentação: [`docs/apresentacao/`](docs/apresentacao/README.md). Docs históricos estão em
 [`docs/archive/`](docs/archive/README.md) e não representam o estado atual.
 
 ## Regras essenciais

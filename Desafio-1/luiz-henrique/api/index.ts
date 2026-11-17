@@ -17,6 +17,7 @@ import {
   DynamoDBClient,
   GetItemCommand,
   PutItemCommand,
+  QueryCommand,
   UpdateItemCommand,
 } from "@aws-sdk/client-dynamodb";
 import { randomUUID } from "crypto";
@@ -57,6 +58,17 @@ interface Message {
 interface ChatEventBody {
   messages?: Message[];
   conversa_id?: string;
+}
+
+interface ChatEvent {
+  headers?: Record<string, string>;
+  body?: string;
+  httpMethod?: string;
+  queryStringParameters?: Record<string, string | undefined> | null;
+  requestContext?: {
+    authorizer?: { claims?: Record<string, string> };
+    httpMethod?: string;
+  };
 }
 
 interface LambdaResponse {
@@ -275,11 +287,118 @@ async function syncConversationState(
   }
 }
 
-exports.handler = async (event: {
-  headers?: Record<string, string>;
-  body?: string;
-  requestContext?: { authorizer?: { claims?: Record<string, string> } };
-}): Promise<LambdaResponse> => {
+
+async function getConversationItem(
+  usuarioId: string,
+  conversaId?: string,
+): Promise<Record<string, unknown> | undefined> {
+  if (!CONVERSAS_TABLE) return undefined;
+
+  if (conversaId) {
+    const item = await ddb.send(
+      new GetItemCommand({
+        TableName: CONVERSAS_TABLE,
+        Key: {
+          conversa_id: { S: conversaId },
+          usuario_id: { S: usuarioId },
+        },
+      }),
+    );
+    return item.Item as Record<string, unknown> | undefined;
+  }
+
+  // Sem conversa_id: devolve a conversa mais recente do usuário.
+  const result = await ddb.send(
+    new QueryCommand({
+      TableName: CONVERSAS_TABLE,
+      IndexName: "usuario_id-index",
+      KeyConditionExpression: "usuario_id = :usuario_id",
+      ExpressionAttributeValues: { ":usuario_id": { S: usuarioId } },
+      ScanIndexForward: false,
+      Limit: 1,
+    }),
+  );
+  return result.Items?.[0] as Record<string, unknown> | undefined;
+}
+
+function readMessagesFromItem(
+  item: Record<string, unknown> | undefined,
+): Message[] {
+  const raw = (item?.mensagens_json as { S?: string } | undefined)?.S;
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as Message[]) : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+async function handleGetConversas(
+  usuarioId: string,
+  event: ChatEvent,
+): Promise<LambdaResponse> {
+  const conversaId = event.queryStringParameters?.conversa_id?.trim();
+  try {
+    const item = await getConversationItem(usuarioId, conversaId);
+    const storedConversaId = (
+      item?.conversa_id as { S?: string } | undefined
+    )?.S;
+    return {
+      statusCode: 200,
+      headers: CORS_HEADERS,
+      body: JSON.stringify({
+        ok: true,
+        conversa_id: storedConversaId || conversaId || null,
+        messages: readMessagesFromItem(item),
+        pending_intencao_id:
+          (item?.pending_intencao_id as { S?: string } | undefined)?.S || null,
+      }),
+    };
+  } catch (err) {
+    console.error("getConversas error:", err);
+    return {
+      statusCode: 500,
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ ok: false, error: "conversation_read_error" }),
+    };
+  }
+}
+
+/**
+ * Persiste o histórico completo da conversa. O frontend envia o histórico a
+ * cada turno; aqui gravamos usuário + assistente para GET /conversas e reload.
+ */
+async function storeConversationMessages(
+  usuarioId: string,
+  conversaId: string,
+  messages: Message[],
+): Promise<void> {
+  if (!CONVERSAS_TABLE) return;
+  const now = new Date().toISOString();
+  try {
+    await ddb.send(
+      new UpdateItemCommand({
+        TableName: CONVERSAS_TABLE,
+        Key: {
+          conversa_id: { S: conversaId },
+          usuario_id: { S: usuarioId },
+        },
+        UpdateExpression:
+          "SET mensagens_json = :messages, atualizado_em = :now, criado_em = if_not_exists(criado_em, :now)",
+        ExpressionAttributeValues: {
+          ":messages": { S: JSON.stringify(messages) },
+          ":now": { S: now },
+        },
+      }),
+    );
+  } catch (err) {
+    // Não bloqueia o chat se o histórico não couber/gravar.
+    console.error("storeConversationMessages error:", err);
+  }
+}
+
+exports.handler = async (event: ChatEvent): Promise<LambdaResponse> => {
   const headers = event.headers || {};
   const claims = event.requestContext?.authorizer?.claims;
   const usuario_id = claims?.sub || extractUsuarioId(headers);
@@ -290,6 +409,11 @@ exports.handler = async (event: {
       headers: CORS_HEADERS,
       body: JSON.stringify({ error: "missing or invalid token" }),
     };
+  }
+
+  const method = event.httpMethod || event.requestContext?.httpMethod || "POST";
+  if (method === "GET") {
+    return handleGetConversas(usuario_id, event);
   }
 
   await ensureUsuario(usuario_id, claims?.email);
@@ -356,6 +480,14 @@ exports.handler = async (event: {
     }
 
     await syncConversationState(usuario_id, conversaId, responseBody);
+
+    const assistantReply = (responseBody as { reply?: unknown } | null)?.reply;
+    if (typeof assistantReply === "string" && assistantReply.trim()) {
+      await storeConversationMessages(usuario_id, conversaId, [
+        ...history,
+        { role: "assistant", content: [{ text: assistantReply }] },
+      ]);
+    }
 
     const finalBody =
       typeof responseBody === "object" && responseBody !== null

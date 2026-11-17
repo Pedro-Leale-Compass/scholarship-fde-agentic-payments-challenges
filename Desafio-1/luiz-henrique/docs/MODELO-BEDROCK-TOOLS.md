@@ -39,16 +39,17 @@ sem custo.
 ### `listar_catalogo`
 
 - Input: `{}`.
-- Output: `{ ok, catalogo: [{ id, nome, preco }], count }`.
+- Output: `{ ok, catalogo: [{ id, nome, preco, preco_centavos }], count }`.
+  `preco` (reais) é para exibição; `preco_centavos` é a fonte de verdade.
 - Lambda: `tools/listar_catalogo/index.ts`, tabela `Catalogo`.
 
 ### `registrar_intencao`
 
-- Input atual: `{ produtos: [{ id, nome, preco }], valor }`.
+- Input atual: `{ itens: [{ produto_id, quantidade? }] }`.
 - Output ok: `{ ok, intencao_id, usuario_id, produtos, valor, valor_centavos, status,
   expira_em, message }`.
-- O backend **confia** no `valor` e nos produtos enviados pelo modelo; ainda não resolve
-  preço pelo catálogo.
+- O backend resolve nome e preço em `Catalogo` (`preco_centavos` é a fonte de verdade) e
+  calcula `valor_centavos`. O modelo não envia preço.
 - ID: `INT-XXXXXXXX` (8 hex maiúsculos), gerado por `randomBytes(4)`
   (`tools/registrar_intencao/index.ts:11-13`).
 - Expiração: 15 minutos.
@@ -149,9 +150,9 @@ existem mais.
 ## 5. O que ainda NÃO está implementado
 
 - `registrar_intencao` resolvendo preço pelo catálogo.
-- Persistência do **histórico de mensagens** em `Conversas` (o estado de checkout já é
-  persistido).
-- Streaming/WebSocket.
+- `GET /conversas` e o histórico em `Conversas.mensagens_json` **já estão implementados**.
+- Streaming.
+- WebSocket completo (`$default`); ver `WS-NEXT.md`.
 - Validação na stack implantada desta rodada (o fluxo local já passou).
 
 Logs do runtime **estão confirmados** no CloudWatch (runtime v15, 2026-11-17); ver
@@ -181,5 +182,6 @@ o ID antigo reaparecer. Carrega o `.env` da raiz e prefere credenciais estática
 ## 7. Próximo passo
 
 Ver [`PLAN-AGENT-REVAMP.md`](PLAN-AGENT-REVAMP.md). O estado por conversa, a remoção dos
-overrides/grounding, a guarda de registro e os códigos distintos já foram implementados. O
-próximo passo é resolver preço pelo catálogo, persistir histórico e validar na stack.
+overrides/grounding, a guarda de registro, os códigos distintos, o preço pelo catálogo e o
+histórico via `GET /conversas` já foram implementados e validados. O próximo passo é fechar
+o WebSocket (`WS-NEXT.md`) e ampliar a suíte de testes.

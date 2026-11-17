@@ -11,6 +11,7 @@ export class DatabaseStack extends Construct {
   public readonly conversasTable: dynamodb.Table;
   public readonly intencoesTable: dynamodb.Table;
   public readonly catalogoTable: dynamodb.Table;
+  public readonly conexoesTable: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props: DatabaseStackProps) {
     super(scope, id);
@@ -56,6 +57,15 @@ export class DatabaseStack extends Construct {
       partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    // Conexões WebSocket efêmeras; TTL remove conexões abandonadas.
+    this.conexoesTable = new dynamodb.Table(this, 'ConexoesTable', {
+      tableName: `${prefix}conexoes`,
+      partitionKey: { name: 'connection_id', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      timeToLiveAttribute: 'expira_em',
     });
   }
 }

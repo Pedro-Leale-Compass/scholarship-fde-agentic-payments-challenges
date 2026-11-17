@@ -90,10 +90,12 @@ Plano detalhado: [`PLAN-AGENT-REVAMP.md`](PLAN-AGENT-REVAMP.md).
 ## 8. Pendências de requisito
 
 - [ ] Frontend S3 + CloudFront + OAC (bloqueado por SCP nesta conta; decisão registrada).
-- [ ] API streaming ou WebSocket (PDF pede “Stream ou WebSocket”).
-- [ ] `GET /conversas` + histórico de mensagens em `Conversas`.
-- [ ] Resolver preço/produto pelo catálogo em `registrar_intencao`.
+- [ ] API streaming ou WebSocket completo (PDF pede “Stream ou WebSocket”; WebSocket parcial).
+- [x] `GET /conversas` + histórico de mensagens em `Conversas` (testado).
+- [x] Resolver preço/produto pelo catálogo em `registrar_intencao` (centavos).
 - [ ] Suíte ampla de 100+ casos e caso `REFUSAL-LOOP-01` (ver `TEST-STRATEGY.md`).
 - [ ] Redirecionar para catálogo quando o produto não for identificado.
-- [ ] Capturas de tela/Postman das evidências.
+- [x] Capturas de tela da demo em `docs/apresentacao/`.
+- [ ] Fechar WebSocket `$default` — ver `WS-NEXT.md`.
+- [ ] Evidências formais de 401/ID inválido em imagem/Postman.
 - [ ] Painel administrativo / grupo `admins`.

@@ -14,6 +14,9 @@ Verificado em **2026-11-17**. Baseline atual: `v0.0.4` (checkout corrigido + har
   - `intencao_id` inválido;
   - novo produto depois de intenção cancelada, sem reutilizar o ID.
 - Runtime v15, `READY`, modelo `us.anthropic.claude-haiku-4-5-20251001-v1:0`.
+- `GET /conversas` e `Conversas.mensagens_json` cobertos pelo teste de integração.
+- `registrar_intencao` resolve `produto_id`/quantidade e `preco_centavos` no catálogo.
+- WebSocket: parcial; `$connect` funciona, `$default` falha. Ver `WS-NEXT.md`.
 
 Isso cobre o caminho feliz e a regressão principal. Ainda é uma amostra pequena.
 
@@ -177,3 +180,40 @@ mesma recusa.
 - [ ] Casos de conversa nova/duas abas/duas conversas.
 - [ ] Casos de concorrência no pagamento.
 - [ ] Relatório de custo/latência por caso.
+
+
+## 8. Plano e custo da suíte de 100+
+
+**Não implementar agora.** Este é o orçamento para o próximo ciclo.
+
+Premissas conservadoras:
+
+- 100 casos × 3 turnos = 300 chamadas ao modelo.
+- ~2.000 tokens de entrada e ~300 de saída por chamada (histórico cresce).
+- Claude Haiku 4.5: ordem de US$ 1/MTok entrada e US$ 5/MTok saída (confirme a tabela
+  vigente antes de rodar).
+- 2–4 chamadas de tool por caso = 200–400 invocações Lambda/DynamoDB.
+
+Estimativa:
+
+| Item | Cálculo | Custo aproximado |
+|---|---|---|
+| Entrada Bedrock | 300 × 2.000 = 600k tokens | ~US$ 0,60 |
+| Saída Bedrock | 300 × 300 = 90k tokens | ~US$ 0,45 |
+| Lambda/DynamoDB/API | 200–400 chamadas | < US$ 0,20 |
+| **Total por execução** | | **~US$ 1–1,50** |
+
+Com reexecuções, retries e casos mais longos, reserve **US$ 3–5** para a suíte completa.
+O orçamento atual é US$ 20 (≈US$ 5 gastos), então cabe, mas não rode a suíte inteira em
+loop.
+
+Estratégia de custo:
+
+1. 20 casos no fallback local para estabilizar o runner.
+2. 100 casos no fallback local; ajustar asserts/prompt.
+3. 20 casos representativos na stack implantada (inclui `GET /conversas`, tools reais,
+   WebSocket quando estiver pronto).
+4. Só então rodar os 100+ na stack, em uma janela única.
+
+O runner deve parar em falha de infraestrutura (credencial, 5xx, timeout) e continuar em
+falha de comportamento (resposta errada), para não gastar tokens repetindo erro de ambiente.

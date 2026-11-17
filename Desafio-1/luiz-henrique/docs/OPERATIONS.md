@@ -104,6 +104,7 @@ aws logs filter-log-events \
 ```bash
 npm run test:local   # agente local + fallback (Haiku), sem DynamoDB/Lambda
 npm run test:agent   # integração na stack implantada
+npm run test:ws      # WebSocket parcial (connect/auth; $default falha)
 ```
 
 Requer stack implantada e credenciais. Cria usuário temporário no Cognito/DynamoDB e limpa
@@ -139,3 +140,4 @@ prefixo `luiz-henrique`/`Desafio1Stack`.
 | Compra paga duas vezes | `Intencoes.status` e logs de `realizar_compra`; a transação só aceita `pendente` |
 | `INTENCAO_JA_PAGA` em intenção cancelada | não deve mais ocorrer; confirme se o deploy tem a versão com `INTENCAO_CANCELADA` |
 | Custo subindo | `check:logs`/Bedrock usage; evite testes repetidos; use fallback local |
+| WebSocket `Internal server error` | `WS-NEXT.md`: permissão `$default`/`$disconnect` e rota |

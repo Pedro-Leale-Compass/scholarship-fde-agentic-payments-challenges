@@ -14,6 +14,9 @@ Baseline histórico: `v0.0.2` — “chat works sometimes” (`d854762`)
 - Bug do `v0.0.2` (reutilização de `intencao_id`): corrigido e validado localmente e na
   stack (`npm run test:agent`, 3/3 em 2026-11-17). Evidência histórica em
   `PLAN-AGENT-REVAMP.md` §1.1.
+- `GET /conversas`, histórico em `Conversas.mensagens_json` e preço em centavos: implantados
+  e cobertos pelo teste de integração.
+- WebSocket: parcial; `$connect` funciona, `$default` retorna `Internal server error`.
 
 ## Comece por aqui
 
@@ -23,12 +26,14 @@ Baseline histórico: `v0.0.2` — “chat works sometimes” (`d854762`)
 | [`PLAN-AGENT-REVAMP.md`](PLAN-AGENT-REVAMP.md) | Plano detalhado para corrigir a reutilização de `intencao_id` e o estado do checkout |
 | [`STACK.md`](STACK.md) | Arquitetura **implementada** hoje (sem S3/CloudFront/VPC) |
 | [`MODELO-BEDROCK-TOOLS.md`](MODELO-BEDROCK-TOOLS.md) | Modelo, tools, fluxo do runtime e falhas conhecidas |
-| [`MODELO-USUARIOS.md`](MODELO-USUARIOS.md) | DynamoDB: `Usuarios`, `Conversas`, `Intencoes`, `Catalogo` |
+| [`MODELO-USUARIOS.md`](MODELO-USUARIOS.md) | DynamoDB: `Usuarios`, `Conversas`, `Intencoes`, `Catalogo`, `Conexoes` |
 | [`DEV-LOCAL-AGENTE.md`](DEV-LOCAL-AGENTE.md) | Rodar o agente localmente com paridade com o remoto |
 | [`REQUISITOS-PDF-E-AUDITORIA.md`](REQUISITOS-PDF-E-AUDITORIA.md) | Requisitos do PDF × estado atual (com prazos e pendências) |
 | [`OPERATIONS.md`](OPERATIONS.md) | Deploy, modelo vivo, logs, custos e troubleshooting |
 | [`destroy-cleanup.md`](destroy-cleanup.md) | Operação de destroy, limpeza e verificação de órfãos |
-| [`TEST-STRATEGY.md`](TEST-STRATEGY.md) | Suíte futura de 100+ casos, métricas e caso de loop de recusa |
+| [`TEST-STRATEGY.md`](TEST-STRATEGY.md) | Suíte futura de 100+ casos, custo estimado e caso de loop de recusa |
+| [`WS-NEXT.md`](WS-NEXT.md) | Continuação do WebSocket parcial (`$default` com erro) |
+| [`apresentacao/README.md`](apresentacao/README.md) | Roteiro de 5 min e capturas da demo |
 | [`TODO.md`](TODO.md) | Lista de tarefas atual (somente tarefas) |
 
 ## Documentos históricos

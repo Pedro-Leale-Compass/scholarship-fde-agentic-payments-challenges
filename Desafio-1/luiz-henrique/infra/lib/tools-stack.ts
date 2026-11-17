@@ -55,7 +55,10 @@ export class ToolsStack extends Construct {
       CATALOGO_TABLE: catalogoTable.tableName,
     });
 
-    this.registrarIntencaoFn = makeFn('RegistrarIntencaoFn', 'registrar_intencao', commonEnv);
+    this.registrarIntencaoFn = makeFn('RegistrarIntencaoFn', 'registrar_intencao', {
+      ...commonEnv,
+      CATALOGO_TABLE: catalogoTable.tableName,
+    });
 
     this.realizarCompraFn = makeFn('RealizarCompraFn', 'realizar_compra', commonEnv);
 
@@ -71,6 +74,12 @@ export class ToolsStack extends Construct {
       new iam.PolicyStatement({
         actions: ['dynamodb:PutItem'],
         resources: [intencoesTable.tableArn],
+      }),
+    );
+    this.registrarIntencaoFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['dynamodb:GetItem'],
+        resources: [catalogoTable.tableArn],
       }),
     );
 

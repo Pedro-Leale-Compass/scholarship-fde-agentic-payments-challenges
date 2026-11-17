@@ -12,16 +12,17 @@ Legenda: ✅ atende · 🟡 parcial · ❌ não atende · ⏸ adiado por decisã
 | Manter regras de negócio (catálogo, intenção, cartão/Pix, limite) | ✅ | fluxo corrigido e validado (ver §4) |
 | Tudo em `us-east-1`; prefixo `luiz-henrique` | ✅ | `infra/bin/desafio-1.ts`, `database-stack.ts` |
 | Comunicação frontend ↔ backend via API Gateway | ✅ | `POST /chat` com JWT Cognito |
-| `GET /conversas` para carregar histórico | ❌ | só existe `POST /chat`; histórico não é persistido |
+| `GET /conversas` para carregar histórico | ✅ | rota GET com JWT; histórico em `Conversas.mensagens_json`; testado |
 | Frontend S3 privado + CloudFront + OAC com URL pública | ❌/⏸ | frontend roda local; não existe `FrontendStack` |
 | `config.json` gerado pelo IaC no deploy | 🟡 | `frontend/public/config.json` é versionado; `scripts/dev-frontend-local.sh` regenera a partir de `cdk-outputs.json` quando presente |
 | Cognito + `Authenticator`, `hideSignUp`, sem auto cadastro | ✅ | `frontend/app/page.tsx:60`; `infra/lib/api-stack.ts` |
 | API Gateway + autorizador JWT | ✅ | `infra/lib/api-stack.ts` |
-| API “Stream ou WebSocket” | ❌ | REST não-streaming |
+| API “Stream ou WebSocket” | 🟡 | WebSocket parcial: `$connect`/`$disconnect` OK; `$default` falha; REST é o caminho estável |
 | Histórico completo enviado ao agente a cada turno | ✅ | a API envia `messages` completo; validado em 2026-11-17 |
+| Preço/produto resolvidos no catálogo | ✅ | `registrar_intencao` recebe `produto_id`/quantidade e usa `preco_centavos` |
 | Strands no AgentCore Runtime + Bedrock | ✅ | `agent/index.ts`; runtime via `CustomResource`; Haiku 4.5 no runtime v15 (2026-11-17) |
 | 3 tools em Lambda | ✅ | `tools/` + `infra/lib/tools-stack.ts` |
-| DynamoDB: usuários+limite, conversas, intenções | 🟡 | `Usuarios`/`Intencoes`/`Catalogo` em uso; `Conversas` guarda estado de checkout, mas não o histórico completo de mensagens |
+| DynamoDB: usuários+limite, conversas, intenções | ✅ | `Usuarios`/`Intencoes`/`Catalogo`; `Conversas` guarda estado e `mensagens_json`; `Conexoes` para WebSocket |
 | IaC com um comando para o ambiente completo, incluindo frontend | ❌/⏸ | `npm run deploy:api-agent` cobre backend/agente; frontend fica local (decisão registrada) |
 
 ## 2. Segurança e regras de compra
@@ -42,7 +43,7 @@ Legenda: ✅ atende · 🟡 parcial · ❌ não atende · ⏸ adiado por decisã
 | Requisito | Estado | Observação |
 |---|---|---|
 | README com diagrama, deploy, modelo, DynamoDB, IAM e remoção | 🟡 | atualizado; tabela de evidências preenchida com a suíte; capturas de tela/Postman pendentes |
-| Evidências: login, 401, cartão, Pix, limite, ID inválido | 🟡 | `npm run test:agent` 3/3 (2026-11-17); faltam capturas de tela/Postman |
+| Evidências: login, 401, cartão, Pix, limite, ID inválido | 🟡 | `npm run test:agent` 3/3 e capturas em `docs/apresentacao/`; falta evidência formal de 401/ID inválido em imagem |
 | Aplicação no ar até a correção | 🟡 | API/agente no ar; frontend local; falta convidar o instrutor |
 | Usuário do instrutor no Cognito | ❌ | usar `npm run user:invite -- <email> [limite]` |
 | Alerta de orçamento | 🟡 | orçamento de US$ 20 mencionado (≈US$ 5 gastos); não há registro neste repo de alarme criado. Criar AWS Budget é gratuito (primeiros 2); se já existir, registre o ID/limite aqui |
@@ -101,4 +102,5 @@ corrigida localmente.
    faltam convite por e-mail e ajuste de saldo.
 5. [ ] Convidar o instrutor e manter a API acessível.
 6. [ ] Avaliar streaming/WebSocket e frontend S3/CloudFront se a SCP permitir.
-7. [ ] Resolver preço pelo catálogo e persistir histórico completo em `Conversas`.
+7. [x] Resolver preço pelo catálogo e persistir histórico em `Conversas`.
+8. [ ] Fechar o WebSocket (`$default`) — ver `WS-NEXT.md`.

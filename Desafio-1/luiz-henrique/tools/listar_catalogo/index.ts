@@ -14,6 +14,7 @@ interface CatalogoItem {
   id: string;
   nome: string;
   preco: number;
+  preco_centavos: number;
 }
 
 function toCatalogoItem(item: Record<string, unknown>): CatalogoItem {
@@ -29,10 +30,14 @@ function toCatalogoItem(item: Record<string, unknown>): CatalogoItem {
       ? Number((v as { N: string }).N)
       : undefined;
   };
+  const precoCentavos = getN("preco_centavos");
+  const preco = precoCentavos !== undefined ? precoCentavos / 100 : getN("preco") || 0;
   return {
     id: getS("id") || "",
     nome: getS("nome") || "",
-    preco: getN("preco") || 0,
+    preco,
+    preco_centavos:
+      precoCentavos !== undefined ? precoCentavos : Math.round(preco * 100),
   };
 }
 

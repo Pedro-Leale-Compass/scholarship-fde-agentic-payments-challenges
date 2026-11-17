@@ -151,6 +151,17 @@ npm run check:logs    # lista log groups/streams de agente e Lambdas
 Ambos são read-only e exigem credenciais. `check:model` não chama o modelo; `check:logs` não
 cria recursos.
 
+## 6.1 WebSocket (parcial)
+
+```bash
+npm run test:ws
+```
+
+O script faz login Cognito, conecta em `wss://.../prod?token=...&conversa_id=...` e envia
+“catalogo”. Hoje o `$connect` autentica e grava a conexão, mas o `$default` retorna
+`Internal server error`; o chat principal continua via REST. Continuação em
+[`WS-NEXT.md`](WS-NEXT.md).
+
 ## 7. Limitações e segurança
 
 - Não exercita API Gateway, JWT, CORS, DynamoDB real, IAM, imagem Docker, sessão do

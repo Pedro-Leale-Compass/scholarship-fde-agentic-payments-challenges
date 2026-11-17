@@ -51,6 +51,8 @@ interface Produto {
   id: string;
   nome: string;
   preco: number;
+  preco_centavos: number;
+  quantidade?: number;
 }
 
 interface Intencao {
@@ -68,14 +70,14 @@ interface Intencao {
 }
 
 const CATALOGO_LOCAL: Produto[] = [
-  { id: 'p1', nome: 'Fone Bluetooth', preco: 199.9 },
-  { id: 'p2', nome: 'Teclado Mecânico', preco: 349.9 },
-  { id: 'p3', nome: 'Mouse Gamer', preco: 129.9 },
-  { id: 'p4', nome: 'Monitor 27"', preco: 1299.0 },
-  { id: 'p5', nome: 'Webcam Full HD', preco: 299.0 },
-  { id: 'p6', nome: 'Cadeira Gamer', preco: 1499.0 },
-  { id: 'p7', nome: 'Headset com Microfone', preco: 249.9 },
-  { id: 'p8', nome: 'Suporte para Monitor', preco: 149.0 },
+  { id: 'p1', nome: 'Fone Bluetooth', preco: 199.9, preco_centavos: 19990 },
+  { id: 'p2', nome: 'Teclado Mecânico', preco: 349.9, preco_centavos: 34990 },
+  { id: 'p3', nome: 'Mouse Gamer', preco: 129.9, preco_centavos: 12990 },
+  { id: 'p4', nome: 'Monitor 27"', preco: 1299.0, preco_centavos: 129900 },
+  { id: 'p5', nome: 'Webcam Full HD', preco: 299.0, preco_centavos: 29900 },
+  { id: 'p6', nome: 'Cadeira Gamer', preco: 1499.0, preco_centavos: 149900 },
+  { id: 'p7', nome: 'Headset com Microfone', preco: 249.9, preco_centavos: 24990 },
+  { id: 'p8', nome: 'Suporte para Monitor', preco: 149.0, preco_centavos: 14900 },
 ];
 
 const EXPIRACAO_MINUTOS = 15;
@@ -99,9 +101,43 @@ function listarCatalogoLocal() {
   return { ok: true, catalogo: CATALOGO_LOCAL, count: CATALOGO_LOCAL.length };
 }
 
-function registrarIntencaoLocal(usuario_id: string, produtos: Produto[], valor: number) {
+function registrarIntencaoLocal(
+  usuario_id: string,
+  itens: Array<{ produto_id: string; quantidade?: number }>,
+) {
+  const quantities = new Map<string, number>();
+  for (const item of itens) {
+    const quantidade = item.quantidade ?? 1;
+    if (!item.produto_id || !Number.isInteger(quantidade) || quantidade <= 0) {
+      return {
+        ok: false,
+        code: 'PRODUTO_INVALIDO',
+        error: 'itens deve conter produto_id e quantidade positiva',
+      };
+    }
+    quantities.set(
+      item.produto_id,
+      (quantities.get(item.produto_id) || 0) + quantidade,
+    );
+  }
+
+  const produtos: Produto[] = [];
+  let valor_centavos = 0;
+  for (const [produto_id, quantidade] of quantities) {
+    const produto = CATALOGO_LOCAL.find((p) => p.id === produto_id);
+    if (!produto) {
+      return {
+        ok: false,
+        code: 'PRODUTO_INVALIDO',
+        error: `produto_id nao encontrado: ${produto_id}`,
+      };
+    }
+    produtos.push({ ...produto, quantidade });
+    valor_centavos += produto.preco_centavos * quantidade;
+  }
+
+  const valor = valor_centavos / 100;
   const intencao_id = gerarIntencaoIdLocal();
-  const valor_centavos = Math.round(valor * 100);
   const created_at = new Date().toISOString();
   const expira_em = new Date(
     Date.now() + EXPIRACAO_MINUTOS * 60 * 1000,
@@ -428,14 +464,14 @@ async function completeRegistrationFallback(
   const produto = encontrarProduto(lastUserText, catalogo);
   if (!produto) return null;
 
+  const itens = [{ produto_id: produto.id, quantidade: 1 }];
   let result: unknown;
   if (!TOOL_REGISTRAR_INTENCAO_ARN) {
-    result = registrarIntencaoLocal(usuarioId, [produto], produto.preco);
+    result = registrarIntencaoLocal(usuarioId, itens);
   } else {
     result = await invokeLambda(TOOL_REGISTRAR_INTENCAO_ARN, {
       usuario_id: usuarioId,
-      produtos: [produto],
-      valor: produto.preco,
+      itens,
     });
   }
 
@@ -476,25 +512,36 @@ function createAgent(
     },
   });
 
-  const   registrarIntencaoTool = new ZodTool({
+  const registrarIntencaoTool = new ZodTool({
     name: 'registrar_intencao',
     description:
-      'Registra uma intenção de compra (status pendente) e devolve intencao_id. NÃO confirma pagamento. Use assim que o usuário escolher os produtos.',
+      'Registra uma intenção de compra pendente a partir de produto_id/quantidade. O preço vem do catálogo; NÃO confirma pagamento.',
     inputSchema: z.object({
-      produtos: z.array(
-        z.object({ id: z.string(), nome: z.string(), preco: z.number() })
-      ).describe('Lista de produtos desejados'),
-      valor: z.number().describe('Valor total da compra'),
+      itens: z
+        .array(
+          z.object({
+            produto_id: z
+              .string()
+              .describe('ID retornado por listar_catalogo (ex.: p1)'),
+            quantidade: z
+              .number()
+              .int()
+              .positive()
+              .default(1)
+              .describe('Quantidade (padrão 1)'),
+          }),
+        )
+        .min(1)
+        .describe('Itens escolhidos'),
     }),
-    callback: async ({ produtos, valor }) => {
+    callback: async ({ itens }) => {
       let result: unknown;
       if (!TOOL_REGISTRAR_INTENCAO_ARN) {
-        result = registrarIntencaoLocal(usuario_id, produtos, valor);
+        result = registrarIntencaoLocal(usuario_id, itens);
       } else {
         result = await invokeLambda(TOOL_REGISTRAR_INTENCAO_ARN, {
           usuario_id,
-          produtos,
-          valor,
+          itens,
         });
       }
       const r = (result ?? {}) as { ok?: unknown; intencao_id?: unknown };
@@ -563,14 +610,14 @@ Fale só da loja: catálogo, preços, disponibilidade e compras. Fora disso, dig
 
 ## Fluxo
 1. Usuário pede produto/preço → listar_catalogo.
-2. Usuário escolhe produto → registrar_intencao agora. Use exatamente o intencao_id retornado. Mostre o ID e pergunte: cartão ou pix?
+2. Usuário escolhe produto → registrar_intencao agora com produto_id e quantidade do catálogo. Nunca envie preço. Use exatamente o intencao_id retornado. Mostre o ID e pergunte: cartão ou pix?
 3. Usuário responde cartão/pix → realizar_compra com o intencao_id retornado por registrar_intencao.
 4. Responda com o retorno:
    - ok: true → "Compra aprovada" + valor, forma e intencao_id.
    - ok: false → mostre o code e o próximo passo. Não esconda a falha.
 
 ## Regras
-- Nunca invente id, preço ou status. Só mencione um intencao_id retornado por uma ferramenta nesta conversa; não copie IDs de exemplos.
+- Nunca invente id, preço ou status. Preço vem de listar_catalogo/registrar_intencao; nunca envie preço para a tool. Só mencione um intencao_id retornado por uma ferramenta nesta conversa; não copie IDs de exemplos.
 - Se o usuário escolher um produto novo, ou se a intenção anterior estiver paga/cancelada/expirada, chame registrar_intencao de novo. Nunca reutilize o ID anterior.
 - Só diga "registrada" se registrar_intencao retornou ok: true nesta mensagem.
 - Só diga "aprovada", "confirmada" ou "paga" se realizar_compra retornou ok: true.

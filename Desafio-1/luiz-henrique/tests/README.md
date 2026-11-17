@@ -6,7 +6,8 @@ Três frentes:
 
 1. **Fluxo local** (`npm run test:local`) — agente local + fallback ou Lambdas, sem API.
 2. **Suíte Node** (`npm run test:agent`) — integração real com API/Cognito/DynamoDB.
-3. **Coleção Postman** — login Cognito e testes manuais do `/chat`.
+3. **WebSocket smoke** (`npm run test:ws`) — parcial; `$connect` autentica, `$default` ainda falha.
+4. **Coleção Postman** — login Cognito e testes manuais do `/chat`.
 
 A estratégia da suíte ampla (100+ casos) e o caso `REFUSAL-LOOP-01` estão em
 [`docs/TEST-STRATEGY.md`](../docs/TEST-STRATEGY.md).
@@ -45,7 +46,7 @@ no backend.
 |---|---|
 | `POST /chat sem token` | resposta `401` do API Gateway |
 | `realizar_compra: saldo, idempotência e códigos` | `COMPRA_APROVADA`, débito do saldo, retry `INTENCAO_JA_PAGA`, `LIMITE_EXCEDIDO`, `INTENCAO_INVALIDA` (inexistente e dono errado), `INTENCAO_EXPIRADA`, `METODO_INVALIDO` |
-| `agente não confirma compra enquanto a intenção está pendente` | intenção pendente não é narrada como paga; o agente informa o ID; pagamento vira `paga` e debita saldo; compra acima do limite não é narrada como aprovada; segunda compra após uma compra paga funciona |
+| `agente não confirma compra enquanto a intenção está pendente` | intenção pendente não é narrada como paga; o agente informa o ID; pagamento vira `paga` e debita saldo; compra acima do limite não é narrada como aprovada; segunda compra após uma compra paga funciona; `GET /conversas` devolve o histórico e exige JWT |
 
 ### Cobertura de regressão
 

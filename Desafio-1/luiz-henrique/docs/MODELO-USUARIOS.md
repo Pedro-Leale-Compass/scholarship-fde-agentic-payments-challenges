@@ -36,8 +36,8 @@ Estado atual: a Lambda do chat grava/lê o **estado de checkout** por conversa
 envia no `POST /chat`. A API lê apenas `Conversas.pending_intencao_id/pending_status`; a
 validação final de dono, status e expiração é feita pela tool `realizar_compra`, que tem
 acesso a `Intencoes`. O chat Lambda não lê `Intencoes`. O estado é limpo em
-`paga`/`cancelada`/`expirada`/`indisponível`. O histórico completo de mensagens ainda não é
-persistido.
+`paga`/`cancelada`/`expirada`/`indisponível`. O histórico completo é gravado em
+`mensagens_json` e exposto por `GET /conversas`.
 
 Item atual:
 
@@ -47,6 +47,7 @@ Item atual:
   "usuario_id": "sub",
   "pending_intencao_id": "INT-XXXXXXXX",
   "pending_status": "pendente",
+  "mensagens_json": "[{\"role\":\"user\",\"content\":[{\"text\":\"...\"}]}]",
   "updated_at": "2026-11-17T18:00:00Z"
 }
 ```
@@ -57,6 +58,8 @@ Regras atuais:
 - É limpo em `paga`, `cancelada` ou `expirada`.
 - É lido no início do turno só se a intenção ainda estiver `pendente` e não expirada.
 - `conversa_id` vem do frontend (localStorage) ou é criado no backend e devolvido na resposta.
+- `mensagens_json` guarda a lista de mensagens `{role, content:[{text}]}`; `GET /conversas`
+  devolve essa lista. O limite de item do DynamoDB (400 KB) é suficiente para o desafio.
 
 ## 3. `Intencoes`
 
@@ -79,17 +82,26 @@ PK: `intencao_id` (S). GSI `usuario_id-index` (PK `usuario_id`, SK `status`).
 
 O plano adiciona `conversa_id` para rastrear a intenção até a conversa.
 
+## 3.1 `Conexoes` (WebSocket)
+
+PK: `connection_id` (S). TTL: `expira_em` (N, epoch seconds). Campos `usuario_id`,
+`conversa_id`, `conectado_em`.
+
+Usada pelo WebSocket parcial: `$connect` grava, `$disconnect` remove. TTL de 1h evita
+conexões abandonadas. O `$default` ainda não funciona; ver `WS-NEXT.md`.
+
 ## 4. `Catalogo`
 
-PK: `id` (S). Campos `nome` (S) e `preco` (N). Populado no deploy por
-`AwsCustomResource` (`infra/lib/desafio-1-stack.ts`).
+PK: `id` (S). Campos `nome` (S), `preco` (N, reais para exibição) e
+`preco_centavos` (N, **fonte de verdade**). Populado no deploy por `AwsCustomResource`
+(`infra/lib/desafio-1-stack.ts`).
 
 8 produtos: `p1` Fone Bluetooth (199,90), `p2` Teclado Mecânico (349,90), `p3` Mouse Gamer
 (129,90), `p4` Monitor 27" (1.299,00), `p5` Webcam Full HD (299,00), `p6` Cadeira Gamer
 (1.499,00), `p7` Headset com Microfone (249,90), `p8` Suporte para Monitor (149,00).
 
-**Pendência:** `registrar_intencao` ainda aceita `nome`/`preco` do modelo. O plano é receber
-só `produto_id`/`quantidade` e resolver o preço nesta tabela.
+`registrar_intencao` recebe apenas `produto_id`/`quantidade` e resolve nome/preço nesta tabela.
+O modelo não envia preço; o valor salvo usa `preco_centavos`.
 
 ## 5. Padrões de acesso e regras
 
