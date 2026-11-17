@@ -49,6 +49,11 @@ Demo principal (cartão e Pix) com o usuário de teste. Capturas em ordem:
 7. **Limite excedido no cartão** — `06-limite-cartao.png`
 8. **Compra aprovada no cartão** — `07-pagamento-cartao.png`
 
+Evidências complementares (comandos no `README.md` §6):
+
+- **`POST /chat` sem token → 401** — `curl-401.png`
+- **`intencao_id` inválido → `INTENCAO_INVALIDA`** — `curl-404-intencao-invalida.png`
+
 Frase de efeito para a demo:
 
 > “O modelo conversa, mas quem manda no dinheiro é o backend: o preço vem do catálogo, o

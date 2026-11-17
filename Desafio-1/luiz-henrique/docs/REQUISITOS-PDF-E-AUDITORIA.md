@@ -43,7 +43,7 @@ Legenda: ✅ atende · 🟡 parcial · ❌ não atende · ⏸ adiado por decisã
 | Requisito | Estado | Observação |
 |---|---|---|
 | README com diagrama, deploy, modelo, DynamoDB, IAM e remoção | ✅ | reestruturado nas seções 1–7 do PDF; capturas em `docs/apresentacao/` |
-| Evidências: login, 401, cartão, Pix, limite, ID inválido | 🟡 | login/catálogo/cartão/Pix/limite em `docs/apresentacao/`; 401/ID inválido cobertos por teste, faltam prints |
+| Evidências: login, 401, cartão, Pix, limite, ID inválido | ✅ | as 5 evidências estão inline no `README.md` §6; capturas extras em `docs/apresentacao/`; a coleção Postman está quebrada e precisa de correção (não é usada nas evidências) |
 | Aplicação no ar até a correção | 🟡 | API/agente no ar; frontend local; falta convidar o instrutor |
 | Usuário do instrutor no Cognito | ❌ | usar `npm run user:invite -- <email> [limite]` |
 | Alerta de orçamento | 🟡 | orçamento de US$ 20 mencionado (≈US$ 5 gastos); não há registro neste repo de alarme criado. Criar AWS Budget é gratuito (primeiros 2); se já existir, registre o ID/limite aqui |

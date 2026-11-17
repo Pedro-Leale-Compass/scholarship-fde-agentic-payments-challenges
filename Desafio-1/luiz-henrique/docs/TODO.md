@@ -96,7 +96,8 @@ Plano detalhado: [`PLAN-AGENT-REVAMP.md`](PLAN-AGENT-REVAMP.md).
 - [ ] Suíte ampla de 100+ casos e caso `REFUSAL-LOOP-01` (ver `TEST-STRATEGY.md`).
 - [ ] Redirecionar para catálogo quando o produto não for identificado.
 - [x] Capturas de tela da demo em `docs/apresentacao/`.
+- [ ] Corrigir a coleção Postman (atualmente quebrada; não é usada nas evidências da §6).
 - [ ] Fechar WebSocket `$default` — ver `WS-NEXT.md`.
-- [ ] Evidências formais de 401/ID inválido em imagem/Postman.
+- [x] Capturar e anexar os prints de 401 e `intencao_id` inválido; as 5 evidências estão inline no `README.md` (§6).
 - [ ] Lista de conversas anteriores no menu lateral + botão “Nova conversa” (tipo Gemini/Qwen); hoje o chat reabre sempre a conversa anterior.
 - [ ] Painel administrativo / grupo `admins`.

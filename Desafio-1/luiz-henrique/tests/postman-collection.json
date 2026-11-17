@@ -2,12 +2,12 @@
   "info": {
     "name": "Desafio 1 - Agente de Pagamentos (luiz-henrique)",
     "_postman_id": "desafio-1-agentic-payments",
-    "description": "Coleção de testes Postman para a API de chat de pagamentos. Faz login no Cognito User Pool (USER_PASSWORD_AUTH) e testa o endpoint /chat com e sem token JWT.\n\nVariáveis de ambiente necessárias (copie de .env):\n- testEmail, testPassword: usuário de teste criado no Cognito pelo CDK\n- apiUrl: output ApiUrl do cdk-outputs.json\n- userPoolClientId: output CognitoUserPoolClientId do cdk-outputs.json\n- region: us-east-1",
+    "description": "Coleção de testes Postman para a API de chat de pagamentos. Faz login no Cognito User Pool (USER_PASSWORD_AUTH), testa o endpoint /chat com e sem token JWT e reproduz as 5 evidências exigidas: login, 401 sem token, compra aprovada com cartão e Pix, limite excedido e intencao_id inválido recusado.\n\nAntes de rodar: `npm run user:reset-limit -- luiz@desafio.test` para o saldo voltar a R$ 500. A ordem das pastas importa para o limite excedido.\n\nVariáveis de ambiente necessárias (tests/postman-environment.json, gitignorado):\n- testEmail, testPassword: usuário de teste do Cognito\n- apiUrl: output ApiUrl do cdk-outputs.json (sem barra final)\n- userPoolClientId: output CognitoUserPoolClientId\n- region: us-east-1\n- realizarCompraFunction: luiz-henrique-realizar-compra\n- awsAccessKeyId, awsSecretAccessKey, awsSessionToken: credenciais temporárias para a invocação direta da Lambda do teste de intencao_id inválido (veja tests/README.md).\n\nO teste de intencao_id inválido invoca a Lambda `realizar_compra` diretamente com AWS Signature, porque o modelo se recusa a encaminhar um ID inexistente.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
     {
-      "name": "1. Autenticação (Cognito)",
+      "name": "1. Login Cognito (evidência)",
       "item": [
         {
           "name": "Login - Cognito InitiateAuth (USER_PASSWORD_AUTH)",
@@ -40,7 +40,7 @@
                 ""
               ]
             },
-            "description": "Faz login no Cognito User Pool usando USER_PASSWORD_AUTH e extrai o IdToken para usar nas requisições seguintes."
+            "description": "Faz login no Cognito User Pool usando USER_PASSWORD_AUTH e extrai o IdToken para usar nas requisições seguintes. Evidência 1: login."
           },
           "event": [
             {
@@ -53,9 +53,14 @@
                   "});",
                   "",
                   "var jsonData = pm.response.json();",
+                  "pm.test('Resposta contém IdToken', function () {",
+                  "  pm.expect(jsonData.AuthenticationResult).to.be.an('object');",
+                  "  pm.expect(jsonData.AuthenticationResult.IdToken).to.be.a('string');",
+                  "});",
                   "",
                   "if (jsonData.AuthenticationResult && jsonData.AuthenticationResult.IdToken) {",
                   "  pm.collectionVariables.set('idToken', jsonData.AuthenticationResult.IdToken);",
+                  "  try { pm.environment.set('idToken', jsonData.AuthenticationResult.IdToken); } catch (e) {}",
                   "  console.log('IdToken obtido e salvo em collectionVariables.idToken');",
                   "} else {",
                   "  console.log('Não foi possível extrair IdToken da resposta:', JSON.stringify(jsonData));",
@@ -68,10 +73,56 @@
       ]
     },
     {
-      "name": "2. API - Chat",
+      "name": "2. API sem token → 401 (evidência)",
       "item": [
         {
-          "name": "POST /chat - com token (sucesso)",
+          "name": "POST /chat - sem token (espera 401)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messages\": []\n}"
+            },
+            "url": {
+              "raw": "{{apiUrl}}/chat",
+              "host": [
+                "{{apiUrl}}"
+              ],
+              "path": [
+                "chat"
+              ]
+            },
+            "description": "Verifica que o API Gateway retorna 401 quando nenhuma autorização é enviada. Evidência 2: chamada à API sem token rejeitada."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status é 401', function () {",
+                  "  pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "console.log('Resposta 401:', pm.response.text());"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Compra aprovada com Pix (evidência)",
+      "item": [
+        {
+          "name": "3.1 Registrar intenção - Fone Bluetooth",
           "request": {
             "method": "POST",
             "header": [
@@ -86,7 +137,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [{ \"text\": \"listar produtos\" }]\n    }\n  ]\n}"
+              "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [{ \"text\": \"Quero comprar o Fone Bluetooth. Apenas registre a intenção; não finalize a compra.\" }]\n    }\n  ],\n  \"conversa_id\": \"{{conversaPix}}\"\n}"
             },
             "url": {
               "raw": "{{apiUrl}}/chat",
@@ -97,9 +148,20 @@
                 "chat"
               ]
             },
-            "description": "Envia uma mensagem para o agente de pagamentos usando o token JWT obtido no login."
+            "description": "Registra a intenção do Fone Bluetooth (R$ 199,90) em uma conversa própria para o Pix."
           },
           "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var id = pm.variables.replaceIn('{{$guid}}');",
+                  "pm.collectionVariables.set('conversaPix', id);",
+                  "try { pm.environment.set('conversaPix', id); } catch (e) {}"
+                ]
+              }
+            },
             {
               "listen": "test",
               "script": {
@@ -110,29 +172,33 @@
                   "});",
                   "",
                   "var jsonData = pm.response.json();",
-                  "pm.test('Resposta tem campo reply ou message', function () {",
-                  "  pm.expect(jsonData).to.have.any.of(['reply', 'message']);",
+                  "var reply = jsonData.reply || jsonData.message || '';",
+                  "pm.test('Intenção registrada com ID', function () {",
+                  "  pm.expect(reply).to.match(/INT-[0-9A-F]{8}/i);",
                   "});",
-                  "",
-                  "console.log('Resposta do agente:', JSON.stringify(jsonData, null, 2));"
+                  "console.log('Resposta do agente:', reply);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "POST /chat - sem token (espera 401)",
+          "name": "3.2 Pagar com Pix",
           "request": {
             "method": "POST",
             "header": [
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{idToken}}"
               }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [{ \"text\": \"listar produtos\" }]\n    }\n  ]\n}"
+              "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [{ \"text\": \"Pode pagar a intenção pendente com Pix.\" }]\n    }\n  ],\n  \"conversa_id\": \"{{conversaPix}}\"\n}"
             },
             "url": {
               "raw": "{{apiUrl}}/chat",
@@ -143,7 +209,363 @@
                 "chat"
               ]
             },
-            "description": "Verifica que a API retorna 401 quando nenhuma autorização é enviada."
+            "description": "Confirma o pagamento da intenção pendente com Pix. Evidência 3a: compra bem-sucedida com Pix."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('conversaPix')) {",
+                  "  throw new Error('Rode primeiro 3.1 Registrar intenção - Fone Bluetooth.');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status é 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "var reply = jsonData.reply || jsonData.message || '';",
+                  "pm.test('Compra aprovada', function () {",
+                  "  pm.expect(reply).to.match(/compra\\s+(?:foi\\s+)?(?:realizada|confirmada|aprovada|conclu[ií]da|finalizada|efetuada)|pagamento\\s+(?:aprovado|confirmado|realizado)|compra\\s+aprovada/i);",
+                  "});",
+                  "console.log('Resposta do agente:', reply);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Compra aprovada com cartão (evidência)",
+      "item": [
+        {
+          "name": "4.1 Registrar intenção - Mouse Gamer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{idToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [{ \"text\": \"Quero comprar o Mouse Gamer. Apenas registre a intenção; não finalize a compra.\" }]\n    }\n  ],\n  \"conversa_id\": \"{{conversaCartao}}\"\n}"
+            },
+            "url": {
+              "raw": "{{apiUrl}}/chat",
+              "host": [
+                "{{apiUrl}}"
+              ],
+              "path": [
+                "chat"
+              ]
+            },
+            "description": "Registra a intenção do Mouse Gamer (R$ 129,90) em uma conversa própria para o cartão."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var id = pm.variables.replaceIn('{{$guid}}');",
+                  "pm.collectionVariables.set('conversaCartao', id);",
+                  "try { pm.environment.set('conversaCartao', id); } catch (e) {}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status é 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "var reply = jsonData.reply || jsonData.message || '';",
+                  "pm.test('Intenção registrada com ID', function () {",
+                  "  pm.expect(reply).to.match(/INT-[0-9A-F]{8}/i);",
+                  "});",
+                  "console.log('Resposta do agente:', reply);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4.2 Pagar com cartão",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{idToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [{ \"text\": \"Pode pagar a intenção pendente com cartão.\" }]\n    }\n  ],\n  \"conversa_id\": \"{{conversaCartao}}\"\n}"
+            },
+            "url": {
+              "raw": "{{apiUrl}}/chat",
+              "host": [
+                "{{apiUrl}}"
+              ],
+              "path": [
+                "chat"
+              ]
+            },
+            "description": "Confirma o pagamento da intenção pendente com cartão. Evidência 3b: compra bem-sucedida com cartão."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('conversaCartao')) {",
+                  "  throw new Error('Rode primeiro 4.1 Registrar intenção - Mouse Gamer.');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status é 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "var reply = jsonData.reply || jsonData.message || '';",
+                  "pm.test('Compra aprovada', function () {",
+                  "  pm.expect(reply).to.match(/compra\\s+(?:foi\\s+)?(?:realizada|confirmada|aprovada|conclu[ií]da|finalizada|efetuada)|pagamento\\s+(?:aprovado|confirmado|realizado)|compra\\s+aprovada/i);",
+                  "});",
+                  "console.log('Resposta do agente:', reply);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Limite excedido (evidência)",
+      "item": [
+        {
+          "name": "5.1 Registrar intenção - Cadeira Gamer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{idToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [{ \"text\": \"Quero comprar a Cadeira Gamer. Apenas registre a intenção; não finalize a compra.\" }]\n    }\n  ],\n  \"conversa_id\": \"{{conversaLimite}}\"\n}"
+            },
+            "url": {
+              "raw": "{{apiUrl}}/chat",
+              "host": [
+                "{{apiUrl}}"
+              ],
+              "path": [
+                "chat"
+              ]
+            },
+            "description": "Registra a intenção da Cadeira Gamer (R$ 1.499,00), acima do saldo de R$ 500."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var id = pm.variables.replaceIn('{{$guid}}');",
+                  "pm.collectionVariables.set('conversaLimite', id);",
+                  "try { pm.environment.set('conversaLimite', id); } catch (e) {}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status é 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "var reply = jsonData.reply || jsonData.message || '';",
+                  "pm.test('Intenção registrada com ID', function () {",
+                  "  pm.expect(reply).to.match(/INT-[0-9A-F]{8}/i);",
+                  "});",
+                  "console.log('Resposta do agente:', reply);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5.2 Tentar pagar com cartão (espera limite)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{idToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [{ \"text\": \"Pode pagar a intenção pendente com cartão.\" }]\n    }\n  ],\n  \"conversa_id\": \"{{conversaLimite}}\"\n}"
+            },
+            "url": {
+              "raw": "{{apiUrl}}/chat",
+              "host": [
+                "{{apiUrl}}"
+              ],
+              "path": [
+                "chat"
+              ]
+            },
+            "description": "Tenta pagar a Cadeira Gamer com cartão; o saldo é insuficiente e a intenção é cancelada. Evidência 4: tentativa bloqueada por limite excedido."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('conversaLimite')) {",
+                  "  throw new Error('Rode primeiro 5.1 Registrar intenção - Cadeira Gamer.');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status é 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "var reply = jsonData.reply || jsonData.message || '';",
+                  "pm.test('Resposta explica limite/saldo', function () {",
+                  "  pm.expect(reply).to.match(/limite|saldo/i);",
+                  "});",
+                  "pm.test('Não confirma a compra', function () {",
+                  "  pm.expect(reply).to.not.match(/compra\\s+(?:foi\\s+)?(?:realizada|confirmada|aprovada|conclu[ií]da|finalizada|efetuada)|pagamento\\s+(?:aprovado|confirmado|realizado)/i);",
+                  "});",
+                  "console.log('Resposta do agente:', reply);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. intencao_id inválido (evidência)",
+      "item": [
+        {
+          "name": "Invoke realizar_compra - intencao_id inexistente",
+          "request": {
+            "auth": {
+              "type": "awsv4",
+              "awsv4": [
+                {
+                  "key": "accessKey",
+                  "value": "{{awsAccessKeyId}}",
+                  "type": "string"
+                },
+                {
+                  "key": "secretKey",
+                  "value": "{{awsSecretAccessKey}}",
+                  "type": "string"
+                },
+                {
+                  "key": "sessionToken",
+                  "value": "{{awsSessionToken}}",
+                  "type": "string"
+                },
+                {
+                  "key": "region",
+                  "value": "{{region}}",
+                  "type": "string"
+                },
+                {
+                  "key": "service",
+                  "value": "lambda",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"usuario_id\": \"evidencia-postman\",\n  \"intencao_id\": \"int_1234\",\n  \"forma_pagamento\": \"pix\"\n}"
+            },
+            "url": {
+              "raw": "https://lambda.{{region}}.amazonaws.com/2015-03-31/functions/{{realizarCompraFunction}}/invocations",
+              "protocol": "https",
+              "host": [
+                "lambda",
+                "{{region}}",
+                "amazonaws",
+                "com"
+              ],
+              "path": [
+                "2015-03-31",
+                "functions",
+                "{{realizarCompraFunction}}",
+                "invocations"
+              ]
+            },
+            "description": "Invoca a Lambda realizar_compra diretamente com um intencao_id inexistente. O modelo se recusa a encaminhar IDs inventados, então a recusa é comprovada no backend. Evidência 5: tentativa com intencao_id inválido recusada."
           },
           "event": [
             {
@@ -151,16 +573,17 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Status é 401', function () {",
-                  "  pm.response.to.have.status(401);",
+                  "pm.test('Lambda invocada (HTTP 200)', function () {",
+                  "  pm.response.to.have.status(200);",
                   "});",
                   "",
-                  "var jsonData = pm.response.json();",
-                  "pm.test('Resposta contém erro', function () {",
-                  "  pm.expect(jsonData).to.have.property('error');",
+                  "var envelope = pm.response.json();",
+                  "var result = typeof envelope.body === 'string' ? JSON.parse(envelope.body) : envelope;",
+                  "pm.test('Tool retornou INTENCAO_INVALIDA (404)', function () {",
+                  "  pm.expect(envelope.statusCode).to.eql(404);",
+                  "  pm.expect(result.code).to.eql('INTENCAO_INVALIDA');",
                   "});",
-                  "",
-                  "console.log('Resposta 401:', JSON.stringify(jsonData, null, 2));"
+                  "console.log('Resposta da tool:', JSON.stringify(envelope, null, 2));"
                 ]
               }
             }
@@ -198,13 +621,55 @@
       "key": "apiUrl",
       "value": "",
       "type": "string",
-      "description": "URL da API Gateway. Defina no environment local (gitignorado) a partir de API_URL no .env."
+      "description": "URL da API Gateway, sem barra final. Defina no environment local (gitignorado) a partir de API_URL no .env."
+    },
+    {
+      "key": "realizarCompraFunction",
+      "value": "luiz-henrique-realizar-compra",
+      "type": "string",
+      "description": "Nome da Lambda da tool realizar_compra."
+    },
+    {
+      "key": "awsAccessKeyId",
+      "value": "",
+      "type": "string",
+      "description": "AWS_ACCESS_KEY_ID temporário para a invocação direta da Lambda (veja tests/README.md)."
+    },
+    {
+      "key": "awsSecretAccessKey",
+      "value": "",
+      "type": "string",
+      "description": "AWS_SECRET_ACCESS_KEY temporário para a invocação direta da Lambda."
+    },
+    {
+      "key": "awsSessionToken",
+      "value": "",
+      "type": "string",
+      "description": "AWS_SESSION_TOKEN temporário para a invocação direta da Lambda."
     },
     {
       "key": "idToken",
       "value": "",
       "type": "string",
       "description": "IdToken extraído automaticamente após o login (preenchido pelo script de teste)"
+    },
+    {
+      "key": "conversaPix",
+      "value": "",
+      "type": "string",
+      "description": "conversa_id usada no fluxo de compra com Pix (preenchida pelo script da pasta 3)"
+    },
+    {
+      "key": "conversaCartao",
+      "value": "",
+      "type": "string",
+      "description": "conversa_id usada no fluxo de compra com cartão (preenchida pelo script da pasta 4)"
+    },
+    {
+      "key": "conversaLimite",
+      "value": "",
+      "type": "string",
+      "description": "conversa_id usada no fluxo de limite excedido (preenchida pelo script da pasta 5)"
     }
   ]
 }

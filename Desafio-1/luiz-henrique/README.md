@@ -28,7 +28,7 @@ Desafio-1/luiz-henrique/
 ├── tools/      # Lambdas: listar_catalogo, registrar_intencao, realizar_compra
 ├── infra/      # CDK: DynamoDB, tools, agente, API, Cognito, ECR
 ├── scripts/    # credenciais, convite, ajustar limite, dev local, check:model/logs, destroy
-├── tests/      # suíte Node + coleção Postman
+├── tests/      # suíte Node
 ├── docs/       # documentação atual + archive/ + apresentacao/
 └── README.md
 ```
@@ -108,30 +108,6 @@ cd Desafio-1/luiz-henrique
 eval "$(bash scripts/aws-creds.sh)"
 npm run user:invite -- instrutor@example.com 500
 ```
-
-#### 2.1.1 Validação em clone limpo (2026-11-17)
-
-Este caminho foi validado exatamente como acima, a partir de um clone novo do GitHub, sem
-`infra/cdk-outputs.json` e sem usar script algum:
-
-1. `git clone --branch fellow/luiz-henrique-desafio-1 <repo>` em uma pasta temporária;
-2. `cd Desafio-1/luiz-henrique/frontend && npm install` (1.283 pacotes, ~32 s);
-3. `npm run dev` → `http://localhost:3000` respondeu `200`;
-4. login no Cognito com um usuário de teste já convidado (credenciais temporárias, fora do
-   repositório);
-5. mensagem `listar produtos` no chat.
-
-Resultado: o login funcionou e o agente respondeu com o catálogo e os preços lidos do
-DynamoDB pela API implantada (`Fone Bluetooth (p1) - R$ 199,90`, `Teclado Mecânico (p2) -
-R$ 349,90`, ...). A validação consumiu uma invocação do Bedrock.
-
-Observações medidas nesse commit:
-
-- `npm ci` **não** funciona aqui: o `package-lock.json` do frontend está fora de sincronia
-  com o `package.json` (falta `@opentelemetry/core@2.0.0`). Use `npm install`.
-- O `npm install` do frontend instala também `@aws-amplify/backend` e
-  `@aws-amplify/backend-cli` (devDependencies herdadas do scaffold), o que explica o volume
-  de pacotes; nada disso é necessário em runtime.
 
 ### 2.2 Deploy completo
 
@@ -257,21 +233,64 @@ Detalhes adicionais em [`docs/MODELO-USUARIOS.md`](docs/MODELO-USUARIOS.md).
 
 ## 6. Evidências
 
-Capturas da demo em [`docs/apresentacao/`](docs/apresentacao/README.md). Valores e IDs são
-simulados; nenhuma cobrança real.
+Os 5 itens exigidos pelo PDF estão como imagens inline abaixo. Capturas adicionais em
+[`docs/apresentacao/`](docs/apresentacao/README.md). Valores e IDs são simulados; nenhuma
+cobrança real.
+
+### 6.1 Login Cognito
+
+Login no Cognito com o usuário de teste; o chat só abre autenticado.
+
+![Login Cognito](docs/apresentacao/01-login.png)
+
+### 6.2 Chamada à API sem token → 401
+
+```bash
+curl -i -X POST \
+  'https://gn217i7svh.execute-api.us-east-1.amazonaws.com/prod/chat' \
+  -H 'Content-Type: application/json' \
+  --data '{"messages": []}'
+```
+
+![POST /chat sem token retornando 401](docs/apresentacao/curl-401.png)
+
+### 6.3 Compra bem-sucedida com cartão e Pix
+
+![Compra aprovada com cartão](docs/apresentacao/07-pagamento-cartao.png)
+
+![Compra aprovada com Pix](docs/apresentacao/05-pagamento-pix.png)
+
+### 6.4 Tentativa bloqueada por limite excedido
+
+Compra acima do saldo: a intenção é cancelada com `LIMITE_EXCEDIDO`, sem débito.
+
+![Limite excedido no cartão](docs/apresentacao/06-limite-cartao.png)
+
+### 6.5 Tentativa com `intencao_id` inválido
+
+O modelo não encaminha IDs inventados; a recusa é comprovada no backend:
+
+```bash
+eval "$(bash scripts/aws-creds.sh)"
+curl -sS -X POST \
+  'https://lambda.us-east-1.amazonaws.com/2015-03-31/functions/luiz-henrique-realizar-compra/invocations' \
+  --aws-sigv4 'aws:amz:us-east-1:lambda' \
+  --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" \
+  -H "x-amz-security-token: $AWS_SESSION_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"usuario_id":"evidencia-postman","intencao_id":"int_1234","forma_pagamento":"pix"}'
+```
+
+![intencao_id inválido retornando INTENCAO_INVALIDA](docs/apresentacao/curl-404-intencao-invalida.png)
+
+### 6.6 Outras evidências
 
 | Caso | Resultado | Evidência |
 |---|---|---|
-| Login Cognito | Usuário autenticado; chat acessível | [01-login.png](docs/apresentacao/01-login.png) |
 | Chat inicial | Sessão autenticada, histórico carregado | [02-chat-inicial.png](docs/apresentacao/02-chat-inicial.png) |
 | Catálogo | Lista com IDs e preços | [03-catalogo.png](docs/apresentacao/03-catalogo.png) |
 | Intenção | ID retornado e status pendente | [04-intencao-fone.png](docs/apresentacao/04-intencao-fone.png) |
-| Compra com Pix | Intenção paga e saldo debitado | [05-pagamento-pix.png](docs/apresentacao/05-pagamento-pix.png) |
 | Intenção do monitor | ID e valor corretos | [06-intencao-monitor.png](docs/apresentacao/06-intencao-monitor.png) |
-| Limite excedido | Compra cancelada com `LIMITE_EXCEDIDO` | [06-limite-cartao.png](docs/apresentacao/06-limite-cartao.png) |
-| Compra com cartão | Intenção paga e saldo debitado | [07-pagamento-cartao.png](docs/apresentacao/07-pagamento-cartao.png) |
-| `POST /chat` sem token | `401` no API Gateway | `npm run test:agent` (teste automatizado) |
-| `intencao_id` inválido | `INTENCAO_INVALIDA`, sem cobrança | `npm run test:agent` (teste de ferramenta) |
 | `GET /conversas` | Histórico do próprio usuário | `npm run test:agent` (teste de integração) |
 | Novo produto após cancelamento | Novo ID, sem reutilizar o cancelado | `npm run test:agent` |
 
@@ -345,8 +364,8 @@ Detalhes e paridade local/remota: [`docs/DEV-LOCAL-AGENTE.md`](docs/DEV-LOCAL-AG
   no comando IaC. Decisão registrada em `docs/REQUISITOS-PDF-E-AUDITORIA.md`.
 - A suíte ampla de 100+ casos e o redirecionamento para catálogo estão planejados em
   `docs/TEST-STRATEGY.md` (caso `REFUSAL-LOOP-01`).
-- Evidências de 401 e `INTENCAO_INVALIDA` existem como testes automatizados; prints/Postman
-  ainda podem ser adicionados.
+- A coleção Postman em `tests/` está quebrada e precisa de correção; ela não é usada pelas
+  evidências da §6.
 - O chat Lambda ainda cria o item em `Usuarios` no primeiro acesso; ver §5.
 
 ## Custos
