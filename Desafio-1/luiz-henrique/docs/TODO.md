@@ -36,7 +36,7 @@ Região: `us-east-1`. Prefixo dos recursos: `luiz-henrique`.
 
 - [x] Implementar agente Strands com as 3 tools acima (código em agent/index.ts)
 - [x] Modelo: Amazon Bedrock (Claude Haiku — alvo) via AgentCore Runtime (CDK: CfnAgentRuntime)
-- [x] Liberar acesso ao Claude Haiku na conta Bedrock. — ativo: `global.anthropic.claude-haiku-4-5-20251001-v1:0` (runtime v5, verificado em 2026-11-17); fallback Nova 2 Lite mantido no CDK.
+- [x] Liberar acesso ao Claude Haiku na conta Bedrock. — ativo: `us.anthropic.claude-haiku-4-5-20251001-v1:0` (runtime v5, verificado em 2026-11-17); fallback Nova 2 Lite mantido no CDK.
 - [x] Regras de negócio da Fase 1 inalteradas
 - [x] Container image no ECR (repositório criado via CDK; Dockerfile em agent/)
 - [x] IAM role com permissões para Bedrock Converse + invoke das 3 tool Lambdas
@@ -84,9 +84,12 @@ Região: `us-east-1`. Prefixo dos recursos: `luiz-henrique`.
 - [x] Composer em `<form>` com Enter para enviar, botão desabilitado durante o envio e placeholder `…` para resposta pendente.
 - [x] Histórico de entrada no composer: ↑ recupera mensagens anteriores, ↓ avança e limpa.
 - [x] Estado vazio da conversa com orientação de uso (ex.: listar produtos, comprar com cartão).
+- [x] Login: aplicar tema claro/escuro do Amplify (`ThemeProvider` + `defaultDarkModeOverride`, sincronizado com `next-themes`) — ver `docs/ISSUES-LOGIN.md`.
+- [x] Login: esconder “Create account” com `hideSignUp` (Cognito é `AllowAdminCreateUserOnly`) — ver `docs/ISSUES-LOGIN.md`.
+- [ ] Login: fazer o Chrome oferecer salvar/preencher credenciais (Hosted UI ou Credential Management API) — ver `docs/ISSUES-LOGIN.md`; decidido não implementar (conflita com a stack `Authenticator` ou exige manipular senha no cliente).
 - [ ] Catálogo menor, alinhado com repo anterior (https://github.com/luiztosk/squad-03-desafio-MCP-agentic).
 - [ ] Link para repo anterior no README.md.
-- [x] Verificar BEDROCK_MODEL_ID lido do `.env` — console/runtime agora mostram `global.anthropic.claude-haiku-4-5-20251001-v1:0`.
+- [x] Verificar BEDROCK_MODEL_ID lido do `.env` — console/runtime agora mostram `us.anthropic.claude-haiku-4-5-20251001-v1:0`.
 - [ ] Build estático (`next build`, `output: 'export'`) gerando `frontend/out`.
 - [ ] Build e publicação no Amplify Hosting via `scripts/deploy-frontend.sh`.
 
@@ -141,14 +144,27 @@ Preencher `Desafio-1/luiz-henrique/README.md` com:
 - [ ] Destruir a stack (único comando de destroy).
 - [ ] Confirmar no console que não restou: bucket, distribuição CloudFront, runtime do AgentCore, imagens no ECR, tabelas DynamoDB, logs.
 
-## 11. Próximos passos (pós-entrega)
+## 11. Persistência e convite (requisitos do PDF)
+
+Detalhes em `docs/REQUISITOS-PDF-E-AUDITORIA.md` (§3 e §3.2).
+
+- [x] `scripts/invite-user.sh` + `npm run user:invite -- <email> [limite]`: cria o usuário no Cognito (convite enviado pelo próprio Cognito), lê o `sub` e faz `put-item` em `Usuarios` com o saldo inicial.
+- [x] `scripts/set-limit.sh` + `npm run user:set-limit` / `user:reset-limit`: resolve o `sub` por e-mail e atualiza `limite_centavos` em `Usuarios`, exibindo saldo anterior e novo.
+- [x] `realizar_compra`: fallback `LIMITE_COMPRA` removido; débito do saldo e pagamento da intenção numa única `TransactWriteItems` (`limite_centavos >= valor` + `status = pendente`), com códigos `LIMITE_EXCEDIDO`, `INTENCAO_JA_PAGA`, `INTENCAO_EXPIRADA`, `INTENCAO_INVALIDA`, `METODO_INVALIDO`.
+- [x] Valores monetários em centavos no saldo e na intenção (`valor_centavos`).
+- [x] Lambda do chat registra o usuário no primeiro acesso (`origem=lazy`, saldo padrão R$ 500).
+- [ ] Lambda do chat grava cada turno em `Conversas` (`conversa_id` gerado no backend, append atômico) com permissão de escrita só nessa tabela.
+- [ ] `GET /conversas` no API Gateway (mesmo autorizador JWT, só conversas do `sub`) + CORS com `GET`.
+- [ ] Frontend carrega o histórico de `GET /conversas` ao abrir o chat.
+- [ ] Convidar o instrutor pelo script e manter a aplicação acessível até a correção.
+
+## 12. Próximos passos (pós-entrega)
 
 Detalhes e opções em `docs/ROADMAP.md`.
 
 - [ ] Revisar o projeto anterior (`docs/MIGRACAO-ANTERIOR.md`) e reescrever o system prompt do agente com política de tools, confirmação e tratamento de erro explícitos.
 - [ ] Pesquisar e implementar verificação/grounding: a resposta final só pode citar produtos, preços, IDs, limite e status que vieram do retorno das tools; adicionar evals cobrindo catálogo, compra, limite excedido e `intencao_id` inválido.
-- [ ] Criar painel administrativo (grupo `admins` no Cognito + rotas autenticadas): resetar limite/gasto por usuário, corrigir catálogo e consultar intenções/compras, com log de auditoria.
-- [ ] Definir o modelo de limite de gasto por usuário: hoje é por compra (`limite`/`LIMITE_COMPRA` = 500) e não acumulado; se for por período, implementar contadores atômicos no DynamoDB, reset pelo admin e testes de concorrência.
+- [ ] Criar painel administrativo (grupo `admins` no Cognito + rotas autenticadas): resetar limite/gasto por usuário, corrigir catálogo e consultar intenções/compras, com log de auditoria. Convite e ajuste de limite seguem por CLI (§11) até o painel existir.
 
 ## Status
 

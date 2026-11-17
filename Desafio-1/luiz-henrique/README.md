@@ -24,19 +24,20 @@ Desafio-1/luiz-henrique/
 ## Diagrama implementado
 
 ```
-Amplify Hosting (frontend estático + login Cognito)
+Frontend local (Next.js em http://localhost:3000 · login Cognito/Amplify)
         │  HTTPS + Authorization: Bearer <JWT>
         ▼
-API Gateway (autorizador JWT Cognito · streaming/WebSocket)
+API Gateway (autorizador JWT Cognito · REST)
         ▼
 Lambda do chat ───► Agente Strands no AgentCore Runtime (Bedrock · Claude Haiku)
-                          ▼
-                   Lambdas das tools ───► DynamoDB (usuários, conversas, intenções/transações)
+        │                    ▼
+        │             Lambdas das tools ───► DynamoDB (usuários, intenções; conversas na próxima etapa)
+        └── registra o usuário (sub + saldo) em Usuarios
 ```
 
 ## Passo a passo de deploy
 
-Pré-requisitos: AWS CLI v2, perfil `desafio-1` configurado e sessão iniciada (`aws login` / `aws sso login`).
+Pré-requisitos: AWS CLI v2, perfil `desafio-1` configurado e sessão iniciada com `aws sso login`.
 
 ```bash
 # Na raiz de Desafio-1/luiz-henrique
@@ -61,9 +62,33 @@ não são versionados. A documentação e a coleção Postman usam as variáveis
 **Comandos disponíveis:**
 - `npm run deploy:api-agent` — API Gateway + Lambda chat + AgentCore Runtime (CORS permite `http://localhost:3000`)
 - `npm run deploy` — mesmo que `deploy:api-agent`
+- `npm run dev` — atalho para `npm run dev:frontend` (frontend local em `http://localhost:3000`)
+- `npm test` — suíte automatizada (`tests/agent.test.mjs`): 401 sem token, contrato de `realizar_compra` e fluxo do agente com estado real no DynamoDB
 - `npm run dev:frontend` — gera `frontend/public/config.json` a partir de `infra/cdk-outputs.json` e roda `next dev` em `http://localhost:3000` (usa `Authenticator` do `@aws-amplify/ui-react` apontando para o User Pool do CDK)
 - `npm run dev:agent` — roda o agente localmente (porta 3031) com Bedrock real
 - `npm run dev:create-test-user` — cria/atualiza o usuário de teste no Cognito User Pool (lê TEST_EMAIL/TEST_PASSWORD do `.env`)
+
+## Convite de usuários e limite de gasto
+
+Cadastro somente por convite (`AllowAdminCreateUserOnly`). O Cognito envia o e-mail de
+convite com senha temporária; no primeiro acesso o usuário define a nova senha.
+
+```bash
+# cria no Cognito + registra o saldo em Usuarios + envia o convite por e-mail
+npm run user:invite -- instrutor@example.com 500
+
+# define um saldo arbitrário (em reais)
+npm run user:set-limit -- instrutor@example.com 750
+
+# volta ao saldo padrão (R$ 500)
+npm run user:reset-limit -- instrutor@example.com
+```
+
+- O convite pelo console do Cognito também funciona: o template de convite está no CDK
+  (`userInvitation`) e a Lambda do chat cria o registro em `Usuarios` no primeiro acesso
+  (saldo padrão de R$ 500, `origem=lazy`).
+- O saldo é consumido a cada compra, numa transação atômica com o pagamento da intenção.
+- Nenhuma senha ou token é gravado no DynamoDB.
 
 ## Ambiente de desenvolvimento
 
@@ -88,7 +113,7 @@ localmente (porta 3031) com Bedrock real e as tools em fallback em memória.
 
 ## Modelo usado
 
-- Amazon Bedrock — Claude Haiku 4.5 (`global.anthropic.claude-haiku-4-5-20251001-v1:0`)
+- Amazon Bedrock — Claude Haiku 4.5 (`us.anthropic.claude-haiku-4-5-20251001-v1:0`)
 - Agente Strands rodando no Bedrock AgentCore Runtime
 - Fallback: se o acesso ao Claude Haiku não estiver liberado na conta, defina
   `BEDROCK_MODEL_ID=global.amazon.nova-2-lite-v1:0` no `.env` e faça
@@ -117,22 +142,39 @@ do schema) e o console mostra apenas um erro genérico.
 
 ## Modelagem do DynamoDB
 
-Tabelas (prefixadas com `luiz-henrique`):
+Tabelas (prefixadas com `luiz-henrique`). Detalhes em `docs/MODELO-USUARIOS.md`.
 
-- `Usuarios`: `usuario_id` (PK, = sub do Cognito), dados do cadastro por convite.
-- `Conversas`: `conversa_id` (PK), `usuario_id` (SK/GSI), histórico de mensagens.
-- `Intencoes`: `intencao_id` (PK), `usuario_id`, produtos, valor, status, carimbo de tempo.
+- `Usuarios` — PK `usuario_id` (= `sub` do Cognito):
+  `email`, `nome` (opcional), `limite_centavos` (saldo disponível, inteiro),
+  `gasto_total_centavos`, `status` (`ativo`/`bloqueado`), `origem`
+  (`convite`/`console`/`lazy`), `criado_em`, `atualizado_em`, `convite_enviado_em`.
+- `Conversas` — PK `conversa_id`, SK `usuario_id`, GSI `usuario_id-index`
+  (histórico por usuário; persistência na próxima etapa).
+- `Intencoes` — PK `intencao_id`: `usuario_id`, `produtos`, `valor`, `valor_centavos`,
+  `status`, `expira_em`, `created_at`, `forma_pagamento`, `pago_em`;
+  GSI `usuario_id-index`.
+- `Catalogo` — PK `id`: `nome`, `preco` (seed do CDK).
 
-Escritas condicionais para pagamento e limite (sem duplicidade). `usuario_id` vem do `sub` do token JWT, nunca do corpo nem do modelo.
+Regras de escrita:
+
+- `usuario_id` vem do `sub` do token JWT, nunca do corpo nem do modelo.
+- Compra: `TransactWriteItems` debita `Usuarios.limite_centavos` (condição
+  `limite_centavos >= valor` e `status = ativo`) e marca a intenção como `paga`
+  (condição `status = pendente`). Ou tudo acontece, ou nada é debitado.
+- Intenção aceita só se existir, for do próprio usuário, estiver `pendente` e não expirada
+  (15 minutos).
 
 ## Resumo do IAM
 
 - IAM de menor privilégio; nenhum curinga `*`; nenhum `AdministratorAccess`.
-- Lambda do chat: invocação do AgentCore Runtime + leitura DynamoDB.
-- Lambdas das tools: escrita condicional nas tabelas DynamoDB correspondentes.
+- Lambda do chat: `bedrock-agentcore:InvokeAgentRuntime` no runtime + `GetItem`/`PutItem`/
+  `UpdateItem` apenas em `Usuarios` (registro do usuário no primeiro acesso).
+- `listar_catalogo`: `GetItem`/`Scan` só em `Catalogo`.
+- `registrar_intencao`: `PutItem` só em `Intencoes`.
+- `realizar_compra`: `GetItem`/`TransactWriteItems` em `Intencoes` e `Usuarios`.
 - API Gateway: autorizador JWT Cognito.
-- AgentCore Runtime: execução do agente Strands com Bedrock.
-- Amplify Hosting (substitui S3 + CloudFront, bloqueado por SCP nesta conta).
+- AgentCore Runtime: Bedrock + invocação das 3 Lambdas de tool + logs (sem acesso direto às
+  tabelas).
 - Nenhum segredo no Git.
 
 ## Evidências
@@ -145,6 +187,8 @@ Escritas condicionais para pagamento e limite (sem duplicidade). `usuario_id` ve
 | Compra com Pix | Sucesso; intenção registrada e paga | pendente |
 | Limite excedido | Compra rejeitada | pendente |
 | `intencao_id` inválido | Erro; intenção não encontrada | pendente |
+| Convite por e-mail | Usuário criado no Cognito + item em `Usuarios` | pendente |
+| Ajuste de saldo por CLI | `user:set-limit` altera `limite_centavos` | pendente |
 
 Adicionar screenshots/logs de cada evidência nesta seção.
 
@@ -154,16 +198,11 @@ Adicionar screenshots/logs de cada evidência nesta seção.
 # Na raiz de Desafio-1/luiz-henrique
 eval "$(scripts/aws-creds.sh)"
 
-# 1. (se aplicável) Remover app Amplify órfão — não está mais no CDK
-aws amplify list-apps --region us-east-1
-# Se houver um app, deletá-lo manualmente:
-aws amplify delete-app --app-id <APP_ID> --region us-east-1
-
-# 2. Destruir a stack CDK (API + agente + Cognito + DynamoDB + AgentCore + ECR)
+# Destruir a stack CDK (API + agente + Cognito + DynamoDB + AgentCore + ECR)
 npm run destroy
 ```
 
-Confirmar no console AWS que não restou: app Amplify, runtime do AgentCore, imagens no ECR, tabelas DynamoDB, logs CloudWatch.
+Confirmar no console AWS que não restou: runtime do AgentCore, imagens no ECR, tabelas DynamoDB, logs CloudWatch.
 
 ## Regras essenciais
 

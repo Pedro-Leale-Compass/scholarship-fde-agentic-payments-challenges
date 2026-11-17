@@ -76,7 +76,12 @@ idempotência para não corromper compras em andamento.
 
 ## 4. Limite de gasto por usuário
 
-Estado atual:
+Decisão (2026-11-17): o limite é **saldo disponível** por usuário, gravado em `Usuarios`
+na criação, consumido a cada compra e ajustável por CLI (`user:set-limit` /
+`user:reset-limit`). Implementação e detalhes em
+`docs/REQUISITOS-PDF-E-AUDITORIA.md` §3.2 e `docs/TODO.md` §11.
+
+Estado atual (anterior à decisão):
 
 - `tools/realizar_compra/index.ts:128` lê `limite` do registro do usuário (ou
   `LIMITE_COMPRA`, default `500`) e rejeita a compra quando `valor > limite`

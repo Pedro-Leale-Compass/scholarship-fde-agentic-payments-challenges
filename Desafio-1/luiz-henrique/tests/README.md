@@ -1,6 +1,31 @@
 # Testes — Desafio 1 (luiz-henrique)
 
-Esta pasta contém a suíte de testes Postman para validar a API de chat de pagamentos.
+Esta pasta tem duas frentes:
+
+1. **Coleção Postman** — login no Cognito e testes manuais do `/chat`.
+2. **Suíte automatizada Node** (`npm run test:agent`) — valida o fluxo real do agente e o
+   contrato das tools, conferindo o estado no DynamoDB (não só o texto do modelo).
+
+## Suíte automatizada
+
+```bash
+npm run test:agent
+```
+
+Requisitos: stack implantada (`infra/cdk-outputs.json`) e credenciais AWS válidas. O teste
+cria um usuário temporário no Cognito e no DynamoDB e remove tudo ao final.
+
+Cobertura:
+
+| Teste | O que valida |
+|---|---|
+| `POST /chat sem token` | API Gateway responde `401` |
+| `realizar_compra: saldo, idempotência e códigos` | `COMPRA_APROVADA`, débito do saldo, retry `INTENCAO_JA_PAGA`, `LIMITE_EXCEDIDO`, `INTENCAO_INVALIDA` (id inexistente e dono errado), `INTENCAO_EXPIRADA`, `METODO_INVALIDO` |
+| `agente não confirma compra enquanto a intenção está pendente` | intenção pendente não é narrada como compra paga; o agente informa o `intencao_id`; após confirmar pagamento o status vira `paga` e o saldo é debitado; compra acima do limite não é narrada como aprovada |
+
+Saída esperada: `pass 3, fail 0`.
+
+## Coleção Postman
 
 ## Arquivos
 
