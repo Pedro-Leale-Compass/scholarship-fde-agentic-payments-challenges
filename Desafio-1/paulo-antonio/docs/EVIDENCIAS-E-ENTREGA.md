@@ -99,7 +99,9 @@ para formatar documentação.
 - [x] Confirmar recuperação pela interface do histórico após recarregar.
 - [ ] Testar token expirado e verificar métricas de não invocação da Lambda em requisições rejeitadas; checagens adicionais ainda pendentes.
 - [ ] Validar execução local e deploy do backend pelo comando documentado a partir da estrutura final de entrega. CloudFront não é necessário.
-- [ ] Confirmar nome final de pasta/branch, e-mail do instrutor, tags obrigatórias e datas de entrega/limpeza.
+- [x] Preparar localmente branch `fellow/paulo-antonio-desafio-1` e pasta `Desafio-1/paulo-antonio/`.
+- [x] Criar acessos convidados de Pedro e Gabriel no Cognito, nos e-mails fornecidos pelo aluno (17/11/2026). AWS aceitou envio dos convites; ambos habilitados em `FORCE_CHANGE_PASSWORD`. Recebimento e primeiro login ainda não confirmados. Nenhuma senha registrada no projeto.
+- [ ] Confirmar tags obrigatórias e datas de entrega/limpeza.
 - [ ] Transferir ao repositório compartilhado, preservando outras entregas.
 
 Destino previsto: branch `fellow/<seu-nome>-desafio-1`, pasta `Desafio-1/<seu-nome>/`.
