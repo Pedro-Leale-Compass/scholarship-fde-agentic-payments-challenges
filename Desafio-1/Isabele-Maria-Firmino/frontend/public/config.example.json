@@ -1,0 +1,6 @@
+{
+  "urlApi": "https://SUBSTITUA-PELO-ID.execute-api.us-east-1.amazonaws.com/v1/",
+  "regiao": "us-east-1",
+  "userPoolId": "us-east-1_SUBSTITUA",
+  "userPoolClientId": "SUBSTITUA-PELO-ID-DO-APP-CLIENT"
+}
