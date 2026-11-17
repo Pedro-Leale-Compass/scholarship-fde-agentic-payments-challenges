@@ -1,0 +1,9 @@
+{
+  "apiUrl": "https://yl0xg78oei.execute-api.us-east-1.amazonaws.com",
+  "chatApiUrl": "https://dvesqild85.execute-api.us-east-1.amazonaws.com/prod",
+  "cognito": {
+    "region": "us-east-1",
+    "userPoolId": "us-east-1_tYHumks4h",
+    "userPoolClientId": "6ccdai8km5lhfo6cbllud51t6b"
+  }
+}

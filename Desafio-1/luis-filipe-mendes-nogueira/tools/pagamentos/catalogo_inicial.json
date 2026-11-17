@@ -1,0 +1,62 @@
+[
+  {
+    "evento_id": "evt_001",
+    "nome": "Workshop: Agentes Inteligentes com MCP e TypeScript",
+    "categoria": "Workshop",
+    "categoria_normalizada": "workshop",
+    "preco_centavos": 12000,
+    "moeda": "BRL",
+    "vagas_totais": 30,
+    "vagas_restantes": 30
+  },
+  {
+    "evento_id": "evt_002",
+    "nome": "Hackathon Universitário de IA Generativa",
+    "categoria": "Hackathon",
+    "categoria_normalizada": "hackathon",
+    "preco_centavos": 4500,
+    "moeda": "BRL",
+    "vagas_totais": 50,
+    "vagas_restantes": 50
+  },
+  {
+    "evento_id": "evt_003",
+    "nome": "Conferência Global de Engenharia de Software 2026",
+    "categoria": "Conferência",
+    "categoria_normalizada": "conferência",
+    "preco_centavos": 115000,
+    "moeda": "BRL",
+    "vagas_totais": 15,
+    "vagas_restantes": 15
+  },
+  {
+    "evento_id": "evt_004",
+    "nome": "Meetup: Rust, Performance e Sistemas Distribuídos",
+    "categoria": "Meetup",
+    "categoria_normalizada": "meetup",
+    "preco_centavos": 2500,
+    "moeda": "BRL",
+    "vagas_totais": 40,
+    "vagas_restantes": 40
+  },
+  {
+    "evento_id": "evt_005",
+    "nome": "Imersão DevOps & Arquitetura Cloud Native",
+    "categoria": "Curso",
+    "categoria_normalizada": "curso",
+    "preco_centavos": 29000,
+    "moeda": "BRL",
+    "vagas_totais": 2,
+    "vagas_restantes": 2
+  },
+  {
+    "evento_id": "evt_006",
+    "nome": "Masterclass: Segurança Ofensiva & DevSecOps",
+    "categoria": "Workshop",
+    "categoria_normalizada": "workshop",
+    "preco_centavos": 18000,
+    "moeda": "BRL",
+    "vagas_totais": 20,
+    "vagas_restantes": 20
+  }
+]
