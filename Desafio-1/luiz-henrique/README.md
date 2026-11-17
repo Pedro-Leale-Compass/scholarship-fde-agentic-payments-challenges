@@ -4,7 +4,8 @@ Sprint 2 · Trilha Pagamentos Agênticos · Trabalho individual
 
 Branch: `fellow/luiz-henrique-desafio-1` · Região: `us-east-1` · Prefixo: `luiz-henrique`
 
-Baseline documentado: tag **`v0.0.2` — “chat works sometimes”** (`d854762`).
+Última tag: **`v0.0.4` — “requirements hardening and instructor flow verified”** (`a78f48e`).
+Baseline histórico: `v0.0.2` — “chat works sometimes” (`d854762`).
 
 > **Status (2026-11-17):** o fluxo de compra foi corrigido e validado localmente e na stack
 > (`npm run test:agent` 3/3). O agente funcionou nos primeiros pedidos reais. A suíte ampla

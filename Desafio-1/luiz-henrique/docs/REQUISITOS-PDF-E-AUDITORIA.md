@@ -1,6 +1,6 @@
 # Requisitos do PDF × estado atual
 
-Verificado em **2026-11-17** contra o código e os outputs da stack. Baseline `v0.0.3`.
+Verificado em **2026-11-17** contra o código e os outputs da stack. Baseline `v0.0.4`.
 
 Legenda: ✅ atende · 🟡 parcial · ❌ não atende · ⏸ adiado por decisão explícita.
 

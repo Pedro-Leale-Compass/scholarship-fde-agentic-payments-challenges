@@ -1,6 +1,6 @@
 # Estratégia de testes — agente e checkout
 
-Verificado em **2026-11-17**. Baseline atual: `v0.0.3` (checkout corrigido e validado).
+Verificado em **2026-11-17**. Baseline atual: `v0.0.4` (checkout corrigido + hardening de requisitos).
 
 ## 1. O que já foi validado
 
