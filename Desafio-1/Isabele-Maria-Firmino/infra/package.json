@@ -12,7 +12,7 @@
     "config:frontend": "tsx scripts/create-config-frontend.ts",
     "deploy:backend": "npm run install:lambdas && cdk deploy -c frontend=false --outputs-file cdk-outputs.json && npm run config:frontend",
     "deploy": "npm run install:lambdas && npm ci --prefix ../frontend && npm run build --prefix ../frontend && cdk deploy",
-    "destroy": "cdk destroy",
+    "destroy": "cdk destroy -c frontend=false",
     "check": "npm run typecheck && npm test"
   },
   "dependencies": {
