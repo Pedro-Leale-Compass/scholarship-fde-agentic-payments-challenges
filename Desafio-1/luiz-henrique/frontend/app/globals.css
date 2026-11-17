@@ -63,6 +63,11 @@ body {
   box-sizing: border-box;
 }
 
+[data-amplify-authenticator] {
+  min-height: 100dvh;
+  padding: 1.5rem 1rem;
+}
+
 .prose-chat > :first-child { margin-top: 0; }
 .prose-chat > :last-child { margin-bottom: 0; }
 .prose-chat p,

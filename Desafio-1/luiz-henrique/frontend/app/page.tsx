@@ -2,9 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { Amplify } from 'aws-amplify';
-import { Authenticator } from '@aws-amplify/ui-react';
+import {
+  Authenticator,
+  defaultDarkModeOverride,
+  ThemeProvider as AmplifyThemeProvider,
+} from '@aws-amplify/ui-react';
 import '@aws-amplify/ui-react/styles.css';
 import type { AuthUser } from 'aws-amplify/auth';
+import { useTheme } from 'next-themes';
 
 import { AppHeader } from '@/components/app-header';
 import { ChatComposer } from '@/components/chat/chat-composer';
@@ -12,9 +17,15 @@ import { ChatThread } from '@/components/chat/chat-thread';
 import { useChat } from '@/hooks/use-chat';
 import type { RuntimeConfig } from '@/lib/chat';
 
+const amplifyTheme = {
+  name: 'desafio1',
+  overrides: [defaultDarkModeOverride],
+};
+
 export default function Page() {
   const [config, setConfig] = useState<RuntimeConfig | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
+  const { resolvedTheme } = useTheme();
 
   useEffect(() => {
     fetch('/config.json')
@@ -42,11 +53,16 @@ export default function Page() {
   }
 
   return (
-    <Authenticator>
-      {({ signOut, user }) => (
-        <ChatApp config={config} user={user} signOut={signOut} />
-      )}
-    </Authenticator>
+    <AmplifyThemeProvider
+      colorMode={resolvedTheme === 'dark' ? 'dark' : 'light'}
+      theme={amplifyTheme}
+    >
+      <Authenticator hideSignUp>
+        {({ signOut, user }) => (
+          <ChatApp config={config} user={user} signOut={signOut} />
+        )}
+      </Authenticator>
+    </AmplifyThemeProvider>
   );
 }
 
@@ -67,7 +83,7 @@ function ChatApp({
   }
 
   return (
-    <main className="mx-auto flex h-screen max-w-2xl flex-col gap-4 p-4">
+    <main className="mx-auto flex h-dvh max-w-2xl flex-col gap-4 px-4 pt-4 pb-[max(5dvh,env(safe-area-inset-bottom))]">
       {user && <AppHeader user={user} onSignOut={handleSignOut} />}
       <ChatThread messages={messages} loading={loading} />
       <ChatComposer
