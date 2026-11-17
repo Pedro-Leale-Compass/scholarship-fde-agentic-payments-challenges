@@ -27,7 +27,7 @@ export class Autenticacao extends constructs.Construct {
       userInvitation: {
         emailSubject: 'Seu acesso ao agente de pagamentos',
         emailBody:
-          'Olá! Você foi convidado(a) para o agente de pagamentos.\n\n' +
+          'Olá! Você foi convidado(a) para o agente de pagamentos da Isabele.\n\n' +
           'Usuário: {username}\nSenha temporária: {####}\n\n' +
           `No primeiro acesso será pedido que você defina uma nova senha.${acesso}`,
       },
