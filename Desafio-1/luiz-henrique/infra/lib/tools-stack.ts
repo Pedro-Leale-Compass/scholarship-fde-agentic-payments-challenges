@@ -59,24 +59,28 @@ export class ToolsStack extends Construct {
 
     this.realizarCompraFn = makeFn('RealizarCompraFn', 'realizar_compra', commonEnv);
 
-    const ddbWritePolicy = new iam.PolicyStatement({
-      actions: [
-        'dynamodb:PutItem',
-        'dynamodb:UpdateItem',
-        'dynamodb:GetItem',
-        'dynamodb:Query',
-        'dynamodb:Scan',
-      ],
-      resources: [
-        intencoesTable.tableArn,
-        `${intencoesTable.tableArn}/index/*`,
-        usuariosTable.tableArn,
-        catalogoTable.tableArn,
-      ],
-    });
+    // Menor privilégio: cada tool só acessa as tabelas que realmente usa.
+    this.listarCatalogoFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['dynamodb:GetItem', 'dynamodb:Scan'],
+        resources: [catalogoTable.tableArn],
+      }),
+    );
 
-    [this.listarCatalogoFn, this.registrarIntencaoFn, this.realizarCompraFn].forEach(
-      (fn) => fn.addToRolePolicy(ddbWritePolicy),
+    this.registrarIntencaoFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['dynamodb:PutItem'],
+        resources: [intencoesTable.tableArn],
+      }),
+    );
+
+    this.realizarCompraFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        // TransactWriteItems é autorizado pelas ações de item (UpdateItem), não por
+        // "dynamodb:TransactWriteItems".
+        actions: ['dynamodb:GetItem', 'dynamodb:UpdateItem', 'dynamodb:TransactWriteItems'],
+        resources: [intencoesTable.tableArn, usuariosTable.tableArn],
+      }),
     );
 
     this.toolLambdaArns = {

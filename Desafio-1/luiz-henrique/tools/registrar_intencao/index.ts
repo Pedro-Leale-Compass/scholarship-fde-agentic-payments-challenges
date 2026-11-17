@@ -3,9 +3,17 @@ import {
   PutItemCommand,
   type PutItemCommandInput,
 } from "@aws-sdk/client-dynamodb";
-import { v4 as uuidv4 } from "uuid";
+import { randomBytes } from "crypto";
 
 const INTENCOES_TABLE = process.env.INTENCOES_TABLE || "luiz-henrique-intencoes";
+
+/**
+ * IDs curtos e legíveis (INT-1A2B3C4D) em vez de UUID. O modelo copia IDs curtos
+ * com muito menos alucinação; o formato antigo (UUID) continua válido na tool.
+ */
+function gerarIntencaoId(): string {
+  return `INT-${randomBytes(4).toString("hex").toUpperCase()}`;
+}
 
 const client = new DynamoDBClient({
   region: process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "us-east-1",
@@ -90,7 +98,14 @@ exports.handler = async (event: RegistrarIntencaoEvent): Promise<LambdaResponse>
     };
   }
 
-  const intencao_id = uuidv4();
+  const intencao_id = gerarIntencaoId();
+  const valor_centavos = Math.round(valor * 100);
+  // A intenção expira em 15 minutos; depois disso, realizar_compra recusa.
+  const expira_em = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+
+  console.log(
+    JSON.stringify({ tool: "registrar_intencao", usuario_id, intencao_id, valor, valor_centavos }),
+  );
 
   const input: PutItemCommandInput = {
     TableName: INTENCOES_TABLE,
@@ -99,8 +114,10 @@ exports.handler = async (event: RegistrarIntencaoEvent): Promise<LambdaResponse>
       usuario_id: dynamoString(usuario_id),
       produtos: dynamoList(produtos),
       valor: dynamoNumber(valor),
+      valor_centavos: dynamoNumber(valor_centavos),
       status: dynamoString("pendente"),
       created_at: dynamoString(new Date().toISOString()),
+      expira_em: dynamoString(expira_em),
     },
     ConditionExpression: "attribute_not_exists(intencao_id)",
   };
@@ -116,7 +133,9 @@ exports.handler = async (event: RegistrarIntencaoEvent): Promise<LambdaResponse>
         usuario_id,
         produtos,
         valor,
+        valor_centavos,
         status: "pendente",
+        expira_em,
         message: "Intencao registrada com sucesso",
       }),
     };

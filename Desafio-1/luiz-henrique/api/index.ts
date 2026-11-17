@@ -13,11 +13,25 @@ import {
   InvokeAgentRuntimeCommand,
   type InvokeAgentRuntimeCommandInput,
 } from "@aws-sdk/client-bedrock-agentcore";
+import {
+  DynamoDBClient,
+  GetItemCommand,
+  PutItemCommand,
+  UpdateItemCommand,
+} from "@aws-sdk/client-dynamodb";
 import { randomUUID } from "crypto";
 
 const bedrockAgentCore = new BedrockAgentCoreClient({
   region: process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "us-east-1",
 });
+
+const ddb = new DynamoDBClient({
+  region: process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "us-east-1",
+});
+
+const USUARIOS_TABLE = process.env.USUARIOS_TABLE;
+const LIMITE_INICIAL_CENTAVOS =
+  Number(process.env.LIMITE_INICIAL_CENTAVOS) || 50000;
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": process.env.FRONTEND_URL || "",
@@ -47,6 +61,86 @@ interface LambdaResponse {
   statusCode: number;
   headers?: Record<string, string>;
   body: string;
+}
+
+/**
+ * Garante que todo usuário autenticado exista em `Usuarios`, usando o sub do
+ * Cognito como chave. Isso cobre usuários criados pelo console do Cognito
+ * (fora do script de convite) e mantém o saldo inicial explícito.
+ */
+async function ensureUsuario(
+  usuarioId: string,
+  email?: string,
+): Promise<string | undefined> {
+  if (!USUARIOS_TABLE) {
+    console.warn("USUARIOS_TABLE not configured; skipping user registration");
+    return undefined;
+  }
+
+  const existing = await ddb.send(
+    new GetItemCommand({
+      TableName: USUARIOS_TABLE,
+      Key: { usuario_id: { S: usuarioId } },
+      ProjectionExpression: "usuario_id, ultima_intencao_id",
+    }),
+  );
+  if (existing.Item) {
+    return (existing.Item.ultima_intencao_id as { S?: string } | undefined)?.S;
+  }
+
+  const now = new Date().toISOString();
+  try {
+    await ddb.send(
+      new PutItemCommand({
+        TableName: USUARIOS_TABLE,
+        Item: {
+          usuario_id: { S: usuarioId },
+          email: { S: email || "" },
+          limite_centavos: { N: String(LIMITE_INICIAL_CENTAVOS) },
+          gasto_total_centavos: { N: "0" },
+          status: { S: "ativo" },
+          origem: { S: "lazy" },
+          criado_em: { S: now },
+          atualizado_em: { S: now },
+        },
+        ConditionExpression: "attribute_not_exists(usuario_id)",
+      }),
+    );
+    console.log(`usuario registrado: ${usuarioId}`);
+  } catch (err) {
+    if (err instanceof Error && err.name === "ConditionalCheckFailedException") {
+      return undefined;
+    }
+    // Não bloqueia o chat: a próxima requisição tenta registrar de novo.
+    console.error("ensureUsuario error:", err);
+  }
+  return undefined;
+}
+
+/**
+ * Persiste o último intencao_id em Usuarios, para que a próxima mensagem não
+ * dependa do modelo de lembrar o ID (nem do histórico corrompido).
+ */
+async function persistUltimaIntencao(
+  usuarioId: string,
+  intencaoId: string,
+): Promise<void> {
+  if (!USUARIOS_TABLE) return;
+  try {
+    await ddb.send(
+      new UpdateItemCommand({
+        TableName: USUARIOS_TABLE,
+        Key: { usuario_id: { S: usuarioId } },
+        UpdateExpression: "SET ultima_intencao_id = :id, atualizado_em = :agora",
+        ExpressionAttributeValues: {
+          ":id": { S: intencaoId },
+          ":agora": { S: new Date().toISOString() },
+        },
+      }),
+    );
+  } catch (err) {
+    console.error("persistUltimaIntencao error:", err);
+  }
 }
 
 /**
@@ -89,6 +183,8 @@ exports.handler = async (event: {
     };
   }
 
+  const ultimaIntencaoId = await ensureUsuario(usuario_id, claims?.email);
+
   let body: ChatEventBody = {};
   try {
     body = JSON.parse(event.body || "{}");
@@ -98,7 +194,20 @@ exports.handler = async (event: {
 
   const messages = body.messages || [];
 
-  const prompt = messages
+  // Histórico longo degrada a aderência do modelo (IDs inventados, turnos
+  // fabricados). Mantemos só as últimas mensagens; o usuário pode limpar a conversa.
+  // Mensagens do guard de "não finalizada" também saem: elas viram few-shot de erro.
+  const MAX_HISTORY_MESSAGES = 12;
+  const GUARD_MARK = "A compra ainda não foi finalizada";
+  const history = messages
+    .slice(-MAX_HISTORY_MESSAGES)
+    .filter((m) => {
+      if (m.role !== "assistant") return true;
+      const text = m.content.map((c) => c.text).join(" ");
+      return !text.includes(GUARD_MARK);
+    });
+
+  const prompt = history
     .map((m) => `${m.role}: ${m.content.map((c) => c.text).join(" ")}`)
     .join("\n");
 
@@ -108,7 +217,8 @@ exports.handler = async (event: {
       JSON.stringify({
         prompt,
         usuario_id,
-        messages,
+        messages: history,
+        intencao_id: ultimaIntencaoId,
       }),
     ),
     runtimeSessionId: `desafio1-${usuario_id}-${randomUUID()}`.slice(0, 200),
@@ -137,6 +247,13 @@ exports.handler = async (event: {
         headers: CORS_HEADERS,
         body: JSON.stringify((responseBody as { body?: unknown }).body || responseBody),
       };
+    }
+
+    if (typeof responseBody === "object" && responseBody !== null) {
+      const intencaoId = (responseBody as { intencao_id?: unknown }).intencao_id;
+      if (typeof intencaoId === "string" && intencaoId) {
+        await persistUltimaIntencao(usuario_id, intencaoId);
+      }
     }
 
     return {

@@ -14,7 +14,7 @@ Evidence collected with `aws` CLI plus an end-to-end call through API Gateway.
    synth without `.env` still produces a working agent.
 3. **Claude Haiku 4.5 (P2)** — foundation-model ARNs are now derived from `MODEL_ID`
    (profile prefix stripped); `.env`/`.env.example` set to
-   `global.anthropic.claude-haiku-4-5-20251001-v1:0`, with Nova 2 Lite as documented
+   `us.anthropic.claude-haiku-4-5-20251001-v1:0`, with Nova 2 Lite as documented
    fallback. Deployed at runtime v5 and verified.
 4. **Environment loading (P3)** — new `infra/lib/env.ts` locates `.env` by walking upward
    (works from `infra/lib` and `infra/dist/lib`), supports `ENV_FILE`, and `bin/desafio-1.ts`
@@ -203,19 +203,19 @@ not the cause of the 500 — the deployed env already had
 
 `infra/lib/agent-stack.ts` derived the inference-profile ARN from `MODEL_ID` but hardcoded
 `FOUNDATION_MODEL_ID = 'amazon.nova-2-lite-v1:0'`. Switching `.env` to the Claude Haiku
-profile (`global.anthropic.claude-haiku-4-5-20251001-v1:0`) would have produced
+profile (`us.anthropic.claude-haiku-4-5-20251001-v1:0`) would have produced
 `AccessDenied` because the Claude foundation-model ARNs were absent.
 
 Status: **fixed, deployed and verified** (2026-11-17 01:05 UTC, runtime v5). The stack now
 derives the foundation model id from `MODEL_ID` (strips the `global.`/`us.`/`eu.`/`apac.`
 profile prefix), so the policy grants:
 
-- `arn:aws:bedrock:us-east-1:829...:inference-profile/global.anthropic.claude-haiku-4-5-20251001-v1:0`
+- `arn:aws:bedrock:us-east-1:829...:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0`
 - `arn:aws:bedrock:::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0`
 - the same foundation model in `us-east-1`, `us-east-2` and `us-west-2`
 
 Both the console/CLI contract and the API `/chat` path returned a catalog answer with
-`"model":"global.anthropic.claude-haiku-4-5-20251001-v1:0"`. Nova 2 Lite remains the
+`"model":"us.anthropic.claude-haiku-4-5-20251001-v1:0"`. Nova 2 Lite remains the
 hardcoded fallback when `BEDROCK_MODEL_ID` is unset.
 
 ## P3 — `.env` loading is fragile
@@ -269,3 +269,95 @@ this value to become dynamic (e.g. derived from the hosting distribution).
 | P3 | Single, robust `.env` loader with fail-fast validation | done (no template diff) |
 | P4 | Dynamic frontend URL (when the frontend is hosted) | deferred |
 | P5 | Cleanup: IAM wildcard note, managed policy, real synth test, docs | pending |
+
+## Fix log v0.0.2 — registro de usuários e saldo transacional (2026-11-17)
+
+1. **Registro em `Usuarios`** — a Lambda do chat agora faz lazy upsert por `sub` + `email`
+   (`api/index.ts`, `ensureUsuario`), com `limite_centavos` padrão de 50000. Role do chat
+   ganhou `dynamodb:GetItem`/`PutItem`/`UpdateItem` apenas em `Usuarios`.
+2. **Convite por e-mail** — `scripts/invite-user.sh` (`npm run user:invite`) cria o usuário
+   no Cognito, deixa o Cognito enviar o convite (template `userInvitation` no CDK) e grava
+   o saldo em `Usuarios`. `scripts/set-limit.sh` (`npm run user:set-limit` /
+   `user:reset-limit`) ajusta o saldo em reais.
+3. **Compra transacional** — `realizar_compra` usa `TransactWriteItems`: baixa de
+   `limite_centavos` (condição `>= valor` e `status = ativo`) + pagamento da intenção
+   (condição `status = pendente`). Retorna os códigos da Fase 1
+   (`LIMITE_EXCEDIDO`, `INTENCAO_JA_PAGA`, `INTENCAO_EXPIRADA`, `INTENCAO_INVALIDA`,
+   `METODO_INVALIDO`) e valida dono e expiração.
+4. **IAM (P0 do novo bloco)** — `TransactWriteItems` é autorizado por
+   `dynamodb:UpdateItem`, não por `dynamodb:TransactWriteItems`. Sem `UpdateItem` a
+   Lambda falhava com `AccessDeniedException` mascarado em 500. Política corrigida e
+   redeployada.
+5. **Policy por tool** — a policy compartilhada das tools foi substituída por uma por
+   Lambda: `listar_catalogo` só `Catalogo`; `registrar_intencao` só `PutItem` em
+   `Intencoes`; `realizar_compra` `GetItem`/`UpdateItem`/`TransactWriteItems` em
+   `Intencoes` + `Usuarios`.
+6. **`ClientRequestToken` removido** — reaproveitar o token com parâmetros diferentes
+   gerava `IdempotentParameterMismatchException`; as condições `pendente` + `limite >= valor`
+   já garantem idempotência.
+
+Verificado no ambiente real:
+
+- `npm run user:invite -- <email> 500` → usuário `FORCE_CHANGE_PASSWORD` no Cognito e item
+  em `Usuarios` com `limite_centavos=50000`, `origem=convite`.
+- `npm run user:set-limit -- <email> 750` e `user:reset-limit` → 500 → 750 → 500.
+- Lambda `luiz-henrique-realizar-compra` com saldo 10000 e intenção de 5000 →
+  `COMPRA_APROVADA`; saldo 5000, gasto 5000; retry → `INTENCAO_JA_PAGA`.
+- Lambda do chat com claims `sub`/`email` (claims sintéticas) → item criado com
+  `origem=lazy`.
+
+## Fix log v0.0.3 — prompt, tool calling e validação (2026-11-17)
+
+1. **Prompt reescrito** com o fluxo de checkout do repo anterior (registrar intenção →
+   mostrar `intencao_id` → perguntar pagamento → pagar) e a regra explícita de não confundir
+   intenção pendente com compra paga.
+2. **Guard determinístico** no runtime: a resposta só pode dizer "aprovada/confirmada/paga"
+   se `realizar_compra` retornou `ok: true` na mesma invocação.
+3. **Fallback determinístico**: se o usuário confirma o pagamento e o modelo não chama
+   `realizar_compra`, o runtime chama a tool com o último `intencao_id` da conversa.
+4. **Tool calling**: `temperature: 0`, descrições de tool mais específicas, uma tool por vez
+   (as tools têm efeito colateral). Detalhes em `docs/MODELO-BEDROCK-TOOLS.md`.
+5. **Testes automatizados**: `npm run test:agent` (3 testes, com usuário temporário e
+   asserções no DynamoDB). Resultado: `pass 3, fail 0`.
+6. **Logging**: `realizar_compra` e `registrar_intencao` logam
+   `{tool, usuario_id, intencao_id, statusCode/code}` para diagnóstico.
+
+## Fix log v0.0.4 — turnos fabricados (2026-11-17)
+
+1. **Causa**: a Lambda enviava `messages` estruturados, mas o runtime usava apenas o
+   `prompt` achatado (`user: ...`), e o modelo continuava o transcript inventando falas.
+2. **Correção**: runtime passou a usar `MessageData[]` no `agent.stream` quando `messages`
+   está presente; `prompt` virou fallback.
+3. **Prompt**: regra explícita para responder só à última mensagem e nunca escrever
+   `user:`/`assistant:`/`human:`/`ai:`/`system:`.
+4. **Sanitizer**: `stripFabricatedTurns` corta a resposta no primeiro turno falso; se a
+   resposta inteira for transcript, devolve mensagem neutra.
+5. **Teste**: `tests/agent.test.mjs` agora falha se a resposta tiver linha de turno
+   fabricado. Resultado: `pass 3, fail 0`.
+
+## Fix log v0.0.5 — IDs inventados e intenções canceladas (2026-11-17)
+
+1. **Grounding de ID**: `groundIntencaoIds` substitui UUIDs divergentes e placeholders
+   (`intencao_1`) pelo último `intencao_id` real da invocação.
+2. **Tool boundary**: `realizar_compra` recusa IDs não-UUID; se houve registro na
+   invocação, usa o ID real.
+3. **Cancelamento**: `LIMITE_EXCEDIDO` e `INTENCAO_EXPIRADA` marcam a intenção como
+   `cancelada` com `motivo_falha`; o erro inclui `status: "cancelada"`.
+4. **Prompt**: regras 10 e 11 (não inventar ID; não reutilizar intenções canceladas/
+   expiradas/pagas).
+5. **Histórico**: API limita a 12 últimas mensagens.
+6. **Testes**: UUIDs da resposta precisam existir no DynamoDB; intenção acima do limite
+   precisa ficar `cancelada`.
+
+## Fix log v0.0.6 — segunda compra, IDs curtos e prompt enxuto (2026-11-17)
+
+1. **Prompt** reescrito em 6 seções curtas (~30 linhas), removendo as 11 regras
+   acumuladas e a auto-verificação que estimulava a mensagem genérica.
+2. **IDs curtos** `INT-XXXXXXXX` em `registrar_intencao`; UUID antigo segue válido.
+3. **`Usuarios.ultima_intencao_id`**: API persiste o último ID e o reenvia no próximo
+   turno; o runtime usa como fallback e na validação da tool.
+4. **Histórico**: 12 mensagens + remoção das mensagens do guard para não contaminar o
+   few-shot.
+5. **Grounding**: `INT-...`/UUID divergentes e `intencao_N` são substituídos pelo ID real.
+6. **Teste**: suíte agora faz duas compras (fone e teclado) após uma compra confirmada e
+   verifica que a segunda é paga e o saldo é debitado duas vezes.
