@@ -3,7 +3,7 @@
 Instruções para qualquer agente/pessoa que trabalhe neste projeto. O objetivo é evitar
 trabalho fora da pasta/branch, afirmações desatualizadas e custo AWS desnecessário.
 
-Baseline atual: tag **`v0.0.4` — “requirements hardening and instructor flow verified”** (`a78f48e`).
+Baseline atual: tag **`v0.0.5` — “history, catalog pricing and websocket scaffold”** (`0afba12`).
 Baseline histórico: `v0.0.2` — “chat works sometimes” (`d854762`).
 
 ## 1. Pasta e branch

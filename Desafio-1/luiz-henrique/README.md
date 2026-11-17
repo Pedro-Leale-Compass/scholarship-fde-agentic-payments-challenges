@@ -4,56 +4,159 @@ Sprint 2 · Trilha Pagamentos Agênticos · Trabalho individual
 
 Branch: `fellow/luiz-henrique-desafio-1` · Região: `us-east-1` · Prefixo: `luiz-henrique`
 
-Última tag: **`v0.0.4` — “requirements hardening and instructor flow verified”** (`a78f48e`).
+Última tag: **`v0.0.5` — “history, catalog pricing and websocket scaffold”** (`0afba12`).
+
 Baseline histórico: `v0.0.2` — “chat works sometimes” (`d854762`).
 
 > **Status (2026-11-17):** o fluxo de compra foi corrigido e validado localmente e na stack
-> (`npm run test:agent` 3/3). O agente funcionou nos primeiros pedidos reais. A suíte ampla
-> de 100+ casos e o comportamento de redirecionamento para o catálogo estão planejados em
-> [`docs/TEST-STRATEGY.md`](docs/TEST-STRATEGY.md). O frontend continua local.
+> (`npm run test:agent` 3/3). O agente funcionou nos primeiros pedidos reais. O frontend
+> continua local; o WebSocket está parcial (`$connect` funciona, `$default` ainda falha).
+> A suíte ampla de 100+ casos está planejada em [`docs/TEST-STRATEGY.md`](docs/TEST-STRATEGY.md).
 
-## Estrutura
+> **Formato de entrega (PDF):** as seções **1 a 7** abaixo seguem a ordem pedida no PDF:
+> diagrama, deploy, modelo, DynamoDB, IAM, evidências e remoção. As demais seções são
+> complementares e podem ser lidas depois.
+
+## Visão geral
+
+O projeto leva para a AWS o chatbot de compras da Fase 1: login Cognito, agente
+conversacional no Bedrock AgentCore, três tools em Lambda e persistência em DynamoDB.
+
+O modelo conversa, mas o backend manda no dinheiro:
+
+- `usuario_id` vem do `sub` do JWT, nunca do modelo;
+- preço/produto vêm do `Catalogo` (`preco_centavos`), não do modelo;
+- `realizar_compra` só paga intenção existente, do próprio usuário, `pendente` e não
+  expirada;
+- o débito do saldo e a mudança para `paga` acontecem na mesma transação condicional;
+- IDs inventados geram falha visível (`INTENCAO_INVALIDA`), nunca uma cobrança.
+
+### Estrutura do projeto
 
 ```
 Desafio-1/luiz-henrique/
 ├── frontend/   # Next.js (App Router) + Amplify Authenticator; roda local
-├── api/        # Lambda do chat (API Gateway + JWT Cognito)
+├── api/        # Lambda REST (chat, GET /conversas) + Lambda WebSocket
 ├── agent/      # Strands no Bedrock AgentCore Runtime (Bedrock)
 ├── tools/      # Lambdas: listar_catalogo, registrar_intencao, realizar_compra
 ├── infra/      # CDK: DynamoDB, tools, agente, API, Cognito, ECR
 ├── scripts/    # credenciais, convite, limite, dev local, check:model/logs, destroy
 ├── tests/      # suíte Node + coleção Postman
-├── docs/       # documentação canônica + archive/ histórico
+├── docs/       # documentação canônica + archive/ histórico + apresentacao/
 └── README.md
 ```
 
-## Arquitetura implementada
+## 1. Diagrama da arquitetura
 
 ```
 Frontend Next.js local (http://localhost:3000 · login Cognito/Amplify)
-        │  POST /chat + Authorization: Bearer <IdToken>
+        │
+        ├─ POST /chat            Authorization: Bearer <IdToken>
+        ├─ GET  /conversas       Authorization: Bearer <IdToken>
+        │
         ▼
 API Gateway REST (prod) + autorizador JWT Cognito
-  ├─ POST /chat
-  └─ GET /conversas
+        │
         ▼
 Lambda do chat
   ├─ valida o sub do token
   ├─ garante o item em Usuarios (lazy)
+  ├─ lê/grava estado e histórico em Conversas
   └─ InvokeAgentRuntime
+        │
         ▼
 AgentCore Runtime (container arm64 no ECR)
-  └─ Strands + BedrockModel
+  └─ Strands + BedrockModel (Claude Haiku 4.5)
        ├─ listar_catalogo    → Lambda → DynamoDB Catalogo
-       ├─ registrar_intencao → Lambda → DynamoDB Intencoes
+       ├─ registrar_intencao → Lambda → DynamoDB Catalogo + Intencoes
        └─ realizar_compra    → Lambda → TransactWriteItems (Intencoes + Usuarios)
 ```
 
-Não há S3/CloudFront/OAC, VPC, NAT Gateway, Amplify Hosting ou streaming neste repositório.
-Há uma API Gateway WebSocket **parcial** (`$connect` funciona; `$default` ainda falha); o
-chat principal usa REST. Ver [`docs/WS-NEXT.md`](docs/WS-NEXT.md). O frontend roda local.
+Há também uma API Gateway **WebSocket parcial**:
 
-## Para o instrutor
+```
+Cliente WS ── wss://.../prod?token=<IdToken>&conversa_id=<uuid>
+  ├─ $connect    → valida token, grava Conexoes
+  ├─ $disconnect → remove Conexao
+  └─ $default    → deveria invocar a Lambda do chat; hoje retorna Internal server error
+```
+
+Continuação do WebSocket: [`docs/WS-NEXT.md`](docs/WS-NEXT.md).
+
+### Serviços implementados
+
+| Camada | Implementação | Onde |
+|---|---|---|
+| IaC | AWS CDK v2 (TypeScript), stack `Desafio1Stack` | `infra/bin/desafio-1.ts`, `infra/lib/desafio-1-stack.ts` |
+| Frontend | Next.js App Router + Tailwind + Amplify Auth; roda local | `frontend/` |
+| Auth | Cognito User Pool, `selfSignUpEnabled: false`, convite por admin | `infra/lib/api-stack.ts` |
+| API REST | API Gateway REST, `POST /chat` e `GET /conversas` | `infra/lib/api-stack.ts` |
+| API WS | API Gateway WebSocket parcial | `infra/lib/api-stack.ts`, `api/websocket/index.ts` |
+| Chat | Lambda Node 20 que chama o AgentCore Runtime | `api/index.ts` |
+| Agente | Strands no AgentCore Runtime; imagem Docker arm64 | `agent/`, `infra/lib/agent-stack.ts` |
+| Tools | 3 Lambdas Node 20 | `tools/`, `infra/lib/tools-stack.ts` |
+| Dados | DynamoDB on-demand: `Usuarios`, `Conversas`, `Intencoes`, `Catalogo`, `Conexoes` | `infra/lib/database-stack.ts` |
+| Imagem | `DockerImageAsset` no ECR | `infra/lib/agent-stack.ts` |
+| Runtime | `CustomResource` com create/update/delete do AgentCore | `infra/lambda/agent-runtime/index.ts` |
+| Modelo | Bedrock Claude Haiku 4.5 | `agent/index.ts` |
+
+## 2. Instruções de deploy
+
+### 2.1 Pré-requisitos
+
+- AWS CLI v2 com perfil `desafio-1` (IAM Identity Center).
+- Node.js 20+ e npm.
+- Docker em execução (o CDK builda a imagem arm64 do agente).
+- Permissões para criar/atualizar os recursos da stack.
+
+```bash
+aws sso login --profile desafio-1
+cd Desafio-1/luiz-henrique
+npm install
+npm --prefix infra install
+npm --prefix agent install
+eval "$(bash scripts/aws-creds.sh)"
+```
+
+### 2.2 Comando único — backend, tools, agente e API
+
+```bash
+npm run diff                  # revise o que será criado/alterado
+npm run deploy:api-agent
+```
+
+`npm run deploy:api-agent` executa
+`cdk deploy --require-approval never --outputs-file cdk-outputs.json` na pasta `infra/`.
+
+> **Desvio em relação ao PDF:** o comando único cobre **backend, tools, agente e API**, mas
+> **não** publica o frontend em S3 + CloudFront + OAC. A conta tem SCP que bloqueia esses
+> recursos; o frontend roda local. O instrutor consegue rodar com `npm run setup && npm run dev`.
+> O desvio está registrado em [`docs/REQUISITOS-PDF-E-AUDITORIA.md`](docs/REQUISITOS-PDF-E-AUDITORIA.md).
+
+### 2.3 Variáveis de ambiente
+
+Copie `.env.example` para `.env` e preencha o necessário. Principais:
+
+- `BEDROCK_MODEL_ID` — o `.env` usa `us.anthropic.claude-haiku-4-5-20251001-v1:0`.
+  Sem essa variável no momento do deploy, o CDK usa
+  `global.amazon.nova-2-lite-v1:0` silenciosamente.
+- `TEST_EMAIL` / `TEST_PASSWORD` — usuário de teste local.
+- `AWS_REGION` — `us-east-1`.
+
+`.env` e `infra/cdk-outputs.json` são gitignorados. Nunca faça commit deles.
+
+### 2.4 Outputs do deploy
+
+- `ApiUrl`
+- `WebSocketUrl` (WebSocket parcial)
+- `CognitoUserPoolId`
+- `CognitoUserPoolClientId`
+- `AgentRuntimeArn`
+- `AgentStackAgentRuntimeIdE93B6B16` (ID do runtime)
+- `UsuariosTableName`
+- `EcrRepositoryUri`
+
+### 2.5 Frontend e instrutor
 
 O frontend roda localmente; a API, o agente e o banco estão na AWS.
 
@@ -64,69 +167,139 @@ npm run setup          # raiz + frontend
 npm run dev            # http://localhost:3000
 ```
 
-- O `frontend/public/config.json` versionado já aponta para a API/Cognito atuais.
-- O convite é enviado pelo Cognito com senha temporária; no primeiro login o instrutor
-  define a nova senha.
-- Crie/reenvie o convite com:
+- O `frontend/public/config.json` versionado já aponta para a API/Cognito atuais e contém
+  apenas identificadores públicos.
+- Use a porta **3000**; o CORS da API aceita apenas essa origem (o `next dev` está fixado
+  nessa porta).
+- O login é o `Authenticator` do Cognito, sem cadastro (`hideSignUp`).
+- O instrutor entra com o e-mail convidado; o Cognito envia senha temporária e ele define
+  a definitiva no primeiro login.
+- Crie/reenvie o convite:
 
 ```bash
 eval "$(bash scripts/aws-creds.sh)"
 npm run user:invite -- instrutor@example.com 500
 ```
 
-- Se `infra/cdk-outputs.json` existir (ambiente de desenvolvimento), `npm run dev` regenera
-  o `config.json` antes de subir. Em um clone limpo, usa o `config.json` versionado.
-- Use a porta **3000**; o CORS da API aceita apenas essa origem.
-
-## Início rápido (frontend)
-
-O `frontend/public/config.json` versionado contém URL da API, User Pool ID e Client ID.
-São identificadores públicos, não credenciais.
-
-```bash
-git clone <este repositório>
-cd Desafio-1/luiz-henrique
-npm run setup          # raiz + frontend
-npm run dev            # http://localhost:3000
-```
-
-- Use a porta **3000** (origem liberada no CORS).
-- O login é o `Authenticator` do Cognito, sem cadastro (`hideSignUp`).
-- Entre com um e-mail convidado via `npm run user:invite -- <email> [limite]`.
+- Em um clone limpo, `npm run dev` usa o `config.json` versionado. Se
+  `infra/cdk-outputs.json` existir (ambiente de desenvolvimento), o script regenera o
+  `config.json` antes de subir.
 - O navegador só fala com o API Gateway; não recebe ARNs, account ID nem credenciais.
 
-Se `infra/cdk-outputs.json` existir, `npm run dev` regenera o `config.json` a partir dos
-outputs antes de subir o Next.js.
+### 2.6 Verificação pós-deploy
 
-## Deploy do backend/agente
+```bash
+npm run check:model    # runtime vivo + BEDROCK_MODEL_ID (read-only, sem custo de Bedrock)
+npm run check:logs     # log groups/streams do agente e das Lambdas
+npm run test:agent     # integração: 401, saldo, idempotência, agente, GET /conversas
+```
 
-Pré-requisitos: AWS CLI v2, perfil `desafio-1`, Node 20+.
+## 3. Modelo do Bedrock
+
+- **Modelo:** Amazon Bedrock — **Claude Haiku 4.5**
+  (`us.anthropic.claude-haiku-4-5-20251001-v1:0`).
+- **Runtime:** Strands Agents no Bedrock AgentCore Runtime.
+- **Por que Haiku:** é o modelo recomendado no PDF, com boa relação custo/latência para
+  tool use e conversas curtas de checkout.
+- **Confirmado no runtime em 2026-11-17:** `luiz_henrique_agent-AD3mRGF7e9`, versão 15,
+  status `READY`, Haiku 4.5.
+- **Fallback de código:** `global.amazon.nova-2-lite-v1:0` apenas se `BEDROCK_MODEL_ID`
+  não existir no deploy. Confirme o runtime vivo com `npm run check:model`; não confie só
+  no `.env`.
+
+## 4. Modelagem do DynamoDB
+
+Tabelas prefixadas com `luiz-henrique`, billing on-demand, `RemovalPolicy.DESTROY`.
+Detalhes adicionais em [`docs/MODELO-USUARIOS.md`](docs/MODELO-USUARIOS.md).
+
+| Tabela | Chave | Guarda | Índices/TTL |
+|---|---|---|---|
+| `Usuarios` | PK `usuario_id` (= `sub`) | `email`, `limite_centavos` (saldo), `gasto_total_centavos`, `status`, `origem`, timestamps | — |
+| `Conversas` | PK `conversa_id`, SK `usuario_id` | `pending_intencao_id`, `pending_status`, `mensagens_json` (histórico completo) | GSI `usuario_id-index` (`usuario_id`, `conversa_id`) |
+| `Intencoes` | PK `intencao_id` | `usuario_id`, `produtos` (snapshot), `valor`, `valor_centavos`, `status`, `expira_em`, `created_at`, `forma_pagamento`, `pago_em`, `motivo_falha` | GSI `usuario_id-index` (`usuario_id`, `status`) |
+| `Catalogo` | PK `id` | `nome`, `preco` (reais, exibição), `preco_centavos` (**fonte de verdade**) | seed idempotente pelo CDK |
+| `Conexoes` | PK `connection_id` | `usuario_id`, `conversa_id`, `conectado_em`, `expira_em` | TTL `expira_em` (WebSocket parcial) |
+
+### Regras de escrita
+
+- `usuario_id` vem do `sub` do JWT, nunca do corpo nem do modelo.
+- `registrar_intencao` recebe apenas `itens: [{ produto_id, quantidade }]`; nome e preço
+  saem do `Catalogo` (`preco_centavos`).
+- Compra: `TransactWriteItems` debita `Usuarios.limite_centavos` (condição
+  `limite_centavos >= valor` e `status = ativo`) e marca a intenção como `paga`
+  (condição `status = pendente`). Ou tudo acontece, ou nada é debitado.
+- Intenção só é paga se existir, for do próprio usuário, estiver `pendente` e não expirada
+  (15 minutos).
+- `Conversas.mensagens_json` guarda o histórico completo; `GET /conversas` devolve a lista.
+- `Usuarios.ultima_intencao_id` é legado e **não é mais lido nem escrito** pelo chat.
+
+## 5. Permissões IAM
+
+| Role/Componente | Permissões | Não tem |
+|---|---|---|
+| **Lambda do chat** (API Gateway) | `bedrock-agentcore:InvokeAgentRuntime`; `dynamodb:GetItem/PutItem/UpdateItem/Query` em `Usuarios` e `Conversas` | Acesso a `Intencoes`, transações ou Bedrock |
+| **Lambda WebSocket** (parcial) | `dynamodb:GetItem/PutItem/DeleteItem` em `Conexoes`; `lambda:InvokeFunction` na ChatFn; `execute-api:ManageConnections` no WebSocket | Tabelas de intenções/usuários |
+| **`listar_catalogo`** | `dynamodb:GetItem/Scan` em `Catalogo` | Outras tabelas |
+| **`registrar_intencao`** | `dynamodb:PutItem` em `Intencoes`; `dynamodb:GetItem` em `Catalogo` | Usuários, transações |
+| **`realizar_compra`** | `dynamodb:GetItem/UpdateItem/TransactWriteItems` em `Intencoes` e `Usuarios` | Outras tabelas |
+| **AgentCore Runtime** | Invocar Bedrock, invocar as 3 Lambdas, ECR pull e logs (`AWSLambdaBasicExecutionRole`) | Acesso direto às tabelas |
+| **Seed do catálogo** | `dynamodb:PutItem` em `Catalogo` | Outras tabelas |
+
+- Sem `AdministratorAccess` e sem `Action: "*"` + `Resource: "*"`.
+- Exceção documentada: `ecr:GetAuthorizationToken` usa `Resource: "*"` porque a API não
+  oferece escopo por repositório. É uma ação específica, não um curinga de ações.
+- O chat Lambda ainda faz criação lazy do item em `Usuarios`; o PDF cita apenas runtime +
+  conversas para essa role. É um trade-off documentado para usuários criados pelo console
+  do Cognito.
+
+## 6. Evidências
+
+Capturas da demo em [`docs/apresentacao/`](docs/apresentacao/README.md). Valores e IDs são
+simulados; nenhuma cobrança real.
+
+| Caso | Resultado | Evidência |
+|---|---|---|
+| Login Cognito | Usuário autenticado; chat acessível | [01-login.png](docs/apresentacao/01-login.png) |
+| Chat inicial | Sessão autenticada, histórico carregado | [02-chat-inicial.png](docs/apresentacao/02-chat-inicial.png) |
+| Catálogo | Lista com IDs e preços | [03-catalogo.png](docs/apresentacao/03-catalogo.png) |
+| Intenção | ID retornado e status pendente | [04-intencao-fone.png](docs/apresentacao/04-intencao-fone.png) |
+| Compra com Pix | Intenção paga e saldo debitado | [05-pagamento-pix.png](docs/apresentacao/05-pagamento-pix.png) |
+| Intenção do monitor | ID e valor corretos | [06-intencao-monitor.png](docs/apresentacao/06-intencao-monitor.png) |
+| Limite excedido | Compra cancelada com `LIMITE_EXCEDIDO` | [06-limite-cartao.png](docs/apresentacao/06-limite-cartao.png) |
+| Compra com cartão | Intenção paga e saldo debitado | [07-pagamento-cartao.png](docs/apresentacao/07-pagamento-cartao.png) |
+| `POST /chat` sem token | `401` no API Gateway | `npm run test:agent` (teste automatizado) |
+| `intencao_id` inválido | `INTENCAO_INVALIDA`, sem cobrança | `npm run test:agent` (teste de ferramenta) |
+| `GET /conversas` | Histórico do próprio usuário | `npm run test:agent` (teste de integração) |
+| Novo produto após cancelamento | Novo ID, sem reutilizar o cancelado | `npm run test:agent` |
+| WebSocket | `$connect` autenticado; chat pelo WS | Parcial; `$default` falha ([WS-NEXT](docs/WS-NEXT.md)) |
+
+Reproduzir a demo:
+
+```bash
+npm run user:reset-limit -- luiz@desafio.test
+npm run dev
+# login com TEST_EMAIL/TEST_PASSWORD; use o roteiro em docs/apresentacao/README.md
+```
+
+## 7. Remoção de recursos
 
 ```bash
 cd Desafio-1/luiz-henrique
-npm install
-npm --prefix infra install
-npm --prefix agent install
-eval "$(scripts/aws-creds.sh)"
-npm run diff                  # revise o que será criado/alterado
-npm run deploy:api-agent
+eval "$(bash scripts/aws-creds.sh)"
+npm run destroy
 ```
 
-`npm run deploy:api-agent` executa
-`cdk deploy --require-approval never --outputs-file cdk-outputs.json` na pasta `infra/`.
-Saídas: `ApiUrl`, `CognitoUserPoolId`, `CognitoUserPoolClientId`, `AgentRuntimeArn`,
-`AgentStackAgentRuntimeIdE93B6B16` (ID do runtime), `UsuariosTableName`, `EcrRepositoryUri`.
+O comando roda `cdk destroy --force` e depois `scripts/destroy-cleanup.sh`. Confirme no
+console/CLI que não restou:
 
-`infra/cdk-outputs.json` e `.env` são gitignorados. Não faça commit deles.
+- runtime do AgentCore;
+- imagens no ECR;
+- tabelas DynamoDB `luiz-henrique-*`;
+- log groups `/aws/bedrock-agentcore/*` e `/aws/lambda/luiz-henrique-*`;
+- roles IAM `luiz-henrique-*`;
+- REST API e WebSocket API do projeto.
 
-### Variáveis de ambiente
-
-Copie `.env.example` para `.env` e preencha o necessário. As principais:
-
-- `BEDROCK_MODEL_ID` — o `.env` usa `us.anthropic.claude-haiku-4-5-20251001-v1:0`.
-  Sem essa variável no momento do deploy, o CDK usa
-  `global.amazon.nova-2-lite-v1:0` silenciosamente.
-- `TEST_EMAIL` / `TEST_PASSWORD` — usuário de teste local.
+Detalhes e verificação: [`docs/destroy-cleanup.md`](docs/destroy-cleanup.md).
 
 ## Comandos
 
@@ -160,125 +333,54 @@ export BEDROCK_MODEL_ID=us.anthropic.claude-haiku-4-5-20251001-v1:0
 npm run dev:agent
 ```
 
-Detalhes, exemplos de `curl` e paridade local/remota: [`docs/DEV-LOCAL-AGENTE.md`](docs/DEV-LOCAL-AGENTE.md).
-
-## Modelo usado
-
-- Amazon Bedrock — Claude Haiku 4.5 (`us.anthropic.claude-haiku-4-5-20251001-v1:0`).
-- Strands Agent no Bedrock AgentCore Runtime.
-- **Confirmado no runtime em 2026-11-17:** `luiz_henrique_agent-AD3mRGF7e9`, versão 15,
-  `READY`, Haiku 4.5.
-- Fallback de código: `global.amazon.nova-2-lite-v1:0` se `BEDROCK_MODEL_ID` não existir.
-- Confirme o modelo **vivo** (não só o `.env`) com:
-
-```bash
-npm run check:model
-```
-
-Esse comando consulta o control plane do AgentCore e não invoca o modelo.
-
-## DynamoDB
-
-Tabelas prefixadas com `luiz-henrique` (on-demand). Detalhes em
-[`docs/MODELO-USUARIOS.md`](docs/MODELO-USUARIOS.md).
-
-- `Usuarios` — PK `usuario_id` (`sub`): `email`, `limite_centavos` (saldo),
-  `gasto_total_centavos`, `status`, `origem`, timestamps. `ultima_intencao_id` é legado e
-  **não é mais lido nem escrito** pelo chat; o plano substitui por estado em `Conversas`.
-- `Conversas` — PK `conversa_id`, SK `usuario_id`, GSI `usuario_id-index`. Guarda
-  `pending_intencao_id`/`pending_status` e `mensagens_json` (histórico completo). O frontend
-  envia `conversa_id` e carrega o histórico via `GET /conversas`.
-- `Intencoes` — PK `intencao_id`: `usuario_id`, `produtos`, `valor`, `valor_centavos`,
-  `status`, `expira_em`, `created_at`, `forma_pagamento`, `pago_em`, `motivo_falha`.
-- `Catalogo` — PK `id`: `nome`, `preco` (reais, exibição) e `preco_centavos` (fonte de
-  verdade; seed do CDK).
-- `Conexoes` — PK `connection_id`, TTL `expira_em`: conexões WebSocket efêmeras.
-
-Regras de escrita:
-
-- `usuario_id` vem do `sub` do JWT, nunca do corpo nem do modelo.
-- Compra: `TransactWriteItems` debita `Usuarios.limite_centavos` (condição
-  `limite_centavos >= valor` e `status = ativo`) e marca a intenção como `paga`
-  (condição `status = pendente`). Ou tudo acontece, ou nada é debitado.
-- Intenção só é paga se existir, for do próprio usuário, estiver `pendente` e não expirada
-  (15 minutos).
-
-## IAM (resumo)
-
-- Sem `AdministratorAccess`; nenhum `*` exceto `ecr:GetAuthorizationToken` (a API não
-  aceita escopo por repositório).
-- Chat Lambda: `bedrock-agentcore:InvokeAgentRuntime` + `GetItem`/`PutItem`/`UpdateItem`
-  em `Usuarios` e `Conversas`. Sem acesso a `Intencoes`, transações ou Bedrock.
-- `listar_catalogo`: `GetItem`/`Scan` em `Catalogo`.
-- `registrar_intencao`: `PutItem` em `Intencoes`.
-- `realizar_compra`: `GetItem`/`UpdateItem`/`TransactWriteItems` em `Intencoes` e
-  `Usuarios`.
-- WebSocket Lambda: `GetItem/PutItem/DeleteItem` em `Conexoes`, `lambda:InvokeFunction` na
-  chat, `execute-api:ManageConnections` no WebSocket.
-- AgentCore Runtime: Bedrock + invocação das 3 tools + ECR pull + logs
-  (`AWSLambdaBasicExecutionRole`), sem acesso direto às tabelas.
-- Nenhum segredo no Git.
+Detalhes e paridade local/remota: [`docs/DEV-LOCAL-AGENTE.md`](docs/DEV-LOCAL-AGENTE.md).
 
 ## Limitações e pendências
 
 - Frontend local; sem URL pública S3/CloudFront/OAC (SCP da conta) e sem deploy de frontend
   no comando IaC. Decisão registrada em `docs/REQUISITOS-PDF-E-AUDITORIA.md`.
-- API Gateway WebSocket **parcial**: `$connect`/`$disconnect` funcionam; `$default` retorna
+- WebSocket **parcial**: `$connect`/`$disconnect` funcionam; `$default` retorna
   `Internal server error`. O chat usa REST. Continuação em `docs/WS-NEXT.md`.
 - Não há streaming; o PDF pede “Stream ou WebSocket”.
-- `GET /conversas` e o histórico em `Conversas.mensagens_json` estão implementados e
-  validados no teste de integração.
-- A reutilização de `intencao_id` foi removida e validada localmente (`npm run test:local`)
-  e na stack implantada (`npm run test:agent`, 2026-11-17).
-- `registrar_intencao` resolve produto/preço pelo `Catalogo`; o modelo envia apenas
-  `produto_id`/`quantidade`.
 - A suíte ampla de 100+ casos e o redirecionamento para catálogo estão planejados em
   `docs/TEST-STRATEGY.md` (caso `REFUSAL-LOOP-01`).
-- Capturas de tela/Postman ainda não foram anexadas; os resultados da suíte estão na tabela
-  de evidências.
-
-## Evidências
-
-| Caso | Resultado esperado | Evidência |
-|---|---|---|
-| Login com usuário válido | JWT obtido; acesso liberado | `npm run test:agent` cria/loga usuário (2026-11-17) |
-| Requisição sem token | `401` | teste de integração passou (2026-11-17) |
-| Compra com cartão | Intenção paga e saldo debitado | teste de integração passou (2026-11-17) |
-| Compra com Pix | Intenção paga e saldo debitado | teste de integração passou (2026-11-17) |
-| Limite excedido | Compra rejeitada com `LIMITE_EXCEDIDO` | teste de integração passou (2026-11-17) |
-| `intencao_id` inválido | `INTENCAO_INVALIDA` | teste de ferramenta passou (2026-11-17) |
-| `GET /conversas` | Histórico do usuário, sem vazar outra conversa | teste de integração passou (2026-11-17) |
-| WebSocket | `$connect` autenticado; chat pelo WS | parcial; `$default` falha (ver `docs/WS-NEXT.md`) |
-| Novo produto após cancelamento | Novo ID, sem reutilizar o cancelado | teste de regressão passou; ex.: `INT-B7E0ED4D` cancelada → `INT-F7F74EB2` paga |
-| Uso real inicial | Agente responde catálogo, registra intenção, cartão/Pix e limite | relato do usuário em 2026-11-17; suíte ampla pendente |
-| Convite por e-mail | Usuário no Cognito + item em `Usuarios` | pendente |
-| Ajuste de saldo | `user:set-limit` altera `limite_centavos` | pendente |
+- Evidências de 401 e `INTENCAO_INVALIDA` existem como testes automatizados; prints/Postman
+  ainda podem ser adicionados.
+- O chat Lambda ainda cria o item em `Usuarios` no primeiro acesso; ver §5.
 
 ## Custos
 
 - Orçamento atual: **US$ 20**, aproximadamente **US$ 5** gastos.
-- Serviços já existentes: DynamoDB on-demand, Lambda, API Gateway, Cognito, ECR,
-  AgentCore Runtime, CloudWatch Logs.
+- Serviços em uso: DynamoDB on-demand, Lambda, API Gateway (REST + WebSocket parcial),
+  Cognito, ECR, AgentCore Runtime e CloudWatch Logs.
 - Não crie VPC/NAT, CloudFront, Amplify Hosting, jobs agendados ou outros serviços pagos
   sem necessidade.
 - Para iterar prompt, use o fallback local e evite chamadas repetidas ao Bedrock.
 - `check:model` e `check:logs` são somente leitura.
+- Estimativa da suíte 100+: [`docs/TEST-STRATEGY.md`](docs/TEST-STRATEGY.md) §8.
 
-## Remoção
+## Critérios de conclusão do PDF
 
-```bash
-eval "$(scripts/aws-creds.sh)"
-npm run destroy
-```
-
-Confirme no console/CLI que não restou runtime do AgentCore, imagens no ECR, tabelas
-DynamoDB, log groups, roles IAM ou REST API. Detalhes:
-[`docs/destroy-cleanup.md`](docs/destroy-cleanup.md).
+- [ ] Frontend em S3 + CloudFront + OAC — **desvio aceito**: frontend local por SCP.
+- [x] Login Cognito; chat inacessível sem autenticação.
+- [x] Auto cadastro desabilitado; usuários por convite.
+- [x] `POST /chat` e `GET /conversas` no API Gateway com autorizador JWT.
+- [x] Requisição sem token/inválida rejeitada com `401`.
+- [x] Agente Strands no Bedrock AgentCore com modelo Bedrock.
+- [x] Três ferramentas em Lambda.
+- [x] Usuários, conversas, intenções e catálogo no DynamoDB.
+- [x] Roles de menor privilégio (exceção ECR documentada).
+- [ ] Um comando IaC incluindo frontend — **desvio aceito**: comando cobre backend/agente;
+      frontend roda local.
+- [ ] Pull request com a pasta — tags publicadas; PR pendente.
 
 ## Documentação
 
-Comece por [`docs/README.md`](docs/README.md). Apresentação: [`docs/apresentacao/`](docs/apresentacao/README.md). Docs históricos estão em
-[`docs/archive/`](docs/archive/README.md) e não representam o estado atual.
+Comece por [`docs/README.md`](docs/README.md). Apresentação:
+[`docs/apresentacao/`](docs/apresentacao/README.md). Estratégia de testes:
+[`docs/TEST-STRATEGY.md`](docs/TEST-STRATEGY.md). WebSocket:
+[`docs/WS-NEXT.md`](docs/WS-NEXT.md). Históricos em
+[`docs/archive/`](docs/archive/README.md).
 
 ## Regras essenciais
 

@@ -1,6 +1,6 @@
 # Requisitos do PDF × estado atual
 
-Verificado em **2026-11-17** contra o código e os outputs da stack. Baseline `v0.0.4`.
+Verificado em **2026-11-17** contra o código e os outputs da stack. Baseline `v0.0.5`.
 
 Legenda: ✅ atende · 🟡 parcial · ❌ não atende · ⏸ adiado por decisão explícita.
 
@@ -42,8 +42,8 @@ Legenda: ✅ atende · 🟡 parcial · ❌ não atende · ⏸ adiado por decisã
 
 | Requisito | Estado | Observação |
 |---|---|---|
-| README com diagrama, deploy, modelo, DynamoDB, IAM e remoção | 🟡 | atualizado; tabela de evidências preenchida com a suíte; capturas de tela/Postman pendentes |
-| Evidências: login, 401, cartão, Pix, limite, ID inválido | 🟡 | `npm run test:agent` 3/3 e capturas em `docs/apresentacao/`; falta evidência formal de 401/ID inválido em imagem |
+| README com diagrama, deploy, modelo, DynamoDB, IAM e remoção | ✅ | reestruturado nas seções 1–7 do PDF; capturas em `docs/apresentacao/` |
+| Evidências: login, 401, cartão, Pix, limite, ID inválido | 🟡 | login/catálogo/cartão/Pix/limite em `docs/apresentacao/`; 401/ID inválido cobertos por teste, faltam prints |
 | Aplicação no ar até a correção | 🟡 | API/agente no ar; frontend local; falta convidar o instrutor |
 | Usuário do instrutor no Cognito | ❌ | usar `npm run user:invite -- <email> [limite]` |
 | Alerta de orçamento | 🟡 | orçamento de US$ 20 mencionado (≈US$ 5 gastos); não há registro neste repo de alarme criado. Criar AWS Budget é gratuito (primeiros 2); se já existir, registre o ID/limite aqui |

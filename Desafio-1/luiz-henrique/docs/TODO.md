@@ -1,6 +1,6 @@
 # TODO — Desafio 1 (luiz-henrique)
 
-Lista de tarefas atual. Baseline: tag `v0.0.4` — “requirements hardening and instructor flow verified” (`a78f48e`).
+Lista de tarefas atual. Baseline: tag `v0.0.5` — “history, catalog pricing and websocket scaffold” (`0afba12`).
 Plano detalhado: [`PLAN-AGENT-REVAMP.md`](PLAN-AGENT-REVAMP.md).
 
 ## 0. Baseline e documentação

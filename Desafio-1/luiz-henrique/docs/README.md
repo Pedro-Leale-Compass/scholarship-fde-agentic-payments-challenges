@@ -2,7 +2,7 @@
 
 Última verificação contra o código: **2026-11-17**
 
-Baseline atual: tag `v0.0.4` — “requirements hardening and instructor flow verified” (`a78f48e`)
+Baseline atual: tag `v0.0.5` — “history, catalog pricing and websocket scaffold” (`0afba12`)
 Baseline histórico: `v0.0.2` — “chat works sometimes” (`d854762`)
 
 ## Status verificado em 2026-11-17
