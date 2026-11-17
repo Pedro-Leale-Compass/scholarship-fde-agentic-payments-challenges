@@ -36,7 +36,7 @@ Resposta `200` com `Content-Type: application/x-ndjson`, uma linha JSON por even
 | `ferramenta` | Mostrar "consultando o catálogo..." (opcional) |
 | `fim` | Turno concluído e gravado no histórico |
 | `erro` | Mostrar `mensagem`. O turno **não** foi gravado e o usuário pode repetir. O evento também chega se a resposta foi gerada mas não pôde ser salva. |
-| `pulso` | Ignorar. Vai a cada 15 s durante o streaming só para manter a conexão viva, porque o CloudFront corta a resposta após 60 s sem bytes. |
+| `pulso` | Ignorar. Vai a cada 15 s durante o streaming só para manter a conexão viva em proxies que cortam respostas paradas (o CloudFront corta após 60 s sem bytes). |
 
 Antes de o stream abrir, os erros voltam como JSON `{ "erro": "..." }`: `401` sem identidade, `400` com corpo inválido e `502` se o histórico ou o agente falharem.
 
@@ -56,7 +56,7 @@ Cada mensagem é um item com SK `msg#<início do turno ISO>#<id do turno>#<posi�
 
 `{ "email": "...", "limite_total": 500, "limite_disponivel": 250.1, "moeda": "BRL" }`, com valores em reais. O `email` vem da claim do **ID token**. Um usuário que ainda não tem registro em `usuarios` vê o limite padrão de R$ 500,00, o mesmo que a tool grava na primeira compra.
 
-## API Gateway (F7)
+## API Gateway
 
 - **Autorizador:** `COGNITO_USER_POOLS` no header `Authorization` (ID token). Sem token, ou com token inválido ou expirado, o próprio API Gateway responde `401 {"erro":"Sessão expirada ou inválida. Entre novamente."}` e a Lambda nem é chamada.
 - **Integrações:** `POST /api/chat` usa Lambda proxy com `ResponseTransferMode: STREAM`, timeout de 190 s acima do limite de 29 s. As outras rotas usam Lambda proxy comum.
@@ -70,4 +70,4 @@ Cada mensagem é um item com SK `msg#<início do turno ISO>#<id do turno>#<posi�
   | Outros 4XX e 5XX | mensagem genérica |
 - **Limite:** 10 requisições por segundo, com picos de 20, no stage.
 - **Invocação das Lambdas:** cada uma só pode ser invocada por esta API, neste stage, neste método e nesta rota (`SourceArn`).
-- **Sem CORS:** na F9, o CloudFront serve o frontend e encaminha `/api/*` para o stage `prod`, na **mesma origem**. O navegador não faz chamada cross-origin, então não há rota `OPTIONS` nem `Access-Control-Allow-Origin`. Chamadas de outros sites continuam bloqueadas pela política de mesma origem do navegador, e qualquer cliente fora do navegador precisa de um JWT válido.
+- **Sem CORS:** o frontend chama `/api/*` na **mesma origem** do site, e quem repassa para o stage `prod` é o CloudFront (modo hospedado) ou o proxy do Vite (modo local). O navegador não faz chamada cross-origin, então não há rota `OPTIONS` nem `Access-Control-Allow-Origin`. Chamadas de outros sites continuam bloqueadas pela política de mesma origem do navegador, e qualquer cliente fora do navegador precisa de um JWT válido.

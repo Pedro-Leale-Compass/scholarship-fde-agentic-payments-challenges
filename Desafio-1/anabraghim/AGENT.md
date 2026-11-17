@@ -14,7 +14,7 @@ Guia de trabalho para quem (pessoa ou agente de IA) continuar este projeto. Regi
 Levar para a AWS o chatbot da Fase 1 sem mudar as regras de negócio:
 
 ```
-Frontend (S3 privado + CloudFront/OAC, login Cognito)
+Frontend (login Cognito) — hoje local (Vite em localhost:5173); alvo: S3 privado + CloudFront/OAC
    │ HTTPS + Authorization: Bearer <JWT Cognito>
    ▼
 API Gateway REST (autorizador Cognito, 401 sem token, streaming)
@@ -38,6 +38,17 @@ Tudo em **us-east-1**, definido em **CloudFormation** (`infra/`), com prefixo **
 - **A Ana escolhe a próxima feature** e revisa cada uma antes da seguinte. Decisões de arquitetura são dela: o agente propõe opções com prós e contras.
 - Sempre editar o CloudFormation (`infra/template.yaml`) quando a feature criar recurso.
 - Nenhum segredo, chave ou credencial no código ou no histórico.
+- **Valores da stack no README só para a avaliação**: os ids do Cognito e a `ApiUrl` não são segredo. Ficam em `frontend/public/config.json` e `frontend/.env.local` (ignorados pelo git), e os valores do deploy da Ana estão escritos no cenário A do README para os avaliadores copiarem, com o aviso de que não são segredo e de que o ambiente é removido com o `destroy.sh` depois da avaliação. Se a stack for recriada, atualizar esses valores no README. Credenciais AWS nunca são compartilhadas.
+- **Cada documento com sua responsabilidade** (não espalhar decisões):
+
+  | Documento | Contém | Não contém |
+  |---|---|---|
+  | `AGENT.md` | Decisões e motivos, status do projeto, pendências (ex.: CloudFront adiado por permissão), histórico (Fase 1, F0–F12), erros aprendidos, regras para agentes | Passo a passo de uso |
+  | `README.md` (raiz) | O que o sistema faz, arquitetura, como fazer o deploy e usar (cenários A e B), modelo, DynamoDB, IAM, evidências, uso de IA | Motivos de pendências, números de feature, histórico |
+  | `frontend/`, `api/`, `agent/`, `tools/` `README.md` | Só o código da pasta: stack, comandos, contratos, como funciona | Decisões de projeto, status, Fase 1 |
+  | `screenshots/aws/README.md` | O que cada evidência mostra | Instruções de deploy |
+
+  Ao mudar uma decisão, atualizar só o `AGENT.md`; os READMEs descrevem o estado do código de forma neutra (ex.: "modo local" e "modo hospedado", nunca "atual" ou "quando liberar").
 - Verificar localmente antes de commitar: `tsc --noEmit`, testes (vitest/pytest com AWS mockada), `cfn-lint`, `bash -n`, build do frontend.
 
 ## Decisões de arquitetura
@@ -48,8 +59,8 @@ Tudo em **us-east-1**, definido em **CloudFormation** (`infra/`), com prefixo **
 | Agente | Strands Agents em **Python** + `bedrock-agentcore` | SDK mais maduro e com mais exemplos no AgentCore |
 | Chat e tools | Lambdas em **TypeScript** | Reaproveita contratos, mensagens e regras da Fase 1; streaming de resposta em Lambda é nativo em Node |
 | API | **API Gateway REST** + autorizador `COGNITO_USER_POOLS` + response streaming, rotas sob `/api` | 401 nativo sem chegar na Lambda; streaming atende o requisito de UX e alivia o limite de 29 s |
-| Deploy sem CloudFront | Parâmetro `ComFrontend` (`sim`/`nao`) e condição `CriarFrontend` nos 6 recursos de hosting e nos 3 Outputs; `SEM_FRONTEND=1 ./infra/deploy.sh` pula o build e a publicação do site e gera `frontend/public/config.json` e `frontend/.env.local` para o `npm run dev` | Pedido do gestor enquanto o CloudFront da conta tem problema de permissão. Opção A, condição permanente, escolhida pela Ana. Religar só **acrescenta** o hosting à stack, e uma falha nessa atualização volta ao estado anterior sem derrubar o backend |
-| CORS | **Nenhum**: o CloudFront serve o frontend e encaminha `/api/*` para a API, na mesma origem | Sem `OPTIONS` nem origem para configurar; menos superfície. Decisão da Ana na F7 |
+| Deploy sem CloudFront | Parâmetro `ComFrontend` (`sim`/`nao`) e condição `CriarFrontend` nos 6 recursos de hosting e nos 3 Outputs; `SEM_FRONTEND=1 ./infra/deploy.sh` pula o build e a publicação do site e gera `frontend/public/config.json` e `frontend/.env.local` para o `npm run dev` | Pedido do gestor enquanto o CloudFront da conta tem problema de permissão. Opção A, condição permanente, escolhida pela Ana. Religar só **acrescenta** o hosting à stack, e uma falha nessa atualização volta ao estado anterior sem derrubar o backend. **Depois do deploy, o gestor pediu para adiar o CloudFront de vez** (a permissão vai demorar): o modo local é o oficial por enquanto. O README documenta dois cenários: A (avaliação: usar o backend da Ana na AWS rodando só o frontend local, com os valores dos 2 arquivos no próprio README) e B (deploy na própria conta com `./infra/deploy.sh`, com CloudFront). O deploy com `SEM_FRONTEND=1` continua existindo, mas não é documentado no README por decisão da Ana. O default continua `ComFrontend=sim`, porque o alvo final é o CloudFront |
+| CORS | **Nenhum**: a página e a API ficam na mesma origem. Hoje o proxy do Vite (`npm run dev`) repassa `/api/*` ao API Gateway; com o CloudFront, ele faz esse papel | Sem `OPTIONS` nem origem para configurar; menos superfície, e nenhum site de outra origem lê as respostas no navegador. Decisão da Ana na F7, mantida no modo local |
 | Logs da API | Desligados; diagnóstico pelos logs das Lambdas | Exigem a role do `AWS::ApiGateway::Account`, que vale para a conta inteira (compartilhada com a turma) |
 | Tools | Agente invoca as Lambdas direto (`lambda.invoke`) | `usuario_id` vai no evento, fora dos argumentos que o modelo preenche (substitui o `_meta` do MCP) |
 | Modelo | **Claude Haiku 4.5**: inference profile `us.anthropic.claude-haiku-4-5-20251001-v1:0` (parâmetros `ModeloId` e `ModeloBaseId`) | Baixa latência e custo. O Haiku 5.5 era o plano, mas a conta do programa o recusa (*"not available for this account"*); o 4.5 foi testado e funciona. Decisão da Ana antes do primeiro deploy |
@@ -102,7 +113,7 @@ Todas as tabelas se chamam `ana-braghim-<nome>`, são PAY_PER_REQUEST e têm cri
 - Isolamento entre usuários (busca por `id` **e** `userId`).
 - Histórico completo enviado ao modelo a cada turno.
 
-Referências da Fase 1 (removidas na F10, disponíveis no histórico do git, commit `fe92855` da `main`): `backend/src/services/purchase.ts`, `backend/src/services/agent.ts` e `mcp-server/src/tools/`. Ex.: `git show fe92855:backend/src/services/purchase.ts`. As regras foram portadas para `tools/src/` e o prompt para `agent/agente/prompt.py`.
+Referências da Fase 1 (removidas na F10): `backend/src/services/purchase.ts`, `backend/src/services/agent.ts` e `mcp-server/src/tools/`. Elas ficaram no repositório de trabalho original (commit `fe92855`), que **não está neste repositório**: aqui o histórico começa já na versão AWS, então `git show fe92855` não funciona. As regras foram portadas para `tools/src/` e o prompt para `agent/agente/prompt.py`.
 
 ## ☐ A implementar (ordem sugerida, a Ana decide)
 
@@ -159,7 +170,7 @@ Referências da Fase 1 (removidas na F10, disponíveis no histórico do git, com
   - Removidos do git `backend/` (Hono, Postgres/Drizzle, migrations, JWT próprio com bcrypt, cliente OpenRouter, docker-compose) e `mcp-server/` (tools via stdio).
   - Removidas as sobras do template do Vite no frontend, que não eram usadas: `App.css`, `src/assets/` e `public/icons.svg`.
   - No disco, sobravam só o `node_modules` e duas pastas de migration vazias e não versionadas; conferidas antes de apagar.
-  - As referências viraram ponteiros para o histórico (`git show fe92855:<arquivo>`).
+  - As referências viraram ponteiros para o commit `fe92855` do repositório de trabalho original (ver "Já implementado").
   - O README da raiz ganhou um aviso de que descreve a Fase 1, até ser reescrito na F11. As capturas em `screenshots/` também são da Fase 1 e serão substituídas depois do deploy.
   - Nenhum pacote novo depende do código removido: tools, API e frontend têm testes e build próprios, e o agente tem os próprios testes.
 - [x] **F11 — README final** (`docs/readme-final`): README da raiz reescrito para a AWS.
@@ -172,14 +183,20 @@ Referências da Fase 1 (removidas na F10, disponíveis no histórico do git, com
     - modelagem do DynamoDB;
     - permissões IAM por role e as políticas de recurso;
     - evidências, remoção dos recursos, estrutura, testes locais e decisões e limitações.
-  - **Capturas:** a seção de evidências aponta para `screenshots/aws/01..06` (obrigatórias). `screenshots/aws/README.md` descreve o que cada imagem deve mostrar e lista as opcionais (07 a 11). As capturas da Fase 1 foram apagadas a pedido da Ana: `screenshots/` guarda só as evidências da AWS.
+  - **Capturas:** `screenshots/aws/README.md` descreve o que cada imagem deve mostrar. A Ana salvou as capturas depois do deploy real (`0` a `6`), e o README as exibe. As da Fase 1 foram apagadas a pedido dela: `screenshots/` guarda só as evidências da AWS.
   - **`tools/README.md`:** ganhou a tabela completa dos códigos de recusa.
-  - **Capturas:** salvas pela Ana depois do deploy real (`0` a `6`) e exibidas no README.
 - [x] **Depois do deploy** (direto na `fellow/anabraghim-desafio-1`):
   - Visual do chat e da tela de login modernizado.
   - README reorganizado: diagrama Mermaid, modelagem do DynamoDB, IAM por role e `Sid`, seção sobre o uso de IA.
   - E-mail de convite do Cognito personalizado (identifica o projeto e avisa que os pagamentos são simulados).
   - Este arquivo voltou a ser versionado.
+- [x] **CloudFront adiado / modo local documentado** (16/11/2026, a pedido do gestor). **Situação atual:** o deploy da Ana roda com `SEM_FRONTEND=1` (backend na AWS, frontend local), e os avaliadores usam o cenário A, com os valores dos 2 arquivos no README.
+  - O README ganhou os cenários de deploy (depois reduzidos a A e B), o formato exato dos dois arquivos locais, uma explicação de por que não há CORS e uma tabela de problemas comuns.
+  - O diagrama mostra os dois modos (local e hospedado).
+  - `frontend/README.md` e os comentários de `config.ts` e `vite.config.ts` foram atualizados.
+  - Nenhuma mudança funcional: o modo local já existia (`SEM_FRONTEND=1`).
+- [x] **Revisão das responsabilidades dos documentos:** decisões, pendências e histórico (Fase 1, números de feature, permissão do CloudFront, Haiku 5.5) saíram dos READMEs e ficam só aqui. Os READMEs de pasta descrevem só o código, e o de `screenshots/aws/` passou a descrever as evidências existentes em vez de ser um guia de captura.
+- [ ] **Quando a permissão do CloudFront sair:** rodar `./infra/deploy.sh` sem a flag, conferir a URL, atualizar a "Situação atual" acima e avisar os avaliadores. Os READMEs não precisam mudar, porque já descrevem os dois modos.
 - [ ] **F12 (extra) — AgentCore Gateway MCP**: Lambdas como tools MCP com propagação segura do `usuario_id`.
 
 ## Erros aprendidos
@@ -224,6 +241,9 @@ Referências da Fase 1 (removidas na F10, disponíveis no histórico do git, com
 - **Rota inexistente no API Gateway REST responde 403 "Missing Authentication Token"**: o `GatewayResponse` `MISSING_AUTHENTICATION_TOKEN` a transforma em 404 com mensagem clara.
 - **Logs do API Gateway exigem configuração da conta inteira** (`AWS::ApiGateway::Account` com role do CloudWatch). Numa conta compartilhada, criar isso pela stack afetaria as outras stacks. Ficou desligado e documentado.
 - **Mesma origem elimina CORS**: com `/api/*` no mesmo CloudFront do frontend, não há preflight nem headers de CORS para manter. Por isso as rotas ficam sob `/api` já na API, e o CloudFront não reescreve caminhos.
+- **CORS é regra do navegador, não do servidor**: no modo local, o front e o back estão em lugares diferentes, mas o navegador só fala com `localhost:5173`, e o proxy do Vite repassa `/api/*` de servidor para servidor, onde não existe CORS. Por isso a API continua sem CORS. O repasse só existe no `npm run dev`: servir o `dist/` direto (ou um `vite preview` sem proxy) quebra o `/api`.
+- **O Vite só lê o `.env.local` ao iniciar**: criar ou alterar o arquivo com o `npm run dev` rodando não tem efeito, e o chat falha até reiniciar. Está na tabela de problemas do README.
+- **Valores públicos no README têm prazo de validade**: os ids do Cognito e a `ApiUrl` são públicos (todo site com Cognito os entrega ao navegador), mas mudam a cada deploy e ficam no histórico do git. A Ana decidiu colocá-los no README para facilitar a avaliação, com o aviso de que serão apagados com o `destroy.sh`. Depois de um novo deploy, o README precisa ser atualizado.
 - **Heredoc do bash com aspas e `$(...)` no conteúdo** quebrou o comando de edição dos docs. Para scripts de edição, gravar o arquivo com a ferramenta Write.
 - **Amplify v6 lê o mecanismo de login da config** (`Auth.Cognito.loginWith.email`); a prop `loginMechanisms` do Authenticator é legada. Com `hideSignUp`, a aba de cadastro some, mas o bloqueio real continua no user pool (`AllowAdminCreateUserOnly`).
 - **ID token, não access token**: o autorizador `COGNITO_USER_POOLS` sem scopes valida o ID token, e só ele traz `email`.

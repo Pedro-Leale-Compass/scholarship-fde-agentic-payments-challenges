@@ -2,7 +2,7 @@
 
 # 💳 Chatbot de Pagamentos na AWS
 
-**Um assistente de compras que conversa em linguagem natural, mostra o catálogo e conclui o pagamento com segurança, rodando 100% na AWS.**
+**Um assistente de compras que conversa em linguagem natural, mostra o catálogo e conclui o pagamento com segurança, com o backend 100% na AWS.**
 
 ![AWS](https://img.shields.io/badge/AWS-us--east--1-FF9900?logo=amazonwebservices&logoColor=white)
 ![CloudFormation](https://img.shields.io/badge/IaC-CloudFormation-E7157B?logo=amazonwebservices&logoColor=white)
@@ -53,9 +53,9 @@ O usuário entra com login, conversa com o assistente e compra pelo chat:
 flowchart TB
     U(["👤 Usuário"])
 
-    subgraph FRONT["🌐 Frontend"]
-        CF["CloudFront<br/>HTTPS + headers de segurança"]
-        S3[("S3 privado<br/>site React")]
+    subgraph FRONT["🌐 Frontend (site React)"]
+        VITE["💻 Local: Vite em localhost:5173<br/>proxy de /api/*"]
+        CF["Hospedado: CloudFront + S3 privado<br/>HTTPS + headers de segurança"]
     end
 
     COG["🔐 Cognito User Pool<br/>login só por convite"]
@@ -86,8 +86,8 @@ flowchart TB
         DTX[("transacoes")]
     end
 
-    U -->|HTTPS| CF
-    CF -->|"/* via OAC"| S3
+    U -->|"um dos dois"| VITE & CF
+    VITE -->|"/api/* via HTTPS"| APIGW
     CF -->|"/api/*"| APIGW
     U -.->|login SRP| COG
     APIGW -.->|valida o JWT| COG
@@ -109,7 +109,7 @@ flowchart TB
     classDef agente fill:#f3e8ff,stroke:#a855f7,color:#1c1830
     classDef tool fill:#fff4e0,stroke:#f59e0b,color:#1c1830
     classDef dados fill:#dcfce7,stroke:#16a34a,color:#1c1830
-    class CF,S3 front
+    class VITE,CF front
     class COG auth
     class APIGW,LCHAT,LCONV,LPERF api
     class AC,BR agente
@@ -125,13 +125,62 @@ flowchart TB
 | 4. Agente | O **agente Strands** conversa com o Claude e chama as **tools**, passando o `usuario_id` da sessão (nunca do modelo). |
 | 5. Resposta | As tools aplicam as regras no **DynamoDB**, a resposta volta em streaming e o turno é salvo no histórico. |
 
-O site e a API ficam no mesmo domínio do **CloudFront** (`/api/*` vai para o API Gateway), então não há CORS. No deploy sem CloudFront (`SEM_FRONTEND=1`), o frontend roda local e o Vite faz esse papel.
+O frontend pode rodar de dois jeitos, com o mesmo código: **local**, com o Vite, apontando para o backend já publicado (cenário A, usado na avaliação), ou **hospedado**, no CloudFront (cenário B, para deploy na sua própria conta). Os dois estão descritos em [Deploy](#-deploy).
 
 ---
 
 ## 🚀 Deploy
 
-### Pré-requisitos
+> [!IMPORTANT]
+> **Para a avaliação, use o cenário A.** O backend já está publicado na minha conta AWS (Cognito, API Gateway, Lambdas, AgentCore, Bedrock e DynamoDB). Você só roda o frontend na sua máquina e ele conversa com esse backend real, sem precisar de conta nem de credencial AWS.
+
+| Cenário | Para quem | Conta AWS? |
+|---|---|---|
+| [**A. Avaliar o projeto**](#a-avaliar-o-projeto) | Avaliadores: testar o meu backend na AWS rodando só o frontend local | ❌ Não, só Node |
+| [**B. Deploy na sua própria conta**](#b-deploy-na-sua-própria-conta) | Quem quiser recriar toda a infraestrutura na própria conta AWS, com o site no CloudFront | ✅ Sim, a sua |
+
+### A. Avaliar o projeto
+
+Você vai usar o backend que já está rodando na minha conta AWS. Só precisa do **Node.js 22.12+**.
+
+**1. Receba de mim** um convite no seu e-mail, com a senha temporária. Só usuários convidados conseguem entrar.
+
+**2. Crie os dois arquivos abaixo** com exatamente este conteúdo. Eles apontam o frontend local para o meu backend na AWS e são **necessários** para o site funcionar. Não vão para o git (estão no `.gitignore`) porque mudam a cada deploy, por isso os valores estão aqui.
+
+**`frontend/public/config.json`**: onde fazer o login (Cognito)
+
+```json
+{
+  "userPoolId": "us-east-1_QrDMNvvrZ",
+  "userPoolClientId": "529gb9n0f2e7d1ulo4ruecplcu"
+}
+```
+
+**`frontend/.env.local`**: para onde o Vite repassa `/api/*` (API Gateway)
+
+```bash
+API_URL=https://d99txi2p5g.execute-api.us-east-1.amazonaws.com/prod
+```
+
+> 🔒 **Esses valores não são segredos.** Não há chave, senha, token nem id de conta: são identificadores que todo site com login do Cognito entrega ao navegador, e o app client é público, sem secret. Sem um usuário convidado, eles só levam à tela de login e a respostas `401`.
+>
+> 🧹 **Existem só para a avaliação.** Depois dela, todo o ambiente é removido com o [`destroy.sh`](#-remover-todos-os-recursos), e esses ids deixam de funcionar.
+
+**3. Rode o frontend:**
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+**4. Abra http://localhost:5173**, entre com o e-mail do convite e a senha temporária, e defina uma senha nova.
+
+### B. Deploy na sua própria conta
+
+**Não é necessário para a avaliação.** Este cenário é para quem quiser subir uma cópia independente do projeto na própria conta AWS: todos os recursos são criados do zero pelo CloudFormation e os custos ficam na sua conta.
+
+**Pré-requisitos:**
 
 | Ferramenta | Versão |
 |---|---|
@@ -140,26 +189,23 @@ O site e a API ficam no mesmo domínio do **CloudFront** (`/api/*` vai para o AP
 | Python + pip | 3.12 ou mais recente |
 | Git Bash | no Windows, porque os scripts são bash |
 
-Antes do primeiro deploy:
+**Antes do primeiro deploy:**
 
 - ✅ Libere o acesso ao **Claude Haiku 4.5** no console do **Amazon Bedrock** (`us-east-1`).
 - ✅ Crie um alerta de custo no **AWS Budgets** (recomendado).
-- ✅ Use uma credencial que possa criar stacks com roles IAM nomeadas (`CAPABILITY_NAMED_IAM`).
+- ✅ Use uma credencial que possa criar stacks com roles IAM nomeadas (`CAPABILITY_NAMED_IAM`) e distribuições do CloudFront.
 
-### Comando de deploy (IaC)
-
-Na pasta do projeto, pelo Git Bash:
+**1. Deploy (IaC).** Na pasta do projeto, pelo Git Bash:
 
 ```bash
 export AWS_PROFILE=<seu-perfil>
 ./infra/deploy.sh
 ```
 
-O script roda os testes, faz o build, cria as stacks **`ana-braghim-bootstrap`** (bucket de artefatos) e **`ana-braghim-pagamentos`** (aplicação) a partir de [`infra/template.yaml`](infra/template.yaml), faz o seed do catálogo, publica o site e imprime a URL final (`https://<id>.cloudfront.net`).
+O script roda os testes e faz o build. Depois cria as stacks **`ana-braghim-bootstrap`** (bucket de artefatos) e **`ana-braghim-pagamentos`** (aplicação, a partir de [`infra/template.yaml`](infra/template.yaml)), faz o seed do catálogo, cria o S3 privado e o CloudFront, publica o site e imprime a URL final (`https://<id>.cloudfront.net`).
 
-> 💡 Sem permissão para o CloudFront? Use `SEM_FRONTEND=1 ./infra/deploy.sh` e rode o frontend local com `cd frontend && npm install && npm run dev`.
 
-### Criar um usuário
+**2. Crie um usuário:**
 
 ```bash
 ./infra/scripts/criar-usuario.sh pessoa@exemplo.com         # limite padrão de R$ 500,00
@@ -167,6 +213,9 @@ O script roda os testes, faz o build, cria as stacks **`ana-braghim-bootstrap`**
 ```
 
 A pessoa recebe um e-mail com uma senha temporária e define uma nova no primeiro login.
+
+**3. Abra a URL do CloudFront** impressa pelo script e entre com o usuário criado.
+
 
 ---
 
@@ -180,7 +229,6 @@ A pessoa recebe um e-mail com uma senha temporária e define uma nova no primeir
 | **Integração** | `BedrockModel` do Strands, rodando no AgentCore Runtime |
 
 - **Por que o Haiku:** a tarefa é conversa com chamada de ferramentas, e ele entrega baixa latência e o menor custo da família Claude.
-- **Por que não o Haiku 5.5:** ele ainda não está liberado na conta do programa. Trocar é só configuração: os parâmetros `ModeloId` e `ModeloBaseId` do template (ou `MODELO_ID` e `MODELO_BASE_ID` no deploy).
 
 ---
 
@@ -330,7 +378,6 @@ Uma role por função, cada uma com uma policy inline chamada `menor-privilegio`
 
 - **Lambdas das tools:** só a role do agente pode invocá-las. Elas não têm URL nem gatilho público.
 - **Lambdas da API:** cada uma só aceita o API Gateway, no stage `prod`, no seu método e na sua rota (`AWS::Lambda::Permission` com `SourceArn` exato).
-- **Bucket do site:** `s3:GetObject` só para a distribuição do CloudFront (OAC), e qualquer acesso sem HTTPS é negado.
 
 ---
 

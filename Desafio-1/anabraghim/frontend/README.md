@@ -2,7 +2,14 @@
 
 Chat em React 19, Vite e TypeScript. O login é feito pelo **Amazon Cognito**, com o `Authenticator` do Amplify UI. A resposta do assistente aparece em **streaming**, e o histórico vem do servidor.
 
-Em produção, o site é servido pelo CloudFront (S3 privado + OAC, F9), e a API responde em `/api/*` **na mesma origem**, sem CORS.
+O mesmo código roda de dois jeitos:
+
+| Modo | Quem serve o site | Quem repassa `/api/*` ao API Gateway |
+|---|---|---|
+| Local | Vite (`npm run dev`, `localhost:5173`) | Proxy do Vite ([`vite.config.ts`](vite.config.ts)), com o alvo em `API_URL` |
+| Hospedado | CloudFront + S3 privado | CloudFront |
+
+Nos dois modos, a página e a API ficam **na mesma origem**, então o código chama só caminhos relativos (`/api/...`) e não há CORS. Como fazer o deploy em cada modo está no [README principal](../README.md#-deploy).
 
 ## Scripts
 
@@ -15,7 +22,7 @@ Em produção, o site é servido pelo CloudFront (S3 privado + OAC, F9), e a API
 
 ## Configuração em tempo de execução
 
-O app lê `/config.json` ao abrir. Em produção, o `deploy.sh` gera esse arquivo a partir dos Outputs da stack (F9). Assim, o mesmo build serve para qualquer ambiente, e nenhum id fica fixo no código:
+O app lê `/config.json` ao abrir ([`lib/config.ts`](src/lib/config.ts)). O `deploy.sh` gera esse arquivo a partir dos Outputs da stack: em `public/config.json` no modo local e direto no site no modo hospedado. Assim, o mesmo build serve para qualquer ambiente, e nenhum id fica fixo no código:
 
 ```json
 { "userPoolId": "us-east-1_XXXXXXXXX", "userPoolClientId": "xxxxxxxxxxxxxxxxxxxxxxxxxx" }
@@ -23,15 +30,18 @@ O app lê `/config.json` ao abrir. Em produção, o `deploy.sh` gera esse arquiv
 
 Nada aqui é segredo: o app client é público e não tem secret. Se o arquivo faltar ou vier inválido, o app mostra uma tela de erro em vez de quebrar.
 
-## Desenvolvimento local, contra a stack já publicada
+## Rodar localmente, contra uma stack publicada
 
-**Atalho:** depois de um `SEM_FRONTEND=1 ./infra/deploy.sh`, os dois arquivos abaixo já foram gerados pelo script. É só rodar `npm install` e `npm run dev`.
+| Arquivo (ignorado pelo git) | Conteúdo | Vem do Output |
+|---|---|---|
+| `public/config.json` | `{ "userPoolId": "...", "userPoolClientId": "..." }` (modelo em [`config.example.json`](config.example.json)) | `UserPoolId`, `UserPoolClientId` |
+| `.env.local` | `API_URL=https://<id>.execute-api.us-east-1.amazonaws.com/prod` | `ApiUrl` |
 
-Para preparar à mão:
+1. **Com acesso à AWS:** o `SEM_FRONTEND=1 ./infra/deploy.sh` já gera os dois arquivos. **Sem acesso:** receba-os de quem fez o deploy (nenhum dos dois tem segredo).
+2. `npm install` e `npm run dev`, depois abra `http://localhost:5173`.
+3. Entre com um usuário convidado (`infra/scripts/criar-usuario.sh`).
 
-1. Copie `config.example.json` para `public/config.json` (ignorado pelo git) e preencha com os Outputs `UserPoolId` e `UserPoolClientId`.
-2. Crie `frontend/.env.local` (também ignorado) com `API_URL=<Output ApiUrl>`, por exemplo `https://abc123.execute-api.us-east-1.amazonaws.com/prod`. O Vite repassa `/api/*` para a API, como o CloudFront faz em produção.
-3. Rode `npm run dev` e entre com um usuário convidado (`infra/scripts/criar-usuario.sh`).
+O repasse de `/api/*` é do servidor do Vite, por isso use o `npm run dev`. Servir o `dist/` direto não alcança a API. O Vite só lê o `.env.local` ao iniciar: se criar ou alterar esse arquivo, reinicie o `npm run dev`.
 
 ## Como funciona
 

@@ -1,6 +1,6 @@
 # tools/
 
-As três ferramentas da Fase 1 como **AWS Lambda em TypeScript** (Node 22, arm64), com os mesmos contratos de argumentos, retorno e códigos de erro.
+As três ferramentas do agente como **AWS Lambda em TypeScript** (Node 22, arm64): consultar o catálogo, registrar a intenção de compra e realizar o pagamento simulado.
 
 ```bash
 npm ci
@@ -59,6 +59,5 @@ Toda recusa tem o formato `{ "status": "recusado", "erro": "<CÓDIGO>", "mensage
 | Método diferente de `cartao` ou `pix` | `METODO_INVALIDO` | `realizar_compra` |
 | Falha interna (DynamoDB fora, erro inesperado) | `FALHA_NA_FERRAMENTA` | todas |
 
-Os códigos da Fase 1 continuam os mesmos. Mudaram duas coisas:
-- **`QUANTIDADE_INVALIDA`** (novo): na Fase 1 o schema do MCP barrava quantidade zero, negativa ou fracionada antes do handler. Agora a Lambda é a última linha de defesa e responde no formato padrão.
-- **`FALHA_NA_FERRAMENTA`**: qualquer exceção inesperada vira mensagem amigável. O detalhe técnico vai só para o CloudWatch Logs, nunca para o usuário.
+- **Validação na própria Lambda:** argumentos inválidos (como quantidade zero ou fracionada) viram uma recusa no formato padrão, mesmo que o modelo os envie. A Lambda é a última linha de defesa.
+- **`FALHA_NA_FERRAMENTA`:** qualquer exceção inesperada vira mensagem amigável. O detalhe técnico vai só para o CloudWatch Logs, nunca para o usuário.

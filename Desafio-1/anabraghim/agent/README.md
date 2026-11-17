@@ -1,6 +1,6 @@
 # agent/
 
-Agente **Strands Agents (Python 3.12)** no **Amazon Bedrock AgentCore Runtime**, usando o **Claude Haiku** do Bedrock. Mesmo system prompt, mesmas tools e mesmo teto de 8 iterações da Fase 1.
+Agente **Strands Agents (Python 3.12)** no **Amazon Bedrock AgentCore Runtime**, usando o **Claude Haiku** do Bedrock. Conversa com o usuário, chama as 3 tools e tem um teto de 8 iterações por turno.
 
 ```bash
 python -m venv .venv && .venv/Scripts/pip install -r requirements-dev.txt   # Linux/macOS: .venv/bin/pip
@@ -15,7 +15,7 @@ python empacotar.py ../infra/build/agent   # zip Linux ARM64; a última linha é
 | [`agente/execucao.py`](agente/execucao.py) | Monta o `Agent` com o histórico, roda o turno e traduz os eventos do Strands. |
 | [`agente/ferramentas.py`](agente/ferramentas.py) | As 3 `@tool`. O `usuario_id` vem do `invocation_state`, nunca dos argumentos. |
 | [`agente/lambdas.py`](agente/lambdas.py) | `lambda.invoke({ usuario_id, argumentos })`. Qualquer falha vira `FALHA_NA_FERRAMENTA`. |
-| [`agente/prompt.py`](agente/prompt.py) | System prompt da Fase 1, sem alteração. |
+| [`agente/prompt.py`](agente/prompt.py) | System prompt: papel do assistente, fluxo de compra e como explicar cada recusa. |
 | [`empacotar.py`](empacotar.py) | Zip determinístico para o AgentCore (dependências de `requirements.lock`). |
 
 ## Contrato com a Lambda do chat
@@ -59,7 +59,7 @@ O `fim` sempre termina numa mensagem do assistente. Se o limite de 8 iterações
 
 ## Modelo
 
-- **Inference profile:** `us.anthropic.claude-haiku-4-5-20251001-v1:0` (Claude Haiku 4.5). É o parâmetro `ModeloId` do template, e o modelo base `anthropic.claude-haiku-4-5-20251001-v1:0` é o `ModeloBaseId`. O Haiku 5.5 não está liberado para a conta do programa; o código é o mesmo para os dois, então trocar é só mudar os parâmetros.
+- **Inference profile:** `us.anthropic.claude-haiku-4-5-20251001-v1:0` (Claude Haiku 4.5). É o parâmetro `ModeloId` do template, e o modelo base `anthropic.claude-haiku-4-5-20251001-v1:0` é o `ModeloBaseId`. O código não depende do modelo: trocar é só mudar os parâmetros.
 - **Amostragem:** sem `temperature`/`top_p`. O agente usa o padrão do modelo, que todos os Claude atuais aceitam (os mais novos recusam valores diferentes).
 - **Raciocínio:** o modelo pode devolver blocos de raciocínio (`reasoningContent`). Eles voltam ao modelo como ele os produziu, inclusive o conteúdo em bytes, que viaja em base64.
 

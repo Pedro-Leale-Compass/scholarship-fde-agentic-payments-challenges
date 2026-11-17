@@ -1,9 +1,10 @@
 // Configuração lida em tempo de execução de /config.json, gerado pelo deploy.sh a
-// partir dos Outputs da stack (F9). Assim o mesmo build serve para qualquer
+// partir dos Outputs da stack (em public/config.json no modo local). Assim o mesmo build serve para qualquer
 // ambiente e nenhum id fica fixo no código. Não há segredo aqui: o app client do
 // Cognito é público (sem secret).
 //
-// A API não precisa de URL: ela responde em /api na mesma origem (CloudFront).
+// A API não precisa de URL: ela responde em /api na mesma origem (proxy do Vite
+// no modo local, CloudFront no modo hospedado).
 export interface ConfigApp {
     userPoolId: string
     userPoolClientId: string

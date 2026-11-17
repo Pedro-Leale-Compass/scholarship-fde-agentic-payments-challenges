@@ -1,6 +1,3 @@
-// Cliente da API. Todas as rotas ficam em /api na mesma origem do site (o
-// CloudFront encaminha para o API Gateway), então não há CORS.
-//
 // O token é o ID token do Cognito: é o que o autorizador do API Gateway aceita e
 // o único que traz a claim email usada pelo /api/perfil.
 import type { EventoChat, MensagemHistorico, Perfil } from "../types"
