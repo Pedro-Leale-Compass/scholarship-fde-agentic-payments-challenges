@@ -55,7 +55,9 @@ def list_catalogo(tool_context: ToolContext, categoria: str | None = None) -> st
     """Lista os produtos disponíveis, opcionalmente filtrados por categoria.
 
     Args:
-        categoria: Categoria opcional, por exemplo: monitores.
+        categoria: Filtro opcional por categoria: audio, perifericos, monitores, moveis ou acessorios.
+            Não use o nome do produto aqui: para encontrar um produto pelo nome, chame sem categoria
+            e procure na lista.
     """
     argumentos = {} if categoria is None else {"categoria": categoria}
     return invoke_tool("LAMBDA_LISTAR_CATALOGO", tool_context, argumentos)
