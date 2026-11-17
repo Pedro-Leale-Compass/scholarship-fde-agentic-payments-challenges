@@ -1,0 +1,5 @@
+# Scripts bash precisam de LF: com CRLF (core.autocrlf=true no Windows) o bash
+# falha com "$'\r': command not found".
+*.sh text eol=lf
+# Lidos linha a linha pelos scripts bash (seed): CRLF deixaria um \r em cada item.
+*.jsonl text eol=lf

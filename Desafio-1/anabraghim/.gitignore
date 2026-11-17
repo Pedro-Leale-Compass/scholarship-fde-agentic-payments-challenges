@@ -1,0 +1,58 @@
+# dev
+.yarn/
+!.yarn/releases
+.vscode/*
+!.vscode/launch.json
+!.vscode/*.code-snippets
+.idea/workspace.xml
+.idea/usage.statistics.xml
+.idea/shelf
+.claude
+CLAUDE.md
+
+# deps
+node_modules/
+
+# build
+dist/
+infra/build/
+*.zip
+.aws-sam/
+cdk.out/
+
+# python (agent/)
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# terraform (não usado, mas exigido pelo desafio no .gitignore)
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# roteiro local de deploy, fora do versionamento (o AGENT.md é versionado)
+PASSOS-RESTANTES.md
+
+# config gerada pelo deploy a partir dos Outputs da stack
+frontend/public/config.json
+
+# env e credenciais
+.env
+.env.*
+!.env.example
+.aws/
+*.pem
+
+# logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# misc
+.DS_Store

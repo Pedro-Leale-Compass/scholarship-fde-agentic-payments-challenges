@@ -1,0 +1,23 @@
+{
+  "name": "tools",
+  "private": true,
+  "type": "module",
+  "description": "Ferramentas do agente (listar_catalogo, registrar_intencao, realizar_compra) como AWS Lambda.",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1169.0",
+    "@aws-sdk/lib-dynamodb": "^3.1169.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.164",
+    "@types/node": "^26.6.6",
+    "aws-sdk-client-mock": "^4.1.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}

@@ -1,0 +1,76 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Bootstrap do chatbot de pagamentos: bucket privado onde o deploy.sh publica os
+  artefatos (zips das Lambdas e do agente) antes de criar a stack principal.
+
+Parameters:
+  Prefixo:
+    Type: String
+    Default: ana-braghim
+    AllowedPattern: "^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$"
+    ConstraintDescription: Apenas letras minúsculas, números e hífen (vai no nome de buckets).
+    Description: Prefixo da stack e dos recursos, para não colidir com outros fellows na mesma conta.
+
+Rules:
+  SomenteUsEast1:
+    Assertions:
+      - Assert: !Equals [!Ref "AWS::Region", us-east-1]
+        AssertDescription: Todos os recursos do desafio devem ser criados em us-east-1.
+
+Resources:
+  ArtefatosBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      # Account id no nome garante unicidade global sem depender de sufixo aleatório.
+      BucketName: !Sub "${Prefixo}-artefatos-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      # Sem versionamento: artefatos são regerados a cada deploy, e um bucket sem
+      # versões é esvaziado com um simples `aws s3 rm --recursive` no destroy.sh.
+      # A expiração vale só para o que o `cloudformation package` publica (a Lambda
+      # copia o código ao ser criada). O zip do agente fica em agente/ e não expira,
+      # porque o AgentCore Runtime aponta para ele enquanto existir.
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpiraArtefatosAntigos
+            Status: Enabled
+            Prefix: !Sub "${Prefixo}-pagamentos/"
+            ExpirationInDays: 30
+      Tags:
+        - Key: projeto
+          Value: !Sub "${Prefixo}-pagamentos"
+
+  ArtefatosBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ArtefatosBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: SomenteHttps
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !GetAtt ArtefatosBucket.Arn
+              - !Sub "${ArtefatosBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+
+Outputs:
+  ArtefatosBucketNome:
+    Description: Bucket usado pelo `aws cloudformation package`.
+    Value: !Ref ArtefatosBucket
