@@ -98,7 +98,7 @@ para formatar documentação.
 - [ ] Completar captura visual de intenção inválida e do console de logs, caso exigida nesse formato.
 - [x] Confirmar recuperação pela interface do histórico após recarregar.
 - [ ] Testar token expirado e verificar métricas de não invocação da Lambda em requisições rejeitadas; checagens adicionais ainda pendentes.
-- [ ] Validar execução local e deploy do backend pelo comando documentado a partir da estrutura final de entrega. CloudFront não é necessário.
+- [x] Validar execução local e deploy pelo comando documentado a partir de `Desafio-1/paulo-antonio/` em 17/11/2026: dependências instaladas pelos lockfiles, build concluído, stacks de artefatos/dados/aplicação sem mudanças e configuração gerada. Prévia em 127.0.0.1:4173 respondeu HTTP 200 para página, aplicação, configuração e JavaScript. Esta validação usa a conta e stacks existentes, não uma conta vazia; não repetiu compras nem login positivo. CloudFront não é necessário.
 - [x] Preparar localmente branch `fellow/paulo-antonio-desafio-1` e pasta `Desafio-1/paulo-antonio/`.
 - [x] Criar acessos convidados de Pedro e Gabriel no Cognito, nos e-mails fornecidos pelo aluno (17/11/2026). AWS aceitou envio dos convites; ambos habilitados em `FORCE_CHANGE_PASSWORD`. Recebimento e primeiro login ainda não confirmados. Nenhuma senha registrada no projeto.
 - [ ] Confirmar tags obrigatórias e datas de entrega/limpeza.

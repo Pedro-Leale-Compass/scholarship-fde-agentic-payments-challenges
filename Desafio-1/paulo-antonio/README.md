@@ -128,8 +128,10 @@ ele não é restaurado ao sair ou atualizar a página. Todos os pagamentos são 
 
 Use **sempre `--mode backend` para esta entrega**. O modo legado `--mode full` não é
 necessário e não foi validado na conta. Consulte o [procedimento do backend](infra/README.md).
-O deploy do backend a partir da pasta final de entrega também deve ser validado antes
-de declarar reprodutibilidade completa.
+O comando de deploy foi validado em 17/11/2026 a partir de
+`Desafio-1/paulo-antonio/infra`: instalou dependências, compilou frontend/backend,
+confirmou as três stacks existentes sem alterações e gerou a configuração local.
+Isso valida a atualização do ambiente existente; não é um teste em conta vazia.
 
 ### Rodar somente o frontend com o backend já existente
 
