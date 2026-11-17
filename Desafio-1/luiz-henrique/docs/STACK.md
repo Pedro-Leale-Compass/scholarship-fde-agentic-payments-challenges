@@ -82,7 +82,8 @@ Comandos:
 ## 4. IAM (resumo real)
 
 - **Chat Lambda:** `bedrock-agentcore:InvokeAgentRuntime` no runtime;
-  `GetItem/PutItem/UpdateItem` em `Usuarios` e `Conversas`; `GetItem` em `Intencoes`.
+  `GetItem/PutItem/UpdateItem` em `Usuarios` e `Conversas`. Sem acesso a `Intencoes`,
+  transações ou Bedrock.
 - **`listar_catalogo`:** `dynamodb:GetItem/Scan` em `Catalogo`.
 - **`registrar_intencao`:** `dynamodb:PutItem` em `Intencoes`.
 - **`realizar_compra`:** `dynamodb:GetItem/UpdateItem/TransactWriteItems` em `Intencoes` e

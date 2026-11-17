@@ -6,10 +6,10 @@ Branch: `fellow/luiz-henrique-desafio-1` · Região: `us-east-1` · Prefixo: `lu
 
 Baseline documentado: tag **`v0.0.2` — “chat works sometimes”** (`d854762`).
 
-> **Estado atual:** o fluxo de compra tem um defeito conhecido de reutilização de
-> `intencao_id` depois de uma falha (`LIMITE_EXCEDIDO`) ou de uma compra paga. A causa e o
-> plano de correção estão em [`docs/PLAN-AGENT-REVAMP.md`](docs/PLAN-AGENT-REVAMP.md).
-> Não use o fluxo de compras em sequência como evidência confiável até a Fase 3 do plano.
+> **Status (2026-11-17):** o fluxo de compra foi corrigido e validado localmente e na stack
+> (`npm run test:agent` 3/3). O agente funcionou nos primeiros pedidos reais. A suíte ampla
+> de 100+ casos e o comportamento de redirecionamento para o catálogo estão planejados em
+> [`docs/TEST-STRATEGY.md`](docs/TEST-STRATEGY.md). O frontend continua local.
 
 ## Estrutura
 
@@ -48,6 +48,31 @@ AgentCore Runtime (container arm64 no ECR)
 
 Não há S3/CloudFront/OAC, VPC, NAT Gateway, Amplify Hosting, WebSocket ou streaming neste
 repositório. O frontend roda local. Ver [`docs/STACK.md`](docs/STACK.md).
+
+## Para o instrutor
+
+O frontend roda localmente; a API, o agente e o banco estão na AWS.
+
+```bash
+git clone <este repositório>
+cd Desafio-1/luiz-henrique
+npm run setup          # raiz + frontend
+npm run dev            # http://localhost:3000
+```
+
+- O `frontend/public/config.json` versionado já aponta para a API/Cognito atuais.
+- O convite é enviado pelo Cognito com senha temporária; no primeiro login o instrutor
+  define a nova senha.
+- Crie/reenvie o convite com:
+
+```bash
+eval "$(bash scripts/aws-creds.sh)"
+npm run user:invite -- instrutor@example.com 500
+```
+
+- Se `infra/cdk-outputs.json` existir (ambiente de desenvolvimento), `npm run dev` regenera
+  o `config.json` antes de subir. Em um clone limpo, usa o `config.json` versionado.
+- Use a porta **3000**; o CORS da API aceita apenas essa origem.
 
 ## Início rápido (frontend)
 
@@ -175,7 +200,7 @@ Regras de escrita:
 - Sem `AdministratorAccess`; nenhum `*` exceto `ecr:GetAuthorizationToken` (a API não
   aceita escopo por repositório).
 - Chat Lambda: `bedrock-agentcore:InvokeAgentRuntime` + `GetItem`/`PutItem`/`UpdateItem`
-  em `Usuarios`.
+  em `Usuarios` e `Conversas`. Sem acesso a `Intencoes`, transações ou Bedrock.
 - `listar_catalogo`: `GetItem`/`Scan` em `Catalogo`.
 - `registrar_intencao`: `PutItem` em `Intencoes`.
 - `realizar_compra`: `GetItem`/`UpdateItem`/`TransactWriteItems` em `Intencoes` e
@@ -186,14 +211,17 @@ Regras de escrita:
 
 ## Limitações e pendências
 
-- Frontend local; sem URL pública S3/CloudFront/OAC (SCP da conta).
-- API REST sem streaming/WebSocket.
-- `Conversas` guarda o estado de checkout; o histórico completo de mensagens ainda não é
-  persistido.
+- Frontend local; sem URL pública S3/CloudFront/OAC (SCP da conta) e sem deploy de frontend
+  no comando IaC. Decisão registrada em `docs/REQUISITOS-PDF-E-AUDITORIA.md`.
+- API REST sem streaming/WebSocket (requisito do PDF ainda não coberto).
+- `GET /conversas` e o histórico completo de mensagens em `Conversas` ainda não estão
+  implementados; `Conversas` guarda apenas o estado de checkout.
 - A reutilização de `intencao_id` foi removida e validada localmente (`npm run test:local`)
   e na stack implantada (`npm run test:agent`, 2026-11-17).
-- `registrar_intencao` ainda aceita preço/produto vindos do modelo; o plano move para o
-  catálogo.
+- `registrar_intencao` ainda aceita preço/produto vindos do modelo; o próximo passo é
+  resolver preço pelo catálogo.
+- A suíte ampla de 100+ casos e o redirecionamento para catálogo estão planejados em
+  `docs/TEST-STRATEGY.md` (caso `REFUSAL-LOOP-01`).
 - Capturas de tela/Postman ainda não foram anexadas; os resultados da suíte estão na tabela
   de evidências.
 
@@ -208,6 +236,7 @@ Regras de escrita:
 | Limite excedido | Compra rejeitada com `LIMITE_EXCEDIDO` | teste de integração passou (2026-11-17) |
 | `intencao_id` inválido | `INTENCAO_INVALIDA` | teste de ferramenta passou (2026-11-17) |
 | Novo produto após cancelamento | Novo ID, sem reutilizar o cancelado | teste de regressão passou; ex.: `INT-B7E0ED4D` cancelada → `INT-F7F74EB2` paga |
+| Uso real inicial | Agente responde catálogo, registra intenção, cartão/Pix e limite | relato do usuário em 2026-11-17; suíte ampla pendente |
 | Convite por e-mail | Usuário no Cognito + item em `Usuarios` | pendente |
 | Ajuste de saldo | `user:set-limit` altera `limite_centavos` | pendente |
 

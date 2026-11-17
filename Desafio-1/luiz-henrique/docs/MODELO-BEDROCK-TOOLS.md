@@ -72,8 +72,8 @@ sem custo.
 ## 3. Fluxo do runtime (atual, pós-remoção dos overrides)
 
 1. A Lambda do chat envia `prompt`, `messages`, `usuario_id`, `conversa_id` e
-   `pending_intencao_id` (apenas se a intenção ainda estiver pendente e for do usuário).
-   **Não envia** `ultima_intencao_id`.
+   `pending_intencao_id` (lido de `Conversas.pending_status`; a tool valida dono/status/
+   expiração). **Não envia** `ultima_intencao_id`.
 2. O runtime cria um `Agent` novo por requisição. O estado começa com
    `registeredIntencaoId = null` e `registeredThisTurn = false`.
 3. `registrar_intencao` só atualiza o estado quando o tool result tem `ok: true` e um
@@ -96,8 +96,8 @@ sem custo.
 6. A resposta inclui `registered_intencao_id` (ID criado nesta invocação, ou `null`) e
    `registered` (boolean). O campo `intencao_id` continua como alias do ID novo para
    compatibilidade, mas nunca é um ID antigo.
-7. A API mantém as últimas 12 mensagens **sem filtrar falhas**: o modelo precisa ver que a
-   intenção foi cancelada. Depois da resposta, grava `registered_intencao_id` em
+7. A API envia o **histórico completo** de mensagens, sem filtrar falhas: o modelo precisa
+   ver que a intenção foi cancelada. Depois da resposta, grava `registered_intencao_id` em
    `Conversas.pending_intencao_id` e limpa o estado em `paga`/`cancelada`/`expirada`.
 8. Se o usuário confirmar cartão/pix e o modelo não chamar `realizar_compra`, o runtime paga
    **apenas** o `pending_intencao_id` verificado (`guard: payment_fallback_verified`).

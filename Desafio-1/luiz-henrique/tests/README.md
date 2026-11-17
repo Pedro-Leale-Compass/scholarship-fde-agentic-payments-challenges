@@ -8,6 +8,9 @@ Três frentes:
 2. **Suíte Node** (`npm run test:agent`) — integração real com API/Cognito/DynamoDB.
 3. **Coleção Postman** — login Cognito e testes manuais do `/chat`.
 
+A estratégia da suíte ampla (100+ casos) e o caso `REFUSAL-LOOP-01` estão em
+[`docs/TEST-STRATEGY.md`](../docs/TEST-STRATEGY.md).
+
 ## 1. Fluxo local
 
 ```bash

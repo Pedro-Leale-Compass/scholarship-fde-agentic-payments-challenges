@@ -54,7 +54,6 @@ export class Desafio1Stack extends cdk.Stack {
       agentRuntimeArn: agent.agentRuntimeArn,
       usuariosTable: database.usuariosTable,
       conversasTable: database.conversasTable,
-      intencoesTable: database.intencoesTable,
       frontendUrl,
     });
 

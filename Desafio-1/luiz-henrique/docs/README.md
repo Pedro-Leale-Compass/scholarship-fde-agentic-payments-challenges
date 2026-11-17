@@ -2,7 +2,8 @@
 
 Última verificação contra o código: **2026-11-17**
 
-Baseline: tag `v0.0.2` — “chat works sometimes” (`d854762`)
+Baseline atual: tag `v0.0.3` — “checkout state fixed and validated” (`947da6f`)
+Baseline histórico: `v0.0.2` — “chat works sometimes” (`d854762`)
 
 ## Status verificado em 2026-11-17
 
@@ -27,6 +28,7 @@ Baseline: tag `v0.0.2` — “chat works sometimes” (`d854762`)
 | [`REQUISITOS-PDF-E-AUDITORIA.md`](REQUISITOS-PDF-E-AUDITORIA.md) | Requisitos do PDF × estado atual (com prazos e pendências) |
 | [`OPERATIONS.md`](OPERATIONS.md) | Deploy, modelo vivo, logs, custos e troubleshooting |
 | [`destroy-cleanup.md`](destroy-cleanup.md) | Operação de destroy, limpeza e verificação de órfãos |
+| [`TEST-STRATEGY.md`](TEST-STRATEGY.md) | Suíte futura de 100+ casos, métricas e caso de loop de recusa |
 | [`TODO.md`](TODO.md) | Lista de tarefas atual (somente tarefas) |
 
 ## Documentos históricos

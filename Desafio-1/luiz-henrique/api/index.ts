@@ -31,7 +31,6 @@ const ddb = new DynamoDBClient({
 
 const USUARIOS_TABLE = process.env.USUARIOS_TABLE;
 const CONVERSAS_TABLE = process.env.CONVERSAS_TABLE;
-const INTENCOES_TABLE = process.env.INTENCOES_TABLE;
 const LIMITE_INICIAL_CENTAVOS =
   Number(process.env.LIMITE_INICIAL_CENTAVOS) || 50000;
 
@@ -143,22 +142,17 @@ function extractUsuarioId(headers: Record<string, string> | undefined): string |
 }
 
 
-function intencaoExpirou(expiraEm: unknown): boolean {
-  if (typeof expiraEm !== "string") return false;
-  const timestamp = Date.parse(expiraEm);
-  return Number.isFinite(timestamp) && timestamp <= Date.now();
-}
-
 /**
- * Lê o estado de checkout da conversa e só devolve o ID se a intenção ainda
- * existir, pertencer ao usuário, estiver pendente e não tiver expirado.
- * Qualquer outro caso limpa o estado para não reaproveitar ID terminal.
+ * Lê o estado de checkout da conversa. O chat Lambda não acessa a tabela de
+ * intenções (requisito de menor privilégio); a validação final de dono, status
+ * e expiração é feita pela tool realizar_compra. Se o status local não for
+ * "pendente", o estado é limpo.
  */
 async function getPendingIntencao(
   usuarioId: string,
   conversaId: string,
 ): Promise<string | undefined> {
-  if (!CONVERSAS_TABLE || !INTENCOES_TABLE) return undefined;
+  if (!CONVERSAS_TABLE) return undefined;
 
   try {
     const conversa = await ddb.send(
@@ -168,28 +162,18 @@ async function getPendingIntencao(
           conversa_id: { S: conversaId },
           usuario_id: { S: usuarioId },
         },
-        ProjectionExpression: "pending_intencao_id",
+        ProjectionExpression: "pending_intencao_id, pending_status",
       }),
     );
     const pending = (
       conversa.Item?.pending_intencao_id as { S?: string } | undefined
     )?.S;
+    const status = (
+      conversa.Item?.pending_status as { S?: string } | undefined
+    )?.S;
     if (!pending) return undefined;
 
-    const intencao = await ddb.send(
-      new GetItemCommand({
-        TableName: INTENCOES_TABLE,
-        Key: { intencao_id: { S: pending } },
-        ProjectionExpression: "usuario_id, #status, expira_em",
-        ExpressionAttributeNames: { "#status": "status" },
-      }),
-    );
-    const item = intencao.Item;
-    const dono = (item?.usuario_id as { S?: string } | undefined)?.S;
-    const status = (item?.status as { S?: string } | undefined)?.S;
-    const expiraEm = (item?.expira_em as { S?: string } | undefined)?.S;
-
-    if (!item || dono !== usuarioId || status !== "pendente" || intencaoExpirou(expiraEm)) {
+    if (status && status !== "pendente") {
       await clearPendingIntencao(usuarioId, conversaId);
       return undefined;
     }
@@ -324,10 +308,9 @@ exports.handler = async (event: {
       : randomUUID();
   const pendingIntencaoId = await getPendingIntencao(usuario_id, conversaId);
 
-  // Histórico longo degrada a aderência do modelo. Mantemos as últimas mensagens,
-  // inclusive falhas: esconder o erro faz o modelo achar que a intenção continua pendente.
-  const MAX_HISTORY_MESSAGES = 12;
-  const history = messages.slice(-MAX_HISTORY_MESSAGES);
+  // O PDF exige o histórico completo a cada turno. Não truncamos: falhas também
+  // ficam visíveis para o modelo (esconder erro faz parecer que a intenção segue pendente).
+  const history = messages;
 
   const prompt = history
     .map((m) => `${m.role}: ${m.content.map((c) => c.text).join(" ")}`)

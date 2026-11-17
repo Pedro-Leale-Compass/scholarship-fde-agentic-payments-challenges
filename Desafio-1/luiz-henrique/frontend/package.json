@@ -4,7 +4,7 @@
   "private": true,
   "description": "Next.js frontend for Desafio 1 - Agente de Pagamentos na AWS (luiz-henrique)",
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3000",
     "build": "next build",
     "export": "next export",
     "start": "next start",

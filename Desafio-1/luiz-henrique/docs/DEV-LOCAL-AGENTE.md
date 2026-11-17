@@ -131,7 +131,7 @@ Use um `usuario_id` que exista em `Usuarios` (ou o `sub` de um usuário de teste
 | Tools | fallback ou Lambdas reais | Lambdas reais |
 | Prompt/tool loop | igual | igual |
 | IDs/códigos | iguais desde esta rodada | iguais |
-| Estado de conversa | harness simula `pending_intencao_id` | `Conversas` + validação em `Intencoes` |
+| Estado de conversa | harness simula `pending_intencao_id` | `Conversas`; a tool valida `Intencoes` |
 | API Gateway/JWT/CORS | não | sim |
 | DynamoDB/IAM | não (fallback) | sim |
 | AgentCore session/logs | não | sim |

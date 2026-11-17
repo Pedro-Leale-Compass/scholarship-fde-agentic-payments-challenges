@@ -1,6 +1,6 @@
 # Requisitos do PDF × estado atual
 
-Verificado em **2026-11-17** contra o código e os outputs da stack. Baseline `v0.0.2`.
+Verificado em **2026-11-17** contra o código e os outputs da stack. Baseline `v0.0.3`.
 
 Legenda: ✅ atende · 🟡 parcial · ❌ não atende · ⏸ adiado por decisão explícita.
 
@@ -9,18 +9,20 @@ Legenda: ✅ atende · 🟡 parcial · ❌ não atende · ⏸ adiado por decisã
 | Requisito | Estado | Evidência/observação |
 |---|---|---|
 | Migrar o chatbot da Fase 1 para AWS | ✅ | `api/`, `agent/`, `tools/`, `infra/` |
-| Manter regras de negócio (catálogo, intenção, cartão/Pix, limite) | 🟡 | fluxo existe; há bug de reutilização de `intencao_id` (ver §4) |
+| Manter regras de negócio (catálogo, intenção, cartão/Pix, limite) | ✅ | fluxo corrigido e validado (ver §4) |
 | Tudo em `us-east-1`; prefixo `luiz-henrique` | ✅ | `infra/bin/desafio-1.ts`, `database-stack.ts` |
 | Comunicação frontend ↔ backend via API Gateway | ✅ | `POST /chat` com JWT Cognito |
+| `GET /conversas` para carregar histórico | ❌ | só existe `POST /chat`; histórico não é persistido |
 | Frontend S3 privado + CloudFront + OAC com URL pública | ❌/⏸ | frontend roda local; não existe `FrontendStack` |
 | `config.json` gerado pelo IaC no deploy | 🟡 | `frontend/public/config.json` é versionado; `scripts/dev-frontend-local.sh` regenera a partir de `cdk-outputs.json` quando presente |
 | Cognito + `Authenticator`, `hideSignUp`, sem auto cadastro | ✅ | `frontend/app/page.tsx:60`; `infra/lib/api-stack.ts` |
 | API Gateway + autorizador JWT | ✅ | `infra/lib/api-stack.ts` |
 | API “Stream ou WebSocket” | ❌ | REST não-streaming |
+| Histórico completo enviado ao agente a cada turno | ✅ | a API envia `messages` completo; validado em 2026-11-17 |
 | Strands no AgentCore Runtime + Bedrock | ✅ | `agent/index.ts`; runtime via `CustomResource`; Haiku 4.5 no runtime v15 (2026-11-17) |
 | 3 tools em Lambda | ✅ | `tools/` + `infra/lib/tools-stack.ts` |
-| DynamoDB: usuários+limite, conversas, intenções | 🟡 | `Usuarios`/`Intencoes`/`Catalogo` em uso; `Conversas` existe mas não é gravada |
-| IaC com um comando para o ambiente completo, incluindo frontend | 🟡 | `npm run deploy:api-agent` cobre backend/agente; frontend fica local |
+| DynamoDB: usuários+limite, conversas, intenções | 🟡 | `Usuarios`/`Intencoes`/`Catalogo` em uso; `Conversas` guarda estado de checkout, mas não o histórico completo de mensagens |
+| IaC com um comando para o ambiente completo, incluindo frontend | ❌/⏸ | `npm run deploy:api-agent` cobre backend/agente; frontend fica local (decisão registrada) |
 
 ## 2. Segurança e regras de compra
 
@@ -31,7 +33,7 @@ Legenda: ✅ atende · 🟡 parcial · ❌ não atende · ⏸ adiado por decisã
 | Valor da compra vem da intenção salva | ✅ | `realizar_compra` lê `Intencoes.valor_centavos` |
 | Só paga intenção do próprio usuário, `pendente`, não expirada | ✅ | `tools/realizar_compra/index.ts` |
 | Pagamento/limite sem duplicidade (condicional/transação) | ✅ | `TransactWriteItems` com `status = pendente` e `limite_centavos >= valor` |
-| IAM de menor privilégio, sem `*`/`AdministratorAccess` | 🟡 | exceção documentada: `ecr:GetAuthorizationToken` com `*`; `AWSLambdaBasicExecutionRole` no runtime |
+| IAM de menor privilégio, sem `*`/`AdministratorAccess` | ✅/🟡 | chat Lambda sem acesso a `Intencoes`/transações/Bedrock (validado); tools acessam só suas tabelas; exceção documentada `ecr:GetAuthorizationToken` com `*` |
 | Nenhum segredo no Git | ✅ | `.env`/`cdk-outputs.json`/`postman-environment.json` ignorados |
 | CORS restrito à origem do frontend | ✅ | `FRONTEND_URL`/`frontendUrl` = `http://localhost:3000` |
 
@@ -41,7 +43,7 @@ Legenda: ✅ atende · 🟡 parcial · ❌ não atende · ⏸ adiado por decisã
 |---|---|---|
 | README com diagrama, deploy, modelo, DynamoDB, IAM e remoção | 🟡 | atualizado; tabela de evidências preenchida com a suíte; capturas de tela/Postman pendentes |
 | Evidências: login, 401, cartão, Pix, limite, ID inválido | 🟡 | `npm run test:agent` 3/3 (2026-11-17); faltam capturas de tela/Postman |
-| Aplicação no ar até a correção | ❌/⏸ | frontend local; falta convidar o instrutor e manter a API acessível |
+| Aplicação no ar até a correção | 🟡 | API/agente no ar; frontend local; falta convidar o instrutor |
 | Usuário do instrutor no Cognito | ❌ | usar `npm run user:invite -- <email> [limite]` |
 | Alerta de orçamento | 🟡 | orçamento de US$ 20 mencionado (≈US$ 5 gastos); não há registro neste repo de alarme criado. Criar AWS Budget é gratuito (primeiros 2); se já existir, registre o ID/limite aqui |
 | Destroy + limpeza | ✅ | `npm run destroy` + `scripts/destroy-cleanup.sh` + `destroy-cleanup.md` |

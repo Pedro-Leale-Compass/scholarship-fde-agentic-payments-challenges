@@ -3,7 +3,8 @@
 Instruções para qualquer agente/pessoa que trabalhe neste projeto. O objetivo é evitar
 trabalho fora da pasta/branch, afirmações desatualizadas e custo AWS desnecessário.
 
-Baseline: tag **`v0.0.2` — “chat works sometimes”** (`d854762`).
+Baseline atual: tag **`v0.0.3` — “checkout state fixed and validated”** (`947da6f`).
+Baseline histórico: `v0.0.2` — “chat works sometimes” (`d854762`).
 
 ## 1. Pasta e branch
 
@@ -34,7 +35,8 @@ Não faça commit em `main`, `develop`, `master` ou outra branch. Antes de commi
   CloudFront, OAC, Amplify Hosting, VPC ou NAT Gateway no repositório.
   `infra/dist/lib/frontend-stack.*` é artefato antigo de build e não é usado.
 - API Gateway **REST** com `POST /chat` e autorizador JWT Cognito. Não há
-  streaming/WebSocket.
+  `GET /conversas`, streaming ou WebSocket. O histórico completo é enviado pelo frontend,
+  mas ainda não é persistido em `Conversas`.
 - Agente Strands no Bedrock AgentCore Runtime; runtime criado por `CustomResource`
   (`infra/lambda/agent-runtime/index.ts`), não por `CfnResource`.
 - Tools em 3 Lambdas: `listar_catalogo`, `registrar_intencao`, `realizar_compra`.
@@ -62,6 +64,7 @@ Comece por [`docs/README.md`](docs/README.md).
 | `docs/DEV-LOCAL-AGENTE.md` | agente local e paridade |
 | `docs/OPERATIONS.md` | deploy, modelo, logs, custos, destroy |
 | `docs/REQUISITOS-PDF-E-AUDITORIA.md` | requisitos × estado atual |
+| `docs/TEST-STRATEGY.md` | suíte futura de 100+ casos e caso de recusa/catálogo |
 | `docs/TODO.md` | somente lista de tarefas |
 | `docs/archive/` | histórico; **não** usar como estado atual |
 
@@ -110,10 +113,13 @@ A reutilização de `intencao_id` do `v0.0.2` foi removida do código:
 
 Validado com `npm run test:local` e `npm run test:agent` (3/3 em 2026-11-17). Estado por
 conversa (`conversa_id`) implementado em `Conversas`, com fallbacks usando apenas dados
-verificados. Ainda falta:
+verificados. O agente funcionou nos primeiros pedidos reais. Ainda falta:
 
+- `GET /conversas` e histórico de mensagens em `Conversas`;
+- API Gateway Stream/WebSocket;
 - preço resolvido pelo catálogo;
-- histórico completo em `Conversas`.
+- suíte ampla de 100+ casos (inclui loop de recusa; ver `docs/TEST-STRATEGY.md`);
+- convite do instrutor e capturas de tela/Postman.
 
 Não reintroduza regex/grounding para “corrigir” IDs. Siga o
 [`docs/PLAN-AGENT-REVAMP.md`](docs/PLAN-AGENT-REVAMP.md).

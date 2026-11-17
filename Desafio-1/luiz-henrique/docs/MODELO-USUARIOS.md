@@ -33,8 +33,9 @@ PK: `conversa_id` (S); SK: `usuario_id` (S). GSI `usuario_id-index`
 
 Estado atual: a Lambda do chat grava/lê o **estado de checkout** por conversa
 (`pending_intencao_id`, `pending_status`). O frontend gera `conversa_id` no `localStorage` e
-envia no `POST /chat`. A API verifica em `Intencoes` se o ID existe, pertence ao usuário,
-está `pendente` e não expirou; só então envia ao runtime. O estado é limpo em
+envia no `POST /chat`. A API lê apenas `Conversas.pending_intencao_id/pending_status`; a
+validação final de dono, status e expiração é feita pela tool `realizar_compra`, que tem
+acesso a `Intencoes`. O chat Lambda não lê `Intencoes`. O estado é limpo em
 `paga`/`cancelada`/`expirada`/`indisponível`. O histórico completo de mensagens ainda não é
 persistido.
 

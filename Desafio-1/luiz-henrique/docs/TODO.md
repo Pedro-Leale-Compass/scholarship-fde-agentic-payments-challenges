@@ -68,13 +68,14 @@ Plano detalhado: [`PLAN-AGENT-REVAMP.md`](PLAN-AGENT-REVAMP.md).
 
 ## 6. Evidências e entrega
 
-- [ ] Login com usuário válido (JWT).
-- [ ] `POST /chat` sem token → `401`.
-- [ ] Compra com cartão.
-- [ ] Compra com Pix.
-- [ ] Limite excedido.
-- [ ] `intencao_id` inválido.
-- [x] Fazer o deploy e rodar `npm run test:agent` (2026-11-17).
+- [x] Login com usuário válido (JWT) — coberto por `npm run test:agent`.
+- [x] `POST /chat` sem token → `401` — coberto por `npm run test:agent`.
+- [x] Compra com cartão — coberta por `npm run test:agent`.
+- [x] Compra com Pix — coberta por `npm run test:agent`.
+- [x] Limite excedido — coberto por `npm run test:agent`.
+- [x] `intencao_id` inválido — coberto por `npm run test:agent`.
+- [x] Uso real inicial do agente (catálogo, intenção, cartão/Pix, limite).
+- [x] Fazer o deploy e rodar `npm run test:agent` (2026-11-17, 3/3 após hardening de IAM/histórico).
 - [x] Preencher a tabela de evidências do `README.md` com o resultado dos testes.
 - [ ] Convidar o instrutor (`npm run user:invite -- <email> [limite]`).
 - [ ] Manter a API acessível até a correção.
@@ -86,9 +87,13 @@ Plano detalhado: [`PLAN-AGENT-REVAMP.md`](PLAN-AGENT-REVAMP.md).
 - [ ] Evitar chamadas repetidas ao Bedrock; usar fallback local para prompt.
 - [ ] Após a correção, rodar `npm run destroy` e verificar órfãos.
 
-## 8. Pendências de requisito (avaliar depois)
+## 8. Pendências de requisito
 
-- [ ] Frontend S3 + CloudFront + OAC (bloqueado por SCP nesta conta).
+- [ ] Frontend S3 + CloudFront + OAC (bloqueado por SCP nesta conta; decisão registrada).
 - [ ] API streaming ou WebSocket (PDF pede “Stream ou WebSocket”).
-- [ ] Histórico completo em `Conversas` + `GET /conversas`.
+- [ ] `GET /conversas` + histórico de mensagens em `Conversas`.
+- [ ] Resolver preço/produto pelo catálogo em `registrar_intencao`.
+- [ ] Suíte ampla de 100+ casos e caso `REFUSAL-LOOP-01` (ver `TEST-STRATEGY.md`).
+- [ ] Redirecionar para catálogo quando o produto não for identificado.
+- [ ] Capturas de tela/Postman das evidências.
 - [ ] Painel administrativo / grupo `admins`.
