@@ -1,0 +1,11 @@
+[project]
+name = "alan-lorenz-chat-agent"
+version = "0.1.0"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "bedrock-agentcore==1.26.0",
+    "strands-agents==1.65.0",
+]
+
+[tool.uv]
+package = false
