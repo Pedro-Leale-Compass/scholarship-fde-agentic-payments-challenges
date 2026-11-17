@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { Authenticator, translations } from '@aws-amplify/ui-react'
+import { Authenticator, ThemeProvider, defaultDarkModeOverride, translations, type Theme } from '@aws-amplify/ui-react'
 import { I18n } from 'aws-amplify/utils'
 import type { ConfigApp } from './config.ts'
 import Chat from './components/Chat.tsx'
@@ -20,6 +20,40 @@ I18n.putVocabulariesForLanguage('pt', {
   'Confirm Password': 'Confirme a senha',
 })
 I18n.setLanguage('pt')
+
+const TEMA: Theme = { name: 'agente-pagamentos', overrides: [defaultDarkModeOverride] }
+
+function IconeCarrinho({ tamanho = 20 }: { tamanho?: number }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={tamanho}
+      height={tamanho}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="9" cy="20" r="1.5" />
+      <circle cx="18" cy="20" r="1.5" />
+      <path d="M2 3h3l2.7 12.4a2 2 0 0 0 2 1.6h7.6a2 2 0 0 0 2-1.6L21 7H6" />
+    </svg>
+  )
+}
+
+const COMPONENTES_LOGIN = {
+  Header() {
+    return (
+      <div className="login-cabecalho">
+        <IconeCarrinho tamanho={40} />
+        <h1>Bem-vindo ao seu assistente de compras!</h1>
+        <p>Faça seu login para dar início.</p>
+      </div>
+    )
+  },
+}
 
 type ConversaAberta = { id: string; nova: boolean }
 
@@ -43,7 +77,10 @@ function AreaLogada({ config, email, onSair }: AreaLogadaProps) {
   return (
     <div className="app">
       <header className="topo">
-        <h1>🛒 Agente de Pagamentos</h1>
+        <h1>
+          <IconeCarrinho />
+          Agente de Pagamentos
+        </h1>
         <div className="topo-usuario">
           {email && <span>{email}</span>}
           <button type="button" onClick={onSair}>
@@ -75,10 +112,12 @@ function AreaLogada({ config, email, onSair }: AreaLogadaProps) {
 
 export default function App({ config }: { config: ConfigApp }) {
   return (
-    <Authenticator hideSignUp>
-      {({ signOut, user }) => (
-        <AreaLogada config={config} email={user?.signInDetails?.loginId} onSair={() => signOut?.()} />
-      )}
-    </Authenticator>
+    <ThemeProvider theme={TEMA} colorMode="system">
+      <Authenticator hideSignUp components={COMPONENTES_LOGIN}>
+        {({ signOut, user }) => (
+          <AreaLogada config={config} email={user?.signInDetails?.loginId} onSair={() => signOut?.()} />
+        )}
+      </Authenticator>
+    </ThemeProvider>
   )
 }
