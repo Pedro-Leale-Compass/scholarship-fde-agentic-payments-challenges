@@ -17,11 +17,18 @@ export function ChatMessage({ message }: { message: ChatMessageType }) {
     );
   }
 
+  const isError = !isUser && message.content.startsWith('Erro:');
+
   return (
     <div
+      role={isError ? 'alert' : undefined}
       className={cn(
-        'mr-auto w-fit max-w-[80%] break-words rounded-lg bg-muted px-3 py-2 text-muted-foreground',
-        'prose-chat text-foreground',
+        'mr-auto w-fit max-w-[80%] break-words rounded-lg px-3 py-2',
+        isError
+          ? 'border border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300'
+          : 'bg-muted text-muted-foreground',
+        'prose-chat',
+        !isError && 'text-foreground',
       )}
     >
       {message.content ? (

@@ -361,3 +361,16 @@ Verificado no ambiente real:
 5. **Grounding**: `INT-...`/UUID divergentes e `intencao_N` são substituídos pelo ID real.
 6. **Teste**: suíte agora faz duas compras (fone e teclado) após uma compra confirmada e
    verifica que a segunda é paga e o saldo é debitado duas vezes.
+
+## Fix log v0.0.7 — fallback de pagamento e erro explícito (2026-11-17)
+
+1. **Causa raiz**: `completePaymentFallback` lia a linha `user: Pix.` do prompt achatado e o
+   regex exigia que a mensagem começasse com `pix`/`cartão`. Com o prefixo `user:`, um
+   "Pix." isolado não acionava o fallback; o modelo dizia "aprovada" e o guard respondia.
+2. **Correção**: o prefixo `user:` é removido antes de ler a forma de pagamento. "Pix." e
+   "Cartão." agora acionam o fallback determinístico.
+3. **Erro explícito**: o guard agora responde `Erro: ...` com explicação educacional
+   ("o agente iria confirmar a compra para você sem registrar no backend"), e a UI exibe
+   mensagens que começam com `Erro:` em vermelho (`role="alert"`).
+4. **Testes**: `npm run test:agent` cobre a segunda compra com "Pix."; resultado `pass 3,
+   fail 0`.

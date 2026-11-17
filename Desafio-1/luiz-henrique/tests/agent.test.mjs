@@ -454,7 +454,7 @@ test('agente não confirma compra enquanto a intenção está pendente', async (
     );
     assert.doesNotMatch(
       terceiro.reply,
-      /A compra ainda não foi finalizada/,
+      /Erro: o agente|Nenhuma cobrança foi confirmada/,
       `o agente usou a mensagem de guard antes de tentar pagar: ${terceiro.reply}`,
     );
 
@@ -468,7 +468,7 @@ test('agente não confirma compra enquanto a intenção está pendente', async (
     assert.equal(quarto.status, 200, quarto.reply);
     assert.doesNotMatch(
       quarto.reply,
-      /A compra ainda não foi finalizada/,
+      /Erro: o agente|Nenhuma cobrança foi confirmada/,
       `a segunda compra não foi finalizada: ${quarto.reply}`,
     );
     const tecladoPago = (await getIntencoes(user.sub)).find(

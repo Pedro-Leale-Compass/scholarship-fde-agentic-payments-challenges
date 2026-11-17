@@ -198,7 +198,7 @@ exports.handler = async (event: {
   // fabricados). Mantemos só as últimas mensagens; o usuário pode limpar a conversa.
   // Mensagens do guard de "não finalizada" também saem: elas viram few-shot de erro.
   const MAX_HISTORY_MESSAGES = 12;
-  const GUARD_MARK = "A compra ainda não foi finalizada";
+  const GUARD_MARK = "Nenhuma cobrança foi confirmada";
   const history = messages
     .slice(-MAX_HISTORY_MESSAGES)
     .filter((m) => {

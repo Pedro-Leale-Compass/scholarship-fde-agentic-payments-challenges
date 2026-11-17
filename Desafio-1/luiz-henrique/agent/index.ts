@@ -190,11 +190,10 @@ function applyPurchaseGuard(
   if (!SUCCESS_REPLY.test(reply)) return reply;
   if (purchase?.ok === true) return reply;
 
-  const reason =
-    purchase && purchase.ok === false && purchase.code
-      ? `Pagamento não concluído (${purchase.code}).`
-      : 'Pagamento não confirmado.';
-  return `${reason} A compra ainda não foi finalizada.`;
+  if (purchase && purchase.ok === false && purchase.code) {
+    return `Erro: o agente não concluiu a compra (${purchase.code}). Nenhuma cobrança foi confirmada.`;
+  }
+  return 'Erro: o agente iria confirmar a compra para você sem registrar no backend. Nenhuma cobrança foi confirmada.';
 }
 
 const INTENCAO_ID_ANY_RE =
@@ -242,11 +241,12 @@ async function completePaymentFallback(
   state: AgentState,
   prompt: string,
 ): Promise<string | null> {
-  const lastUserLine =
+  const lastUserLine = (
     prompt
       .split('\n')
       .filter((line) => /^user:/i.test(line))
-      .pop() || '';
+      .pop() || ''
+  ).replace(/^user:\s*/i, '');
   if (!PAYMENT_CONFIRM_RE.test(lastUserLine)) return null;
 
   const method = paymentMethod(lastUserLine);
