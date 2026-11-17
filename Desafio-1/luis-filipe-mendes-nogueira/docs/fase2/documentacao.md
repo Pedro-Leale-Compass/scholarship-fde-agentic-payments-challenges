@@ -1,15 +1,5 @@
 # Fase 2 — Migração do agente de pagamentos para AWS
 
-## Estado consolidado — 16/11/2026
-
-Os oito passos do plano técnico foram implementados, implantados e validados no escopo combinado: frontend estático local em **http://localhost:3001**, autenticação Cognito e backend na AWS. O usuário apresentou os resultados dos testes e confirmou o funcionamento visual do histórico, do streaming, do painel de pedidos e do saldo.
-
-A publicação do frontend em **S3 privado com CloudFront e OAC permanece adiada até a liberação do orientador**. Essa etapa continua sendo um requisito da entrega final. O S3 do bootstrap armazena pacotes de deploy e não hospeda a interface.
-
-A revisão de custos é preliminar: a consulta apresentada cobre somente 01/11 a 15/11/2026. Ainda não inclui o consumo das implantações e dos testes de 16/11. A configuração do alerta AWS Budgets não foi comprovada.
-
-Este documento consolida a implementação atual e substitui a descrição anterior, que registrava apenas a preparação do frontend e a autenticação de 14/11. A atualização deste arquivo não executou novamente testes, deploys, compras ou limpeza na AWS.
-
 ### Plano executado
 
 | Passo | Implementação e validação |
