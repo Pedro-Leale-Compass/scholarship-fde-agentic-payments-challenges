@@ -14,3 +14,5 @@ cdk.out/
 
 # Pacote do agente para o AgentCore
 agent/build/
+
+!frontend/.env.example
