@@ -1,28 +1,15 @@
 # Desafio 1 — Agente de Pagamentos na AWS (luiz-henrique)
 
-Sprint 2 · Trilha Pagamentos Agênticos · Trabalho individual
+Sprint 2 · AWS AI FDE Agentic Payments
 
 Branch: `fellow/luiz-henrique-desafio-1` · Região: `us-east-1` · Prefixo: `luiz-henrique`
 
 Última tag: **`v0.0.5`** (`0afba12`).
 
-Baseline histórico: `v0.0.2` — “chat works sometimes” (`d854762`).
-
-> **Status (2026-11-17):** o fluxo de compra foi corrigido e validado localmente e na stack
-> (`npm run test:agent` 3/3). O agente funcionou nos primeiros pedidos reais. O frontend
-> continua local. A suíte ampla de 100+ casos está planejada em
-> [`docs/TEST-STRATEGY.md`](docs/TEST-STRATEGY.md).
-
-> **Formato de entrega (PDF):** as seções **1 a 7** abaixo seguem a ordem pedida no PDF:
-> diagrama, deploy, modelo, DynamoDB, IAM, evidências e remoção. As demais seções são
-> complementares e podem ser lidas depois.
-
 ## Visão geral
 
-O projeto leva para a AWS o chatbot de compras da Fase 1: login Cognito, agente
-conversacional no Bedrock AgentCore, três tools em Lambda e persistência em DynamoDB.
-
-O modelo conversa, mas o backend manda no dinheiro:
+O projeto leva para a AWS o chatbot de compras da Fase 1: login Cognito, chatbot 
+no Bedrock AgentCore, três tools em Lambda e persistência em DynamoDB:
 
 - `usuario_id` vem do `sub` do JWT, nunca do modelo;
 - preço/produto vêm do `Catalogo` (`preco_centavos`), não do modelo;
@@ -40,9 +27,9 @@ Desafio-1/luiz-henrique/
 ├── agent/      # Strands no Bedrock AgentCore Runtime (Bedrock)
 ├── tools/      # Lambdas: listar_catalogo, registrar_intencao, realizar_compra
 ├── infra/      # CDK: DynamoDB, tools, agente, API, Cognito, ECR
-├── scripts/    # credenciais, convite, limite, dev local, check:model/logs, destroy
+├── scripts/    # credenciais, convite, ajustar limite, dev local, check:model/logs, destroy
 ├── tests/      # suíte Node + coleção Postman
-├── docs/       # documentação canônica + archive/ histórico + apresentacao/
+├── docs/       # documentação atual + archive/ + apresentacao/
 └── README.md
 ```
 
@@ -63,7 +50,7 @@ API Gateway REST (prod) + autorizador JWT Cognito
         ▼
 Lambda do chat
   ├─ valida o sub do token
-  ├─ garante o item em Usuarios (lazy)
+  ├─ gerencia a linha na tabela Usuarios (lazy)
   ├─ lê/grava estado e histórico em Conversas
   └─ InvokeAgentRuntime
         │
@@ -93,7 +80,38 @@ AgentCore Runtime (container arm64 no ECR)
 
 ## 2. Instruções de deploy
 
-### 2.1 Pré-requisitos
+### 2.1 Para avaliação (rodar frontend local, AWS api + agente já está rodando)
+
+```bash
+cd Desafio-1/luiz-henrique
+npm run setup          # raiz + frontend
+npm run dev            # http://localhost:3000
+```
+
+- O `frontend/public/config.json` versionado já aponta para a API/Cognito atuais e contém
+  apenas identificadores públicos.
+- Use a porta **3000**; o CORS da API aceita apenas essa origem (o `next dev` está fixado
+  nessa porta).
+- O login é o `Authenticator` do Cognito, sem cadastro (`hideSignUp`).
+- O instrutor entra com o e-mail convidado; o Cognito envia senha temporária e ele escolhe
+  a definitiva no primeiro login.
+- Para reenviar o convite (depende do login no `aws cli`):
+
+```bash
+eval "$(bash scripts/aws-creds.sh)"
+npm run user:invite -- instrutor@example.com 500
+```
+
+- Em um clone limpo, `npm run dev` usa o `config.json` versionado. Se
+  `infra/cdk-outputs.json` existir (ambiente de desenvolvimento), o script regenera o
+  `config.json` antes de subir.
+- O navegador só fala com o API Gateway; não recebe ARNs, account ID nem credenciais.
+
+### 2.2 Deploy completo
+
+Deploy completo do backend, tools, agente e API via CDK.
+
+#### 2.2.1 Pré-requisitos
 
 - AWS CLI v2 com perfil `desafio-1` (IAM Identity Center).
 - Node.js 20+ e npm.
@@ -109,7 +127,7 @@ npm --prefix agent install
 eval "$(bash scripts/aws-creds.sh)"
 ```
 
-### 2.2 Comando único — backend, tools, agente e API
+#### 2.2.2 Comando único — backend, tools, agente e API
 
 ```bash
 npm run diff                  # revise o que será criado/alterado
@@ -124,7 +142,7 @@ npm run deploy:api-agent
 > recursos; o frontend roda local. O instrutor consegue rodar com `npm run setup && npm run dev`.
 > O desvio está registrado em [`docs/REQUISITOS-PDF-E-AUDITORIA.md`](docs/REQUISITOS-PDF-E-AUDITORIA.md).
 
-### 2.3 Variáveis de ambiente
+#### 2.2.3 Variáveis de ambiente
 
 Copie `.env.example` para `.env` e preencha o necessário. Principais:
 
@@ -136,7 +154,7 @@ Copie `.env.example` para `.env` e preencha o necessário. Principais:
 
 `.env` e `infra/cdk-outputs.json` são gitignorados. Nunca faça commit deles.
 
-### 2.4 Outputs do deploy
+#### 2.2.4 Outputs do deploy
 
 - `ApiUrl`
 - `CognitoUserPoolId`
@@ -146,37 +164,7 @@ Copie `.env.example` para `.env` e preencha o necessário. Principais:
 - `UsuariosTableName`
 - `EcrRepositoryUri`
 
-### 2.5 Frontend e instrutor
-
-O frontend roda localmente; a API, o agente e o banco estão na AWS.
-
-```bash
-git clone <este repositório>
-cd Desafio-1/luiz-henrique
-npm run setup          # raiz + frontend
-npm run dev            # http://localhost:3000
-```
-
-- O `frontend/public/config.json` versionado já aponta para a API/Cognito atuais e contém
-  apenas identificadores públicos.
-- Use a porta **3000**; o CORS da API aceita apenas essa origem (o `next dev` está fixado
-  nessa porta).
-- O login é o `Authenticator` do Cognito, sem cadastro (`hideSignUp`).
-- O instrutor entra com o e-mail convidado; o Cognito envia senha temporária e ele define
-  a definitiva no primeiro login.
-- Crie/reenvie o convite:
-
-```bash
-eval "$(bash scripts/aws-creds.sh)"
-npm run user:invite -- instrutor@example.com 500
-```
-
-- Em um clone limpo, `npm run dev` usa o `config.json` versionado. Se
-  `infra/cdk-outputs.json` existir (ambiente de desenvolvimento), o script regenera o
-  `config.json` antes de subir.
-- O navegador só fala com o API Gateway; não recebe ARNs, account ID nem credenciais.
-
-### 2.6 Verificação pós-deploy
+#### 2.2.5 Verificação pós-deploy
 
 ```bash
 npm run check:model    # runtime vivo + BEDROCK_MODEL_ID (read-only, sem custo de Bedrock)
