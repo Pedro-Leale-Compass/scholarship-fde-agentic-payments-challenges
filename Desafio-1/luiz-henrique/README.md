@@ -4,14 +4,14 @@ Sprint 2 · Trilha Pagamentos Agênticos · Trabalho individual
 
 Branch: `fellow/luiz-henrique-desafio-1` · Região: `us-east-1` · Prefixo: `luiz-henrique`
 
-Última tag: **`v0.0.5` — “history, catalog pricing and websocket scaffold”** (`0afba12`).
+Última tag: **`v0.0.5`** (`0afba12`).
 
 Baseline histórico: `v0.0.2` — “chat works sometimes” (`d854762`).
 
 > **Status (2026-11-17):** o fluxo de compra foi corrigido e validado localmente e na stack
 > (`npm run test:agent` 3/3). O agente funcionou nos primeiros pedidos reais. O frontend
-> continua local; o WebSocket está parcial (`$connect` funciona, `$default` ainda falha).
-> A suíte ampla de 100+ casos está planejada em [`docs/TEST-STRATEGY.md`](docs/TEST-STRATEGY.md).
+> continua local. A suíte ampla de 100+ casos está planejada em
+> [`docs/TEST-STRATEGY.md`](docs/TEST-STRATEGY.md).
 
 > **Formato de entrega (PDF):** as seções **1 a 7** abaixo seguem a ordem pedida no PDF:
 > diagrama, deploy, modelo, DynamoDB, IAM, evidências e remoção. As demais seções são
@@ -36,7 +36,7 @@ O modelo conversa, mas o backend manda no dinheiro:
 ```
 Desafio-1/luiz-henrique/
 ├── frontend/   # Next.js (App Router) + Amplify Authenticator; roda local
-├── api/        # Lambda REST (chat, GET /conversas) + Lambda WebSocket
+├── api/        # código das Lambdas do chat (API Gateway é definido em infra/)
 ├── agent/      # Strands no Bedrock AgentCore Runtime (Bedrock)
 ├── tools/      # Lambdas: listar_catalogo, registrar_intencao, realizar_compra
 ├── infra/      # CDK: DynamoDB, tools, agente, API, Cognito, ECR
@@ -45,6 +45,9 @@ Desafio-1/luiz-henrique/
 ├── docs/       # documentação canônica + archive/ histórico + apresentacao/
 └── README.md
 ```
+
+`api/` não é o API Gateway: ele guarda o código das Lambdas. O API Gateway (REST e as rotas
+`POST /chat`/`GET /conversas`) é criado em `infra/lib/api-stack.ts`.
 
 ## 1. Diagrama da arquitetura
 
@@ -72,17 +75,6 @@ AgentCore Runtime (container arm64 no ECR)
        └─ realizar_compra    → Lambda → TransactWriteItems (Intencoes + Usuarios)
 ```
 
-Há também uma API Gateway **WebSocket parcial**:
-
-```
-Cliente WS ── wss://.../prod?token=<IdToken>&conversa_id=<uuid>
-  ├─ $connect    → valida token, grava Conexoes
-  ├─ $disconnect → remove Conexao
-  └─ $default    → deveria invocar a Lambda do chat; hoje retorna Internal server error
-```
-
-Continuação do WebSocket: [`docs/WS-NEXT.md`](docs/WS-NEXT.md).
-
 ### Serviços implementados
 
 | Camada | Implementação | Onde |
@@ -91,11 +83,10 @@ Continuação do WebSocket: [`docs/WS-NEXT.md`](docs/WS-NEXT.md).
 | Frontend | Next.js App Router + Tailwind + Amplify Auth; roda local | `frontend/` |
 | Auth | Cognito User Pool, `selfSignUpEnabled: false`, convite por admin | `infra/lib/api-stack.ts` |
 | API REST | API Gateway REST, `POST /chat` e `GET /conversas` | `infra/lib/api-stack.ts` |
-| API WS | API Gateway WebSocket parcial | `infra/lib/api-stack.ts`, `api/websocket/index.ts` |
 | Chat | Lambda Node 20 que chama o AgentCore Runtime | `api/index.ts` |
 | Agente | Strands no AgentCore Runtime; imagem Docker arm64 | `agent/`, `infra/lib/agent-stack.ts` |
 | Tools | 3 Lambdas Node 20 | `tools/`, `infra/lib/tools-stack.ts` |
-| Dados | DynamoDB on-demand: `Usuarios`, `Conversas`, `Intencoes`, `Catalogo`, `Conexoes` | `infra/lib/database-stack.ts` |
+| Dados | DynamoDB on-demand: `Usuarios`, `Conversas`, `Intencoes`, `Catalogo` | `infra/lib/database-stack.ts` |
 | Imagem | `DockerImageAsset` no ECR | `infra/lib/agent-stack.ts` |
 | Runtime | `CustomResource` com create/update/delete do AgentCore | `infra/lambda/agent-runtime/index.ts` |
 | Modelo | Bedrock Claude Haiku 4.5 | `agent/index.ts` |
@@ -148,7 +139,6 @@ Copie `.env.example` para `.env` e preencha o necessário. Principais:
 ### 2.4 Outputs do deploy
 
 - `ApiUrl`
-- `WebSocketUrl` (WebSocket parcial)
 - `CognitoUserPoolId`
 - `CognitoUserPoolClientId`
 - `AgentRuntimeArn`
@@ -218,7 +208,6 @@ Detalhes adicionais em [`docs/MODELO-USUARIOS.md`](docs/MODELO-USUARIOS.md).
 | `Conversas` | PK `conversa_id`, SK `usuario_id` | `pending_intencao_id`, `pending_status`, `mensagens_json` (histórico completo) | GSI `usuario_id-index` (`usuario_id`, `conversa_id`) |
 | `Intencoes` | PK `intencao_id` | `usuario_id`, `produtos` (snapshot), `valor`, `valor_centavos`, `status`, `expira_em`, `created_at`, `forma_pagamento`, `pago_em`, `motivo_falha` | GSI `usuario_id-index` (`usuario_id`, `status`) |
 | `Catalogo` | PK `id` | `nome`, `preco` (reais, exibição), `preco_centavos` (**fonte de verdade**) | seed idempotente pelo CDK |
-| `Conexoes` | PK `connection_id` | `usuario_id`, `conversa_id`, `conectado_em`, `expira_em` | TTL `expira_em` (WebSocket parcial) |
 
 ### Regras de escrita
 
@@ -238,7 +227,6 @@ Detalhes adicionais em [`docs/MODELO-USUARIOS.md`](docs/MODELO-USUARIOS.md).
 | Role/Componente | Permissões | Não tem |
 |---|---|---|
 | **Lambda do chat** (API Gateway) | `bedrock-agentcore:InvokeAgentRuntime`; `dynamodb:GetItem/PutItem/UpdateItem/Query` em `Usuarios` e `Conversas` | Acesso a `Intencoes`, transações ou Bedrock |
-| **Lambda WebSocket** (parcial) | `dynamodb:GetItem/PutItem/DeleteItem` em `Conexoes`; `lambda:InvokeFunction` na ChatFn; `execute-api:ManageConnections` no WebSocket | Tabelas de intenções/usuários |
 | **`listar_catalogo`** | `dynamodb:GetItem/Scan` em `Catalogo` | Outras tabelas |
 | **`registrar_intencao`** | `dynamodb:PutItem` em `Intencoes`; `dynamodb:GetItem` em `Catalogo` | Usuários, transações |
 | **`realizar_compra`** | `dynamodb:GetItem/UpdateItem/TransactWriteItems` em `Intencoes` e `Usuarios` | Outras tabelas |
@@ -271,7 +259,6 @@ simulados; nenhuma cobrança real.
 | `intencao_id` inválido | `INTENCAO_INVALIDA`, sem cobrança | `npm run test:agent` (teste de ferramenta) |
 | `GET /conversas` | Histórico do próprio usuário | `npm run test:agent` (teste de integração) |
 | Novo produto após cancelamento | Novo ID, sem reutilizar o cancelado | `npm run test:agent` |
-| WebSocket | `$connect` autenticado; chat pelo WS | Parcial; `$default` falha ([WS-NEXT](docs/WS-NEXT.md)) |
 
 Reproduzir a demo:
 
@@ -297,7 +284,7 @@ console/CLI que não restou:
 - tabelas DynamoDB `luiz-henrique-*`;
 - log groups `/aws/bedrock-agentcore/*` e `/aws/lambda/luiz-henrique-*`;
 - roles IAM `luiz-henrique-*`;
-- REST API e WebSocket API do projeto.
+- REST API do projeto.
 
 Detalhes e verificação: [`docs/destroy-cleanup.md`](docs/destroy-cleanup.md).
 
@@ -313,7 +300,6 @@ Detalhes e verificação: [`docs/destroy-cleanup.md`](docs/destroy-cleanup.md).
 | `npm run diff` | `cdk diff` |
 | `npm run test:local` | sobe o agente local e roda o fluxo de regressão (fallback, Haiku) |
 | `npm run test:agent` | testes de integração na stack implantada |
-| `npm run test:ws` | smoke do WebSocket (parcial; requer `TEST_EMAIL`/`TEST_PASSWORD`) |
 | `npm run check:model` | lê o `BEDROCK_MODEL_ID` do runtime (read-only, sem custo de Bedrock) |
 | `npm run check:logs` | lista log groups/streams do agente e das Lambdas (read-only) |
 | `npm run user:invite -- <email> [limite]` | cria usuário no Cognito + saldo + convite |
@@ -339,9 +325,6 @@ Detalhes e paridade local/remota: [`docs/DEV-LOCAL-AGENTE.md`](docs/DEV-LOCAL-AG
 
 - Frontend local; sem URL pública S3/CloudFront/OAC (SCP da conta) e sem deploy de frontend
   no comando IaC. Decisão registrada em `docs/REQUISITOS-PDF-E-AUDITORIA.md`.
-- WebSocket **parcial**: `$connect`/`$disconnect` funcionam; `$default` retorna
-  `Internal server error`. O chat usa REST. Continuação em `docs/WS-NEXT.md`.
-- Não há streaming; o PDF pede “Stream ou WebSocket”.
 - A suíte ampla de 100+ casos e o redirecionamento para catálogo estão planejados em
   `docs/TEST-STRATEGY.md` (caso `REFUSAL-LOOP-01`).
 - Evidências de 401 e `INTENCAO_INVALIDA` existem como testes automatizados; prints/Postman
@@ -351,8 +334,8 @@ Detalhes e paridade local/remota: [`docs/DEV-LOCAL-AGENTE.md`](docs/DEV-LOCAL-AG
 ## Custos
 
 - Orçamento atual: **US$ 20**, aproximadamente **US$ 5** gastos.
-- Serviços em uso: DynamoDB on-demand, Lambda, API Gateway (REST + WebSocket parcial),
-  Cognito, ECR, AgentCore Runtime e CloudWatch Logs.
+- Serviços em uso: DynamoDB on-demand, Lambda, API Gateway REST, Cognito, ECR,
+  AgentCore Runtime e CloudWatch Logs.
 - Não crie VPC/NAT, CloudFront, Amplify Hosting, jobs agendados ou outros serviços pagos
   sem necessidade.
 - Para iterar prompt, use o fallback local e evite chamadas repetidas ao Bedrock.
@@ -361,25 +344,46 @@ Detalhes e paridade local/remota: [`docs/DEV-LOCAL-AGENTE.md`](docs/DEV-LOCAL-AG
 
 ## Critérios de conclusão do PDF
 
-- [ ] Frontend em S3 + CloudFront + OAC — **desvio aceito**: frontend local por SCP.
-- [x] Login Cognito; chat inacessível sem autenticação.
-- [x] Auto cadastro desabilitado; usuários por convite.
-- [x] `POST /chat` e `GET /conversas` no API Gateway com autorizador JWT.
-- [x] Requisição sem token/inválida rejeitada com `401`.
-- [x] Agente Strands no Bedrock AgentCore com modelo Bedrock.
-- [x] Três ferramentas em Lambda.
-- [x] Usuários, conversas, intenções e catálogo no DynamoDB.
-- [x] Roles de menor privilégio (exceção ECR documentada).
-- [ ] Um comando IaC incluindo frontend — **desvio aceito**: comando cobre backend/agente;
-      frontend roda local.
-- [ ] Pull request com a pasta — tags publicadas; PR pendente.
+- [ ] Frontend publicado em S3 + CloudFront, com URL pública e bucket privado (OAC).
+  **Pendente:** a conta tem SCP que bloqueia S3/CloudFront/OAC; o frontend roda local via
+  `npm run dev`, e essa adaptação está documentada.
+- [x] Login com Cognito funcionando; chat inacessível sem autenticação.
+  **Concluído:** `Authenticator` + JWT; o chat exige token válido e o teste de integração
+  cobre login e `401`.
+- [x] Auto cadastro desabilitado; usuários criados apenas por convite do administrador.
+  **Concluído:** `selfSignUpEnabled: false`, `hideSignUp` e convite via
+  `npm run user:invite`.
+- [x] Endpoints do webchat expostos pelo API Gateway, com autorizador JWT do Cognito.
+  **Concluído:** `POST /chat` e `GET /conversas` com autorizador Cognito.
+- [x] Requisição sem token ou com token inválido rejeitada com 401 pelo API Gateway.
+  **Concluído:** teste de integração sem token retorna `401`.
+- [x] Agente Strands rodando no Bedrock AgentCore Runtime, com modelo do Bedrock.
+  **Concluído:** runtime v15 `READY`, Claude Haiku 4.5.
+- [x] As três ferramentas executando em Lambda.
+  **Concluído:** `listar_catalogo`, `registrar_intencao` e `realizar_compra`.
+- [x] Usuários, conversas e intenções persistidos no DynamoDB.
+  **Concluído:** `Usuarios`, `Conversas` (com histórico), `Intencoes` e `Catalogo`.
+- [ ] Roles com menor privilégio, sem permissões curinga.
+  **Parcial:** sem `AdministratorAccess` e sem `Action: "*"`; a única exceção é
+  `ecr:GetAuthorizationToken` com `Resource: "*"`, exigida pela API do ECR.
+- [ ] Ambiente completo criado rodando o script IaC, sem passos manuais não documentados.
+  **Parcial:** backend, tools, agente e API sobem com `npm run deploy:api-agent`; o frontend
+  é um passo local documentado, então o ambiente “completo” do PDF não é 100% via IaC.
+- [ ] Pull request com a sua pasta, sem credenciais, com a documentação descrita no README.
+  **Pendente:** commits e tags estão no repositório; a branch/PR ainda não foi publicado.
+
+## WebSocket (trabalho iniciado)
+
+Iniciamos uma API Gateway WebSocket, mas ela ainda não está funcional: `$connect` autentica
+e grava a conexão; `$default` retorna `Internal server error`. O chat usa REST. Código e
+próximos passos estão em [`docs/WS-NEXT.md`](docs/WS-NEXT.md); não faz parte da demo/entrega
+atual.
 
 ## Documentação
 
 Comece por [`docs/README.md`](docs/README.md). Apresentação:
 [`docs/apresentacao/`](docs/apresentacao/README.md). Estratégia de testes:
-[`docs/TEST-STRATEGY.md`](docs/TEST-STRATEGY.md). WebSocket:
-[`docs/WS-NEXT.md`](docs/WS-NEXT.md). Históricos em
+[`docs/TEST-STRATEGY.md`](docs/TEST-STRATEGY.md). Históricos em
 [`docs/archive/`](docs/archive/README.md).
 
 ## Regras essenciais
