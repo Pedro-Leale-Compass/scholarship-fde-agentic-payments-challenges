@@ -49,7 +49,7 @@ export const ListarCatalogoSchema = z.object({
     .min(1)
     .optional()
     .describe(
-      'Categoria opcional para filtrar os produtos do catálogo (ex: consoles, headsets, teclados, mouses, jogos, monitores, acessorios).',
+      'Categoria opcional para filtrar os produtos do catálogo (ex: consoles, headsets, teclados, mouses, moveis, monitores, acessorios).',
     ),
 });
 

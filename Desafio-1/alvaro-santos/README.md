@@ -32,7 +32,7 @@ graph TD
 
 | Pasta | Papel |
 | :--- | :--- |
-| `frontend/` | SPA React 19 + TypeScript + Vite rodando localmente em `http://localhost:5173` (24 testes Vitest) |
+| `frontend/` | SPA React 19 + TypeScript + Vite rodando localmente em `http://localhost:5173` (27 testes Vitest) |
 | `infra/` | Stack CDK `alvaro-agentic-payments-stack` e construtos (`FrontendHost` opcional via `-c skipFrontendHost=false`) |
 | `api/` | Handler streaming NDJSON `POST /chat` e `POST /api/chat` (8 testes) |
 | `agent/` | Container `linux/arm64` com `@strands-agents/sdk` + Express `:8080` (14 testes) |
@@ -144,7 +144,7 @@ aws dynamodb put-item \
    - Confirmar pagamento via **Pix** ou **Cartão** (`realizar_compra`).
 5. Comandos locais de validação do frontend:
    ```bash
-   npm --prefix frontend test       # 24 testes unitários (Vitest)
+   npm --prefix frontend test       # 27 testes unitários (Vitest)
    npm --prefix frontend run lint   # Verificação ESLint
    npm --prefix frontend run build  # Checagem de tipos (tsc -b) e bundle Vite
    ```

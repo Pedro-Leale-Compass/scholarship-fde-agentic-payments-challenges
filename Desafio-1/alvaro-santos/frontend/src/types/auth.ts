@@ -9,6 +9,11 @@ export interface LoginRequest {
   username: string
   password: string
 }
+export interface CompleteNewPasswordRequest {
+  username: string
+  newPassword: string
+  session: string
+}
 export interface LoginResponse {
   token: string
   user: UserProfile

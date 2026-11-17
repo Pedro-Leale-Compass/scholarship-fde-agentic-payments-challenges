@@ -45,11 +45,11 @@ describe('TOOL-01: consultar-saldo e catálogo', () => {
     };
 
     const run = createHandler(fakeClient);
-    const response = await run({ usuario_id: 'sub-user-123', categoria: 'JOGOS' });
+    const response = await run({ usuario_id: 'sub-user-123', categoria: 'MOVEIS' });
 
     assert.equal(response.produtos.length, 1);
     assert.equal(response.produtos[0].id, 'prod_005');
-    assert.equal(response.produtos[0].categoria, 'jogos');
+    assert.equal(response.produtos[0].categoria, 'moveis');
   });
 
   it('retorna fallback gracioso quando o usuário não existe na tabela alvaro-usuarios', async () => {

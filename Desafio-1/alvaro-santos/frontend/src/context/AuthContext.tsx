@@ -3,7 +3,7 @@ import { AuthContext } from './auth'
 import { authService } from '../services/authService'
 import { useToast } from './toast'
 import { AUTH_EXPIRED_EVENT, ApiError } from '../types/api'
-import type { LoginRequest, UserProfile } from '../types/auth'
+import type { CompleteNewPasswordRequest, LoginRequest, LoginResponse, UserProfile } from '../types/auth'
 const TOKEN_KEY = 'nexus_auth_token'
 const USER_KEY = 'nexus_auth_user'
 function readToken() {
@@ -114,8 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('storage', sync)
     }
   }, [clearSession, notify])
-  const login = async (credentials: LoginRequest) => {
-    const response = await authService.login(credentials)
+  const applySession = (response: LoginResponse) => {
     version.current++
     try {
       localStorage.setItem(TOKEN_KEY, response.token)
@@ -130,6 +129,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       'success',
     )
   }
+  const login = async (credentials: LoginRequest) => {
+    applySession(await authService.login(credentials))
+  }
+  const completeNewPassword = async (request: CompleteNewPasswordRequest) => {
+    applySession(await authService.completeNewPassword(request))
+  }
   const logout = () => {
     clearSession()
     notify('Você saiu da sua conta.', 'info')
@@ -143,6 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         error,
         isAuthenticated: !!token && !!user,
         login,
+        completeNewPassword,
         logout,
         refreshUser,
       }}

@@ -1,5 +1,5 @@
 import { createContext } from 'react'
-import type { LoginRequest, UserProfile } from '../types/auth'
+import type { CompleteNewPasswordRequest, LoginRequest, UserProfile } from '../types/auth'
 export interface AuthState {
   user: UserProfile | null
   token: string | null
@@ -7,6 +7,7 @@ export interface AuthState {
   isLoading: boolean
   error: string | null
   login: (credentials: LoginRequest) => Promise<void>
+  completeNewPassword: (request: CompleteNewPasswordRequest) => Promise<void>
   logout: () => void
   refreshUser: () => Promise<void>
 }

@@ -46,11 +46,11 @@ export const CATALOG_PRODUCTS: readonly CatalogProduct[] = [
   },
   {
     id: 'prod_005',
-    nome: 'Astro Bot — Edição Física PS5',
-    preco: 299.9,
+    nome: 'Cadeira Gamer PCYES Sunset Hill',
+    preco: 899.9,
     moeda: 'BRL',
     estoque: 11,
-    categoria: 'jogos',
+    categoria: 'moveis',
   },
   {
     id: 'prod_006',
@@ -62,7 +62,7 @@ export const CATALOG_PRODUCTS: readonly CatalogProduct[] = [
   },
   {
     id: 'prod_007',
-    nome: 'Mousepad Speed Estendido 90x40cm',
+    nome: 'Cabo HDMI 2.1 Ultra High Speed 8K',
     preco: 79.9,
     moeda: 'BRL',
     estoque: 35,

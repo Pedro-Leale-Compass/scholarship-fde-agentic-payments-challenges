@@ -1,7 +1,7 @@
 import { ArrowUpRight, Gamepad2, Headphones, ShoppingBag, Wallet } from 'lucide-react'
 const suggestions = [
   'O que vocês têm à venda?',
-  'Quero ver os jogos disponíveis',
+  'Tem cadeira gamer disponível?',
   'Tem algum headset gamer?',
   'Quero comprar um PlayStation 5',
   'Quais produtos cabem no meu limite?',
