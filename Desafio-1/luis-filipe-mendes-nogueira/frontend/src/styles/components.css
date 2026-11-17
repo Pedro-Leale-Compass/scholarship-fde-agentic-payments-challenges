@@ -39,14 +39,16 @@ textarea {
 
 /* =====================================================================
    1. LAYOUT DA APLICAÇÃO
-   Tela de conversa (wireframe 2d): três colunas fixas em desktop.
-   Abaixo de 1040px a coluna de conversas colapsa em menu e o painel de
-   pedido vira bloco fixo no rodapé. Nunca empilhe as três colunas.
+   Três colunas em desktop; painéis alternáveis em telas pequenas.
+   O histórico ocupa apenas o espaço livre entre cabeçalho e escrita.
    ===================================================================== */
 .ig-app {
   display: grid;
-  grid-template-columns: var(--col-lateral) 1fr var(--col-pedido);
+  grid-template-columns: var(--col-lateral) minmax(0, 1fr) var(--col-pedido);
+  grid-template-rows: minmax(0, 1fr);
   height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
   background: var(--c-papel);
 }
 .ig-app__lateral {
@@ -59,6 +61,30 @@ textarea {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.ig-app__lateral,
+.ig-app__pedido {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.ig-app .ig-cabecalho,
+.ig-app .ig-escrita,
+.ig-app__lateral > button,
+.ig-app .ig-saldo,
+.ig-app .ig-lateral-usuario,
+.ig-app .ig-conversas__titulo {
+  flex-shrink: 0;
+}
+.ig-conversas__lista {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.ig-navegacao {
+  display: none;
 }
 .ig-app__pedido {
   border-left: var(--borda);
@@ -225,17 +251,29 @@ textarea {
    para não virar parede de texto.
    ===================================================================== */
 .ig-mensagens {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
   padding: var(--e-5) var(--e-6);
   display: flex;
   flex-direction: column;
   gap: var(--e-3);
 }
+.ig-mensagens > * {
+  flex-shrink: 0;
+}
 .ig-fala {
   padding: var(--e-3);
   font: var(--t-corpo);
   max-width: 78%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ig-fala__markdown {
+  max-width: 100%;
+  overflow-x: auto;
 }
 .ig-fala--usuario {
   align-self: flex-end;
@@ -304,6 +342,7 @@ textarea {
 }
 .ig-escrita__entrada {
   flex: 1;
+  min-width: 0;
   height: var(--alt-campo);
   border: var(--borda);
   padding: 0 var(--e-3);
@@ -425,6 +464,10 @@ textarea {
    ===================================================================== */
 .ig-pedido {
   padding: var(--e-5);
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  overflow-wrap: anywhere;
 }
 .ig-pedido__capa {
   height: 110px;

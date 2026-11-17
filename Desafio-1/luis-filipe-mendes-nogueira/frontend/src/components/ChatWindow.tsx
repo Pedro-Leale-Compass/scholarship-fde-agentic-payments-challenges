@@ -59,11 +59,13 @@ export default function ChatWindow({
   const [saindo, setSaindo] = useState(false);
   const [erro, setErro] = useState("");
   const [avisoSaldo, setAvisoSaldo] = useState("");
+  const [painel, setPainel] = useState<"conversas" | "chat" | "pedido">("chat");
 
   const ocupado = useRef(true);
   const ativo = useRef(true);
   const controle = useRef<AbortController | null>(null);
-  const fim = useRef<HTMLDivElement>(null);
+  const areaMensagens = useRef<HTMLDivElement>(null);
+  const acompanharResposta = useRef(true);
 
   const pedido = extrairPedidoAtual(conversa?.historico ?? []);
   const mensagens = historicoParaMensagens(conversa?.historico ?? []);
@@ -186,8 +188,9 @@ export default function ChatWindow({
   }, [usuarioInicial.id]);
 
   useEffect(() => {
-    fim.current?.scrollIntoView({ block: "end" });
-  }, [conversa?.historico, parcial, textoOtimista]);
+    const area = areaMensagens.current;
+    if (area && acompanharResposta.current) area.scrollTop = area.scrollHeight;
+  }, [conversa?.historico, parcial, textoOtimista, painel]);
 
   function novaConversa() {
     void executar(async () => {
@@ -199,6 +202,8 @@ export default function ChatWindow({
       setTextoOtimista("");
       setParcial("");
       setEntrada("");
+      acompanharResposta.current = true;
+      setPainel("chat");
       guardarConversaSelecionada(usuarioInicial.id, nova.conversa_id);
       setConversas(await listarConversas());
     });
@@ -207,6 +212,8 @@ export default function ChatWindow({
   function selecionar(id: string) {
     void executar(async () => {
       await carregar(id);
+      acompanharResposta.current = true;
+      setPainel("chat");
       await saldo();
     });
   }
@@ -251,6 +258,8 @@ export default function ChatWindow({
       setParcial("");
       setEntrada("");
       setTransmitindo(true);
+      acompanharResposta.current = true;
+      setPainel("chat");
 
       try {
         const resultado = await enviarMensagem(
@@ -337,7 +346,20 @@ export default function ChatWindow({
   }
 
   return (
-    <div className="ig-app">
+    <div className="ig-app" data-painel={painel}>
+      <nav className="ig-navegacao" aria-label="Painéis da interface">
+        {(["conversas", "chat", "pedido"] as const).map((item) => (
+          <button
+            key={item}
+            type="button"
+            className="ig-navegacao__botao"
+            aria-pressed={painel === item}
+            onClick={() => setPainel(item)}
+          >
+            {item === "conversas" ? "Conversas" : item === "chat" ? "Chat" : "Pedido"}
+          </button>
+        ))}
+      </nav>
       <aside className="ig-app__lateral">
         <div className="ig-cabecalho">
           <div className="ig-quadro-marca" />
@@ -355,7 +377,7 @@ export default function ChatWindow({
 
         <div className="ig-conversas__titulo">Suas conversas</div>
 
-        <div style={{ overflowY: "auto" }}>
+        <div className="ig-conversas__lista">
           {conversas.map((item) => (
             <button
               key={item.conversa_id}
@@ -418,7 +440,18 @@ export default function ChatWindow({
           </div>
         </div>
 
-        <div className="ig-mensagens" aria-busy={transmitindo}>
+        <div
+          className="ig-mensagens"
+          aria-busy={transmitindo}
+          ref={areaMensagens}
+          onScroll={() => {
+            const area = areaMensagens.current;
+            if (area) {
+              acompanharResposta.current =
+                area.scrollHeight - area.scrollTop - area.clientHeight < 80;
+            }
+          }}
+        >
           {!conversa && !carregando && (
             <p>Selecione uma conversa ou clique em Nova conversa.</p>
           )}
@@ -455,22 +488,7 @@ export default function ChatWindow({
             </p>
           )}
 
-          <div ref={fim} />
-        </div>
-
-        <div className="ig-escrita">
           {erro && <p role="alert">{erro}</p>}
-
-          {conversa && (
-            <button
-              type="button"
-              className="ig-botao ig-botao--contorno"
-              onClick={verificarResultado}
-              disabled={carregando}
-            >
-              Verificar resultado e atualizar conversa
-            </button>
-          )}
 
           {conversa?.estado === "incerta" && (
             <p role="alert">
@@ -499,6 +517,19 @@ export default function ChatWindow({
             </div>
           )}
 
+        </div>
+
+        <div className="ig-escrita">
+          {conversa && (
+            <button
+              type="button"
+              className="ig-botao ig-botao--contorno ig-escrita__verificar"
+              onClick={verificarResultado}
+              disabled={carregando}
+            >
+              Verificar resultado e atualizar conversa
+            </button>
+          )}
           <div className="ig-escrita__atalhos">
             {SUGESTOES.map((sugestao) => (
               <button

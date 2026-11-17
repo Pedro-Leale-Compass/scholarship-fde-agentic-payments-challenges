@@ -64,3 +64,129 @@
   width: 100%;
 }
 
+.ig-escrita__verificar {
+  height: auto;
+  min-height: var(--alvo-min);
+  padding: var(--e-2) var(--e-3);
+  margin-bottom: var(--e-2);
+  max-width: 100%;
+}
+
+@media (min-width: 901px) and (max-width: 1150px) {
+  .ig-app {
+    grid-template-columns: 180px minmax(0, 1fr) 250px;
+  }
+
+  .ig-app .ig-cabecalho,
+  .ig-mensagens,
+  .ig-escrita {
+    padding-left: var(--e-3);
+    padding-right: var(--e-3);
+  }
+}
+
+@media (max-width: 900px) {
+  .ig-app {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .ig-navegacao {
+    display: flex;
+    border-bottom: var(--borda);
+    background: var(--c-superficie);
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .ig-navegacao__botao {
+    flex: 1;
+    min-width: 0;
+    min-height: var(--alvo-min);
+    border: 0;
+    border-bottom: 3px solid transparent;
+    background: var(--c-superficie);
+    color: var(--c-tinta);
+    font: var(--t-acao);
+    cursor: pointer;
+  }
+
+  .ig-navegacao__botao[aria-pressed="true"] {
+    border-bottom-color: var(--c-acao);
+    background: var(--c-acao-claro);
+  }
+
+  .ig-navegacao__botao:focus-visible {
+    outline: 2px solid var(--c-acao);
+    outline-offset: -4px;
+  }
+
+  .ig-app__lateral,
+  .ig-app__conversa,
+  .ig-app__pedido {
+    grid-column: 1;
+    grid-row: 2;
+    border: 0;
+  }
+
+  .ig-app:not([data-painel="conversas"]) .ig-app__lateral,
+  .ig-app:not([data-painel="chat"]) .ig-app__conversa,
+  .ig-app:not([data-painel="pedido"]) .ig-app__pedido {
+    display: none;
+  }
+
+  .ig-app .ig-cabecalho,
+  .ig-mensagens,
+  .ig-escrita {
+    padding: var(--e-3);
+  }
+
+  .ig-escrita,
+  .ig-lateral-usuario,
+  .ig-pedido {
+    padding-bottom: max(var(--e-3), env(safe-area-inset-bottom));
+  }
+
+  .ig-fala,
+  .ig-fala--usuario {
+    max-width: 94%;
+  }
+
+  .ig-escrita__atalhos {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+
+  .ig-escrita__atalhos .ig-chip {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  .ig-escrita__entrada {
+    font-size: 16px;
+  }
+
+  .ig-escrita__enviar {
+    width: auto;
+    padding: 0 var(--e-3);
+  }
+}
+
+/* Em janelas baixas, preservar espaço para ler e escrever. */
+@media (max-height: 500px) {
+  .ig-escrita__atalhos {
+    display: none;
+  }
+
+  .ig-app .ig-cabecalho,
+  .ig-app .ig-escrita,
+  .ig-app .ig-saldo,
+  .ig-app .ig-lateral-usuario {
+    padding: var(--e-2);
+  }
+
+  .ig-app__lateral {
+    overflow-y: auto;
+  }
+}
+
