@@ -1,0 +1,6 @@
+{
+  "app": "node build/infra/bin/app.js",
+  "context": {
+    "@aws-cdk/core:checkSecretUsage": true
+  }
+}

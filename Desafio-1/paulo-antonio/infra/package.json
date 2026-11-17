@@ -1,0 +1,23 @@
+{
+  "name": "pagamentos-infra",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc && node ../tools/scripts/build.mjs && node ../agent/scripts/build.mjs",
+    "test": "pnpm run build && node --test test/*.test.cjs",
+    "synth": "pnpm run build && cdk synth",
+    "cdk": "cdk",
+    "deploy": "node scripts/deploy.mjs",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.277.0",
+    "constructs": "^10.4.0"
+  },
+  "devDependencies": {
+    "aws-cdk": "^2.1000.0",
+    "typescript": "^5.9.0",
+    "@types/node": "^24.0.0",
+    "@types/aws-lambda": "^8.10.0"
+  }
+}

@@ -1,0 +1,146 @@
+[
+  {
+    "timestampUtc": "2026-11-17T03:22:22.3660000Z",
+    "logStreamName": "2026/11/17/[runtime-logs-26326eaabb01687420d6f5260bffecc301452829e227adbbb31e102a33c8a415]0b2a794b-d8ac-4df9-8cf8-c6f1a0c446c2",
+    "eventId": "40027289600979647571949800499686698384344000544664322048",
+    "record": {
+      "event": "tool_call_started",
+      "invocationId": "969009a0-01d9-41c3-9a66-821cc24790ea",
+      "callId": "ca066bc0-9d9d-4c8b-99b3-1426a32ff622",
+      "operation": "listar_catalogo"
+    }
+  },
+  {
+    "timestampUtc": "2026-11-17T03:22:22.9640000Z",
+    "logStreamName": "2026/11/17/[runtime-logs-26326eaabb01687420d6f5260bffecc301452829e227adbbb31e102a33c8a415]0b2a794b-d8ac-4df9-8cf8-c6f1a0c446c2",
+    "eventId": "40027289614315493200671113138325057911387720725240610817",
+    "record": {
+      "event": "tool_call_finished",
+      "invocationId": "969009a0-01d9-41c3-9a66-821cc24790ea",
+      "callId": "ca066bc0-9d9d-4c8b-99b3-1426a32ff622",
+      "operation": "listar_catalogo",
+      "result": "refused",
+      "durationMs": 598
+    }
+  },
+  {
+    "timestampUtc": "2026-11-17T03:22:22.9640000Z",
+    "logStreamName": "2026/11/17/[runtime-logs-26326eaabb01687420d6f5260bffecc301452829e227adbbb31e102a33c8a415]0b2a794b-d8ac-4df9-8cf8-c6f1a0c446c2",
+    "eventId": "40027289614315493200671113138325057911387720725240610818",
+    "record": {
+      "event": "tool_call_started",
+      "invocationId": "969009a0-01d9-41c3-9a66-821cc24790ea",
+      "callId": "28b028b4-3b3c-4ef2-adbe-5e967ec41f4c",
+      "operation": "consultar_limite"
+    }
+  },
+  {
+    "timestampUtc": "2026-11-17T03:22:23.4960000Z",
+    "logStreamName": "2026/11/17/[runtime-logs-26326eaabb01687420d6f5260bffecc301452829e227adbbb31e102a33c8a415]0b2a794b-d8ac-4df9-8cf8-c6f1a0c446c2",
+    "eventId": "40027289626179489646289404649622060032436649046422192131",
+    "record": {
+      "event": "tool_call_finished",
+      "invocationId": "969009a0-01d9-41c3-9a66-821cc24790ea",
+      "callId": "28b028b4-3b3c-4ef2-adbe-5e967ec41f4c",
+      "operation": "consultar_limite",
+      "result": "success",
+      "durationMs": 532
+    }
+  },
+  {
+    "timestampUtc": "2026-11-17T03:22:24.1930000Z",
+    "logStreamName": "2026/11/17/[runtime-logs-26326eaabb01687420d6f5260bffecc301452829e227adbbb31e102a33c8a415]0b2a794b-d8ac-4df9-8cf8-c6f1a0c446c2",
+    "eventId": "40027289641723109049665248981438762916067721638478020608",
+    "record": {
+      "event": "tool_call_started",
+      "invocationId": "969009a0-01d9-41c3-9a66-821cc24790ea",
+      "callId": "af0392c0-ce6d-46db-a6ae-f126ff9ce57b",
+      "operation": "listar_catalogo"
+    }
+  },
+  {
+    "timestampUtc": "2026-11-17T03:22:24.2420000Z",
+    "logStreamName": "2026/11/17/[runtime-logs-26326eaabb01687420d6f5260bffecc301452829e227adbbb31e102a33c8a415]0b2a794b-d8ac-4df9-8cf8-c6f1a0c446c2",
+    "eventId": "40027289642815845564393249515374013111427491352271060993",
+    "record": {
+      "event": "tool_call_finished",
+      "invocationId": "969009a0-01d9-41c3-9a66-821cc24790ea",
+      "callId": "af0392c0-ce6d-46db-a6ae-f126ff9ce57b",
+      "operation": "listar_catalogo",
+      "result": "success",
+      "durationMs": 49
+    }
+  },
+  {
+    "timestampUtc": "2026-11-17T03:22:25.2930000Z",
+    "logStreamName": "2026/11/17/[runtime-logs-26326eaabb01687420d6f5260bffecc301452829e227adbbb31e102a33c8a415]0b2a794b-d8ac-4df9-8cf8-c6f1a0c446c2",
+    "eventId": "40027289666253928768048934437128053015980919295056478210",
+    "record": {
+      "event": "tool_call_started",
+      "invocationId": "969009a0-01d9-41c3-9a66-821cc24790ea",
+      "callId": "fd771e3a-9c64-438f-9437-e9289d0ba28d",
+      "operation": "registrar_intencao"
+    }
+  },
+  {
+    "timestampUtc": "2026-11-17T03:22:25.5140000Z",
+    "logStreamName": "2026/11/17/[runtime-logs-26326eaabb01687420d6f5260bffecc301452829e227adbbb31e102a33c8a415]0b2a794b-d8ac-4df9-8cf8-c6f1a0c446c2",
+    "eventId": "40027289671182393456924202152747330757245477271912644608",
+    "record": {
+      "event": "tool_call_finished",
+      "invocationId": "969009a0-01d9-41c3-9a66-821cc24790ea",
+      "callId": "fd771e3a-9c64-438f-9437-e9289d0ba28d",
+      "operation": "registrar_intencao",
+      "result": "success",
+      "durationMs": 222
+    }
+  },
+  {
+    "timestampUtc": "2026-11-17T03:22:26.4000000Z",
+    "logStreamName": "2026/11/17/[runtime-logs-26326eaabb01687420d6f5260bffecc301452829e227adbbb31e102a33c8a415]0b2a794b-d8ac-4df9-8cf8-c6f1a0c446c2",
+    "eventId": "40027289690940853702822334256147977146811925566211293185",
+    "record": {
+      "event": "tool_call_started",
+      "invocationId": "969009a0-01d9-41c3-9a66-821cc24790ea",
+      "callId": "f1011f84-37f2-4545-a233-feb0ca04c007",
+      "operation": "consultar_intencao"
+    }
+  },
+  {
+    "timestampUtc": "2026-11-17T03:22:26.4360000Z",
+    "logStreamName": "2026/11/17/[runtime-logs-26326eaabb01687420d6f5260bffecc301452829e227adbbb31e102a33c8a415]0b2a794b-d8ac-4df9-8cf8-c6f1a0c446c2",
+    "eventId": "40027289691743680529969436690870267805083112341402484736",
+    "record": {
+      "event": "tool_call_finished",
+      "invocationId": "969009a0-01d9-41c3-9a66-821cc24790ea",
+      "callId": "f1011f84-37f2-4545-a233-feb0ca04c007",
+      "operation": "consultar_intencao",
+      "result": "success",
+      "durationMs": 36
+    }
+  },
+  {
+    "timestampUtc": "2026-11-17T03:22:30.3770000Z",
+    "logStreamName": "2026/11/17/[runtime-logs-26326eaabb01687420d6f5260bffecc301452829e227adbbb31e102a33c8a415]0b2a794b-d8ac-4df9-8cf8-c6f1a0c446c2",
+    "eventId": "40027289779630917357378622496825716333873947270011355136",
+    "record": {
+      "event": "tool_call_started",
+      "invocationId": "07002dad-227a-4cdd-aaa8-4d1d7e0accbc",
+      "callId": "5b46eb5e-8321-4829-876d-2adce828210d",
+      "operation": "realizar_compra"
+    }
+  },
+  {
+    "timestampUtc": "2026-11-17T03:22:30.5350000Z",
+    "logStreamName": "2026/11/17/[runtime-logs-26326eaabb01687420d6f5260bffecc301452829e227adbbb31e102a33c8a415]0b2a794b-d8ac-4df9-8cf8-c6f1a0c446c2",
+    "eventId": "40027289783154435098746460953188359820952388387956260865",
+    "record": {
+      "event": "tool_call_finished",
+      "invocationId": "07002dad-227a-4cdd-aaa8-4d1d7e0accbc",
+      "callId": "5b46eb5e-8321-4829-876d-2adce828210d",
+      "operation": "realizar_compra",
+      "result": "success",
+      "durationMs": 159
+    }
+  }
+]

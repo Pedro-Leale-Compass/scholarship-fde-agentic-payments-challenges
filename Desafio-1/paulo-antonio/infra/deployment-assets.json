@@ -1,0 +1,36 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Private deployment assets for the payments project; no IAM roles",
+  "Parameters": {
+    "Prefix": { "Type": "String", "AllowedPattern": "^[a-z][a-z0-9-]{2,24}$" }
+  },
+  "Resources": {
+    "AssetsBucket": {
+      "Type": "AWS::S3::Bucket",
+      "DeletionPolicy": "Delete",
+      "UpdateReplacePolicy": "Delete",
+      "Properties": {
+        "BucketName": { "Fn::Sub": "${Prefix}-assets-${AWS::AccountId}-${AWS::Region}" },
+        "BucketEncryption": { "ServerSideEncryptionConfiguration": [{ "ServerSideEncryptionByDefault": { "SSEAlgorithm": "AES256" } }] },
+        "OwnershipControls": { "Rules": [{ "ObjectOwnership": "BucketOwnerEnforced" }] },
+        "PublicAccessBlockConfiguration": { "BlockPublicAcls": true, "BlockPublicPolicy": true, "IgnorePublicAcls": true, "RestrictPublicBuckets": true },
+        "Tags": [{ "Key": "Project", "Value": "agente-pagamentos-aws" }, { "Key": "Owner", "Value": { "Ref": "Prefix" } }]
+      }
+    },
+    "AssetsBucketPolicy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": { "Ref": "AssetsBucket" },
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [{
+            "Effect": "Deny", "Principal": "*", "Action": "s3:*",
+            "Resource": [{ "Fn::GetAtt": ["AssetsBucket", "Arn"] }, { "Fn::Sub": "${AssetsBucket.Arn}/*" }],
+            "Condition": { "Bool": { "aws:SecureTransport": "false" } }
+          }]
+        }
+      }
+    }
+  },
+  "Outputs": { "AssetsBucketName": { "Value": { "Ref": "AssetsBucket" } } }
+}

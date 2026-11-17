@@ -1,0 +1,20 @@
+{
+  "name": "pagamentos-agent",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test test/*.test.ts",
+    "typecheck": "node ../infra/node_modules/typescript/bin/tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@aws-sdk/client-bedrock-agentcore": "3.1169.0",
+    "@aws-sdk/client-bedrock-runtime": "3.1169.0",
+    "@aws-sdk/client-dynamodb": "3.1169.0",
+    "@aws-sdk/client-lambda": "3.1169.0",
+    "@aws-sdk/lib-dynamodb": "3.1169.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}
