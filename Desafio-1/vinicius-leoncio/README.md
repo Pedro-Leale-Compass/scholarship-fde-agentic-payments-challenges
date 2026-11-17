@@ -1,6 +1,6 @@
 # Agente de pagamentos — AWS Sprint 2
 
-Projeto de migração do chatbot de pagamentos da Sprint 1 para uma arquitetura AWS. A aplicação preserva as regras de catálogo, criação de intenção e pagamento simulado, adicionando autenticação Cognito, API protegida, agente Strands no Amazon Bedrock AgentCore e persistência em DynamoDB.
+Projeto de migração do chatbot de pagamentos da fase 1 para uma arquitetura AWS. A aplicação preserva as regras de catálogo, criação de intenção e pagamento simulado, adicionando autenticação Cognito, API protegida, agente Strands no Amazon Bedrock AgentCore e persistência em DynamoDB.
 
 ## Estado da implementação
 
@@ -12,7 +12,7 @@ Projeto de migração do chatbot de pagamentos da Sprint 1 para uma arquitetura 
 
 ## Arquitetura implementada
 
-![arquitetura.jpg](docs/imagens/arquitetura.jpg)
+![arquitetura.png](docs/imagens/arquitetura.png)
 
 O API Gateway aplica o authorizer Cognito antes de encaminhar a requisição às rotas. A identidade usada pelo backend vem da claim `sub` validada, nunca de um `userId` enviado no corpo. O frontend pode permanecer local e chamar a API HTTPS. Quando permitir OAC, `deployFrontend=true` habilita bucket privado e distribuição pelo CloudFront.
 
