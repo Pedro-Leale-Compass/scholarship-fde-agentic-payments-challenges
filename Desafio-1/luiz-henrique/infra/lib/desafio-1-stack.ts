@@ -95,6 +95,10 @@ export class Desafio1Stack extends cdk.Stack {
       value: agent.agentRuntimeArn,
       description: 'AgentCore Runtime ARN',
     });
+    new cdk.CfnOutput(this, 'UsuariosTableName', {
+      value: database.usuariosTable.tableName,
+      description: 'DynamoDB users table (sub + spending balance)',
+    });
     new cdk.CfnOutput(this, 'EcrRepositoryUri', {
       value: agent.ecrRepositoryUri,
       description: 'ECR repository URI for agent container image',

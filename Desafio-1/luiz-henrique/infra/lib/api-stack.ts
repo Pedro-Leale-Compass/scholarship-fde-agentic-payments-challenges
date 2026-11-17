@@ -34,6 +34,14 @@ export class ApiStack extends Construct {
       selfSignUpEnabled: false,
       signInAliases: { email: true },
       autoVerify: { email: true },
+      // Usuários criados pelo console/CLI recebem este convite por e-mail.
+      userInvitation: {
+        emailSubject: 'Convite — Agente de Pagamentos',
+        emailBody:
+          'Você foi convidado para o Agente de Pagamentos.\n\n' +
+          'Usuário: {username}\nSenha temporária: {####}\n\n' +
+          'No primeiro acesso será necessário definir uma nova senha.',
+      },
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
@@ -57,6 +65,7 @@ export class ApiStack extends Construct {
       environment: {
         AGENT_RUNTIME_ARN: agentRuntimeArn,
         USUARIOS_TABLE: usuariosTable.tableName,
+        LIMITE_INICIAL_CENTAVOS: '50000',
         FRONTEND_URL: frontendUrl,
       },
       bundling: {
@@ -74,6 +83,14 @@ export class ApiStack extends Construct {
           agentRuntimeArn,
           `${agentRuntimeArn}/runtime-endpoint/*`,
         ],
+      })
+    );
+
+    // Registro de usuários: o chat cria o item em Usuarios no primeiro acesso.
+    this.chatFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem'],
+        resources: [usuariosTable.tableArn],
       })
     );
 
