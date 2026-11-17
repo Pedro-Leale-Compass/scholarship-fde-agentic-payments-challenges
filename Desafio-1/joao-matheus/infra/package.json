@@ -9,7 +9,8 @@
     "build:frontend": "npm --prefix ../frontend run build",
     "deploy": "npm run build:frontend && cdk deploy --require-approval never --outputs-file cdk-outputs.json",
     "usuario": "node scripts/criar-usuario.mjs",
-    "agente": "node scripts/invocar-agente.mjs"
+    "agente": "node scripts/invocar-agente.mjs",
+    "destroy": "node scripts/destroy.mjs"
   },
   "dependencies": {
     "aws-cdk-lib": "^2.180.0",
