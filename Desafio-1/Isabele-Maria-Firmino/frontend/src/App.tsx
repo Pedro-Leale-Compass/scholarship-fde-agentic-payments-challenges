@@ -4,6 +4,7 @@ import { I18n } from 'aws-amplify/utils'
 import type { ConfigApp } from './config.ts'
 import Chat from './components/Chat.tsx'
 import ListaConversas from './components/ListaConversas.tsx'
+import { getInicial } from './usuario.ts'
 
 I18n.putVocabularies(translations)
 I18n.putVocabulariesForLanguage('pt', {
@@ -65,11 +66,6 @@ type AreaLogadaProps = {
   config: ConfigApp
   email?: string
   onSair: () => void
-}
-
-export function getInicial(email?: string): string {
-  const letra = email?.trim().charAt(0)
-  return letra ? letra.toLocaleUpperCase('pt-BR') : '?'
 }
 
 function IconeSeta({ aberta }: { aberta: boolean }) {
