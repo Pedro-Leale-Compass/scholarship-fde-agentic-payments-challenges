@@ -42,11 +42,13 @@ export class ApiStack extends Construct {
       autoVerify: { email: true },
       // Usuários criados pelo console/CLI recebem este convite por e-mail.
       userInvitation: {
-        emailSubject: 'Convite — Agente de Pagamentos',
+        emailSubject: 'Convite AWS Desafio 1 (Luiz Henrique)',
         emailBody:
-          'Você foi convidado para o Agente de Pagamentos.\n\n' +
-          'Usuário: {username}\nSenha temporária: {####}\n\n' +
-          'No primeiro acesso será necessário definir uma nova senha.',
+          'Credenciais para testar o Agente de Pagamentos do Luiz Henrique<br><br>' +
+          'Usuário: {username}<br>' +
+          'Senha temporária: {####}<br><br>' +
+          'No primeiro acesso será pedido pra definir uma nova senha.<br>' +
+          `Seu saldo inicial é de R$ 500,00 (quinhentos reais).`,
       },
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });

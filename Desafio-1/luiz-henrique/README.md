@@ -101,13 +101,17 @@ npm run dev            # http://localhost:3000
   agente local, convites); não são necessários para avaliar o frontend.
 - O navegador só fala com o API Gateway; não recebe ARNs, account ID nem credenciais.
 
-Para reenviar o convite do instrutor (aqui sim, com o AWS CLI autenticado):
+Para enviar ou reenviar o convite do instrutor (funciona também se o usuário já existir,
+com `MessageAction=RESEND`):
 
 ```bash
 cd Desafio-1/luiz-henrique
 eval "$(bash scripts/aws-creds.sh)"
 npm run user:invite -- instrutor@example.com 500
 ```
+
+Se você alterou o template de e-mail em `infra/lib/api-stack.ts`, rode
+`npm run deploy:api-agent` antes: o script dispara o e-mail, mas não atualiza o User Pool.
 
 ### 2.2 Deploy completo
 
@@ -339,7 +343,7 @@ frontend, use `cd frontend && npm install && npm run dev` (§2.1).
 | `npm run test:agent` | testes de integração na stack implantada |
 | `npm run check:model` | lê o `BEDROCK_MODEL_ID` do runtime (read-only, sem custo de Bedrock) |
 | `npm run check:logs` | lista log groups/streams do agente e das Lambdas (read-only) |
-| `npm run user:invite -- <email> [limite]` | cria usuário no Cognito + saldo + convite |
+| `npm run user:invite -- <email> [limite]` | cria ou reenvia o convite no Cognito + saldo |
 | `npm run user:set-limit -- <email\|sub> <valor>` | ajusta o saldo disponível |
 | `npm run user:reset-limit -- <email>` | volta ao saldo padrão (R$ 500) |
 | `npm run destroy` | destroy + limpeza de órfãos |

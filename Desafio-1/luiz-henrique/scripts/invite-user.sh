@@ -2,6 +2,7 @@
 # Cria um usuário no Cognito (somente por convite) e registra o saldo inicial
 # em Usuarios (DynamoDB). O Cognito envia o e-mail de convite com a senha
 # temporária; no primeiro acesso o usuário define uma nova senha.
+# Se o usuário já existir, o convite é reenviado com MessageAction=RESEND.
 #
 # Uso:
 #   eval "$(bash scripts/aws-creds.sh)"
@@ -57,7 +58,9 @@ echo "==> User Pool: $USER_POOL_ID"
 echo "==> E-mail: $EMAIL (limite inicial: R$ $LIMITE_REAIS)"
 
 # 1. Cria o usuário. Sem --message-action SUPPRESS: o Cognito envia o convite
-#    com a senha temporária configurada no template do User Pool.
+#    com a senha temporária configurada no template do User Pool. Se o usuário
+#    já existir, reenvia o convite com RESEND (novo prazo/senha temporária).
+RESENT=0
 if ! CREATE_OUTPUT=$(aws cognito-idp admin-create-user \
   --user-pool-id "$USER_POOL_ID" \
   --username "$EMAIL" \
@@ -66,7 +69,19 @@ if ! CREATE_OUTPUT=$(aws cognito-idp admin-create-user \
   --region "$REGION" \
   --output json 2>&1); then
   if echo "$CREATE_OUTPUT" | grep -q "UsernameExistsException"; then
-    echo "    (usuário já existe no Cognito; convite não reenviado)"
+    echo "==> Usuário já existe no Cognito; reenviando o convite..."
+    if ! RESEND_OUTPUT=$(aws cognito-idp admin-create-user \
+      --user-pool-id "$USER_POOL_ID" \
+      --username "$EMAIL" \
+      --message-action RESEND \
+      --desired-delivery-mediums EMAIL \
+      --region "$REGION" \
+      --output json 2>&1); then
+      echo "ERRO: não foi possível reenviar o convite:"
+      echo "$RESEND_OUTPUT"
+      exit 1
+    fi
+    RESENT=1
   else
     echo "$CREATE_OUTPUT"
     exit 1
@@ -117,6 +132,10 @@ else
   echo "==> Registrado em $USUARIOS_TABLE com saldo de R$ $LIMITE_REAIS"
 fi
 
-echo "OK: convite enviado para $EMAIL"
+if [[ "$RESENT" == "1" ]]; then
+  echo "OK: convite reenviado para $EMAIL"
+else
+  echo "OK: convite enviado para $EMAIL"
+fi
 echo "    usuario_id: $SUB"
 echo "    login: http://localhost:3000 (senha temporária no e-mail)"

@@ -132,7 +132,9 @@ npm run user:reset-limit -- <email>
 ```
 
 Scripts: `scripts/invite-user.sh`, `scripts/set-limit.sh`. O convite é enviado pelo próprio
-Cognito (template `userInvitation`); nenhuma senha/token é gravado no DynamoDB.
+Cognito (template `userInvitation`); nenhuma senha/token é gravado no DynamoDB. Se o usuário
+já existe, o script reenvia o convite com `MessageAction=RESEND` (nova senha temporária e
+novo prazo).
 
 ## 7. Migração
 
