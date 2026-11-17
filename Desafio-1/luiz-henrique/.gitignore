@@ -57,7 +57,6 @@ coverage/
 # TypeScript incremental build info
 *.tsbuildinfo
 infra/cdk-outputs.json
-frontend/public/config.json
 
 # CDK context is environment-specific (contains the account id)
 infra/cdk.context.json

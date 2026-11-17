@@ -35,6 +35,28 @@ Lambda do chat ───► Agente Strands no AgentCore Runtime (Bedrock · Clau
         └── registra o usuário (sub + saldo) em Usuarios
 ```
 
+## Início rápido (clone + npm run dev)
+
+O frontend local já vem com `frontend/public/config.json` versionado: URL do API Gateway,
+User Pool ID e Client ID. São **identificadores públicos** (não são credenciais) e permitem
+rodar sem AWS CLI, CDK ou `cdk-outputs.json`.
+
+```bash
+git clone <este repositório>
+cd Desafio-1/luiz-henrique
+npm run setup   # instala dependências da raiz e do frontend
+npm run dev     # sobe http://localhost:3000
+```
+
+- Use a porta **3000** (é a origem liberada no CORS do API Gateway).
+- O login é a tela do Cognito (Amplify `Authenticator`, sem cadastro). Entre com o e-mail
+  convidado; a senha temporária vai no convite enviado pelo mantenedor via
+  `npm run user:invite -- <email> [limite]`.
+- Não é necessário clonar o CDK nem ter credenciais AWS no seu ambiente.
+- O que **não** vai para o frontend: ARN do AgentCore Runtime, modelo Bedrock, ARNs das
+  tools, account ID e credenciais. Tudo isso fica no backend; o navegador só fala com o
+  API Gateway, que exige JWT do Cognito.
+
 ## Passo a passo de deploy
 
 Pré-requisitos: AWS CLI v2, perfil `desafio-1` configurado e sessão iniciada com `aws sso login`.

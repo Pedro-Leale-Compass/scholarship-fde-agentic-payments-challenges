@@ -158,7 +158,16 @@ Detalhes em `docs/REQUISITOS-PDF-E-AUDITORIA.md` (§3 e §3.2).
 - [ ] Frontend carrega o histórico de `GET /conversas` ao abrir o chat.
 - [ ] Convidar o instrutor pelo script e manter a aplicação acessível até a correção.
 
-## 12. Próximos passos (pós-entrega)
+## 12. Instrutor e dev local
+
+- [x] `frontend/public/config.json` versionado com URL do API Gateway, User Pool ID e Client ID (identificadores públicos, sem segredos).
+- [x] `npm run dev` funciona no clone sem AWS CLI/CDK (`scripts/dev-local.sh`).
+- [x] `npm run setup` instala dependências da raiz e do frontend.
+- [x] `docs/DEV-LOCAL-AGENTE.md` documenta o loop local do agente (porta 3031, `/invocations`, tools por ARN ou locais).
+- [ ] Convidar o instrutor com `npm run user:invite -- <email> [limite]` e confirmar o primeiro login.
+- [ ] Rodar `npm run test:agent` após renovar a sessão SSO.
+
+## 13. Próximos passos (pós-entrega)
 
 Detalhes e opções em `docs/ROADMAP.md`.
 
