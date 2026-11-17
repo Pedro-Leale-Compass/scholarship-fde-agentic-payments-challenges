@@ -229,12 +229,12 @@ const app = new BedrockAgentCoreApp({
           }
         }
 
-        return {
+        return JSON.stringify({
           ok: true,
           usuario_id,
           reply: chunks.join('').trim() || 'Não foi possível gerar uma resposta.',
           model: MODEL_ID,
-        };
+        });
       } catch (err) {
         console.error('agent invocation error:', err);
         throw err;
