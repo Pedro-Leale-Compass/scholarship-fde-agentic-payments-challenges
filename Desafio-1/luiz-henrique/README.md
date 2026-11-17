@@ -136,7 +136,7 @@ Detalhes, exemplos de `curl` e paridade local/remota: [`docs/DEV-LOCAL-AGENTE.md
 
 - Amazon Bedrock — Claude Haiku 4.5 (`us.anthropic.claude-haiku-4-5-20251001-v1:0`).
 - Strands Agent no Bedrock AgentCore Runtime.
-- **Confirmado no runtime em 2026-11-17:** `luiz_henrique_agent-AD3mRGF7e9`, versão 12,
+- **Confirmado no runtime em 2026-11-17:** `luiz_henrique_agent-AD3mRGF7e9`, versão 15,
   `READY`, Haiku 4.5.
 - Fallback de código: `global.amazon.nova-2-lite-v1:0` se `BEDROCK_MODEL_ID` não existir.
 - Confirme o modelo **vivo** (não só o `.env`) com:
@@ -190,22 +190,24 @@ Regras de escrita:
 - API REST sem streaming/WebSocket.
 - `Conversas` guarda o estado de checkout; o histórico completo de mensagens ainda não é
   persistido.
-- A reutilização de `intencao_id` foi removida do código e validada localmente
-  (`npm run test:local`); falta validar na stack implantada.
+- A reutilização de `intencao_id` foi removida e validada localmente (`npm run test:local`)
+  e na stack implantada (`npm run test:agent`, 2026-11-17).
 - `registrar_intencao` ainda aceita preço/produto vindos do modelo; o plano move para o
   catálogo.
-- Evidências de login/401/compras ainda não foram anexadas.
+- Capturas de tela/Postman ainda não foram anexadas; os resultados da suíte estão na tabela
+  de evidências.
 
 ## Evidências
 
 | Caso | Resultado esperado | Evidência |
 |---|---|---|
-| Login com usuário válido | JWT obtido; acesso liberado | pendente |
-| Requisição sem token | `401` | pendente |
-| Compra com cartão | Intenção paga e saldo debitado | pendente (bloqueado pelo bug até a Fase 3) |
-| Compra com Pix | Intenção paga e saldo debitado | pendente (idem) |
-| Limite excedido | Compra rejeitada com `LIMITE_EXCEDIDO` | pendente |
-| `intencao_id` inválido | `INTENCAO_INVALIDA` | pendente |
+| Login com usuário válido | JWT obtido; acesso liberado | `npm run test:agent` cria/loga usuário (2026-11-17) |
+| Requisição sem token | `401` | teste de integração passou (2026-11-17) |
+| Compra com cartão | Intenção paga e saldo debitado | teste de integração passou (2026-11-17) |
+| Compra com Pix | Intenção paga e saldo debitado | teste de integração passou (2026-11-17) |
+| Limite excedido | Compra rejeitada com `LIMITE_EXCEDIDO` | teste de integração passou (2026-11-17) |
+| `intencao_id` inválido | `INTENCAO_INVALIDA` | teste de ferramenta passou (2026-11-17) |
+| Novo produto após cancelamento | Novo ID, sem reutilizar o cancelado | teste de regressão passou; ex.: `INT-B7E0ED4D` cancelada → `INT-F7F74EB2` paga |
 | Convite por e-mail | Usuário no Cognito + item em `Usuarios` | pendente |
 | Ajuste de saldo | `user:set-limit` altera `limite_centavos` | pendente |
 

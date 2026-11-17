@@ -46,7 +46,7 @@ Bedrock AgentCore Runtime (container arm64 no ECR)
 | Dados | DynamoDB on-demand: `Usuarios`, `Conversas`, `Intencoes`, `Catalogo` | `infra/lib/database-stack.ts` |
 | Imagem | `DockerImageAsset` no ECR; build feito pelo CDK | `infra/lib/agent-stack.ts` |
 | Runtime | `CustomResource` com `CreateAgentRuntime`/`UpdateAgentRuntime`/`DeleteAgentRuntime` | `infra/lambda/agent-runtime/index.ts` |
-| Modelo | Bedrock Claude Haiku 4.5 via `BEDROCK_MODEL_ID` (runtime v12, confirmado em 2026-11-17); fallback Nova 2 Lite | `agent/index.ts`, `infra/lib/agent-stack.ts` |
+| Modelo | Bedrock Claude Haiku 4.5 via `BEDROCK_MODEL_ID` (runtime v15, confirmado em 2026-11-17); fallback Nova 2 Lite | `agent/index.ts`, `infra/lib/agent-stack.ts` |
 
 Não existem neste repositório: `FrontendStack`, S3 de site, CloudFront, OAC, VPC, NAT
 Gateway, Amplify Hosting, API WebSocket ou streaming. `infra/dist/lib/frontend-stack.*` é

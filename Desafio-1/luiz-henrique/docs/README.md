@@ -6,12 +6,12 @@ Baseline: tag `v0.0.2` — “chat works sometimes” (`d854762`)
 
 ## Status verificado em 2026-11-17
 
-- Runtime: `luiz_henrique_agent-AD3mRGF7e9`, versão 12, `READY`.
+- Runtime: `luiz_henrique_agent-AD3mRGF7e9`, versão 15, `READY`.
 - Modelo: `us.anthropic.claude-haiku-4-5-20251001-v1:0` (Claude Haiku 4.5).
 - Logs: `/aws/bedrock-agentcore/runtimes/luiz_henrique_agent-AD3mRGF7e9-DEFAULT` e
   `/aws/lambda/luiz-henrique-*`.
-- Bug do `v0.0.2` (reutilização de `intencao_id`): corrigido no código e validado com
-  `npm run test:local`; falta deploy/validação na stack. Evidência histórica em
+- Bug do `v0.0.2` (reutilização de `intencao_id`): corrigido e validado localmente e na
+  stack (`npm run test:agent`, 3/3 em 2026-11-17). Evidência histórica em
   `PLAN-AGENT-REVAMP.md` §1.1.
 
 ## Comece por aqui

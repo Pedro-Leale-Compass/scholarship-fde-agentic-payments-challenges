@@ -30,7 +30,7 @@ Plano detalhado: [`PLAN-AGENT-REVAMP.md`](PLAN-AGENT-REVAMP.md).
 
 - [x] `npm run check:model` criado (control plane, sem custo de Bedrock).
 - [x] `npm run check:logs` criado (CloudWatch, sem criar recursos).
-- [x] Rodar `npm run check:model`: runtime v12 `READY`, Haiku 4.5 (2026-11-17).
+- [x] Rodar `npm run check:model`: runtime v15 `READY`, Haiku 4.5 (2026-11-17).
 - [x] Rodar `npm run check:logs`: grupo
       `/aws/bedrock-agentcore/runtimes/luiz_henrique_agent-AD3mRGF7e9-DEFAULT` e Lambdas.
 - [x] Confirmar logs do runtime no CloudWatch; documentado em `OPERATIONS.md`.
@@ -64,7 +64,7 @@ Plano detalhado: [`PLAN-AGENT-REVAMP.md`](PLAN-AGENT-REVAMP.md).
 - [x] Rodar o cenário local sem ARNs (`npm run test:local` passou).
 - [ ] Adicionar teste: compra paga → novo produto → novo ID (coberto no local; falta na API).
 - [ ] Adicionar teste: duas conversas isoladas (estado já existe; falta cobrir na API).
-- [ ] Rodar `npm run test:agent` na stack implantada.
+- [x] Rodar `npm run test:agent` na stack implantada (3/3 em 2026-11-17).
 
 ## 6. Evidências e entrega
 
@@ -74,8 +74,8 @@ Plano detalhado: [`PLAN-AGENT-REVAMP.md`](PLAN-AGENT-REVAMP.md).
 - [ ] Compra com Pix.
 - [ ] Limite excedido.
 - [ ] `intencao_id` inválido.
-- [ ] Fazer o deploy e rodar `npm run test:agent`.
-- [ ] Preencher a tabela de evidências do `README.md`.
+- [x] Fazer o deploy e rodar `npm run test:agent` (2026-11-17).
+- [x] Preencher a tabela de evidências do `README.md` com o resultado dos testes.
 - [ ] Convidar o instrutor (`npm run user:invite -- <email> [limite]`).
 - [ ] Manter a API acessível até a correção.
 

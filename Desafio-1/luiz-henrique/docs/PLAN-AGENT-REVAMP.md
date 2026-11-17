@@ -1,6 +1,6 @@
 # Plano — revisão do agente e estado autoritativo da intenção
 
-- **Status:** proposto em 2026-11-17
+- **Status:** núcleo implementado e validado em 2026-11-17; pendências em §5 e §8
 - **Baseline:** tag `v0.0.2` — “chat works sometimes” (commit `d854762`)
 - **Escopo:** agente, API, tools, dados, testes, observabilidade e documentação
 - **Fora de escopo nesta rodada:** painel admin, streaming/WebSocket, S3/CloudFront,
@@ -32,7 +32,7 @@ valor antigo, fabricando uma resposta que parece legítima.
 
 ### 1.1 Evidência nos logs e no DynamoDB (2026-11-17)
 
-Runtime confirmado: `luiz_henrique_agent-AD3mRGF7e9`, versão 12, `READY`,
+Runtime na época do `v0.0.2`: `luiz_henrique_agent-AD3mRGF7e9`, versão 12, `READY`,
 `BEDROCK_MODEL_ID=us.anthropic.claude-haiku-4-5-20251001-v1:0`.
 Log group: `/aws/bedrock-agentcore/runtimes/luiz_henrique_agent-AD3mRGF7e9-DEFAULT`.
 
@@ -200,7 +200,7 @@ do transcript.
 
 - [x] `npm run check:model`: lê `BEDROCK_MODEL_ID` do runtime via control plane (read-only).
 - [x] `npm run check:logs`: lista log groups/streams do agente e das tools (read-only).
-- [x] Rodar os dois comandos: runtime v12 `READY`, Haiku 4.5; resultado em
+- [x] Rodar os dois comandos: runtime v15 `READY`, Haiku 4.5; resultado em
       `docs/OPERATIONS.md`.
 - [x] Confirmar o grupo
       `/aws/bedrock-agentcore/runtimes/luiz_henrique_agent-AD3mRGF7e9-DEFAULT` e os grupos
@@ -243,7 +243,7 @@ do transcript.
   9. duas abas na mesma conversa;
   10. chamadas de tool em paralelo.
 - [x] Rodar `npm run test:local` (fallback, Haiku) — passou.
-- [ ] Rodar `npm run test:agent` na stack implantada após o deploy.
+- [x] Rodar `npm run test:agent` na stack implantada: 3/3 (2026-11-17).
 - [ ] Capturar evidências para o README.
 - Critério: suíte falha se um ID de uma compra anterior aparecer em uma compra nova.
 

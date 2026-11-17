@@ -17,7 +17,7 @@ Legenda: ✅ atende · 🟡 parcial · ❌ não atende · ⏸ adiado por decisã
 | Cognito + `Authenticator`, `hideSignUp`, sem auto cadastro | ✅ | `frontend/app/page.tsx:60`; `infra/lib/api-stack.ts` |
 | API Gateway + autorizador JWT | ✅ | `infra/lib/api-stack.ts` |
 | API “Stream ou WebSocket” | ❌ | REST não-streaming |
-| Strands no AgentCore Runtime + Bedrock | ✅ | `agent/index.ts`; runtime via `CustomResource`; Haiku 4.5 no runtime v12 (2026-11-17) |
+| Strands no AgentCore Runtime + Bedrock | ✅ | `agent/index.ts`; runtime via `CustomResource`; Haiku 4.5 no runtime v15 (2026-11-17) |
 | 3 tools em Lambda | ✅ | `tools/` + `infra/lib/tools-stack.ts` |
 | DynamoDB: usuários+limite, conversas, intenções | 🟡 | `Usuarios`/`Intencoes`/`Catalogo` em uso; `Conversas` existe mas não é gravada |
 | IaC com um comando para o ambiente completo, incluindo frontend | 🟡 | `npm run deploy:api-agent` cobre backend/agente; frontend fica local |
@@ -39,15 +39,15 @@ Legenda: ✅ atende · 🟡 parcial · ❌ não atende · ⏸ adiado por decisã
 
 | Requisito | Estado | Observação |
 |---|---|---|
-| README com diagrama, deploy, modelo, DynamoDB, IAM e remoção | 🟡 | atualizado nesta rodada; evidências ainda pendentes |
-| Evidências: login, 401, cartão, Pix, limite, ID inválido | ❌ | nenhuma captura anexada ainda |
+| README com diagrama, deploy, modelo, DynamoDB, IAM e remoção | 🟡 | atualizado; tabela de evidências preenchida com a suíte; capturas de tela/Postman pendentes |
+| Evidências: login, 401, cartão, Pix, limite, ID inválido | 🟡 | `npm run test:agent` 3/3 (2026-11-17); faltam capturas de tela/Postman |
 | Aplicação no ar até a correção | ❌/⏸ | frontend local; falta convidar o instrutor e manter a API acessível |
 | Usuário do instrutor no Cognito | ❌ | usar `npm run user:invite -- <email> [limite]` |
 | Alerta de orçamento | 🟡 | orçamento de US$ 20 mencionado (≈US$ 5 gastos); não há registro neste repo de alarme criado. Criar AWS Budget é gratuito (primeiros 2); se já existir, registre o ID/limite aqui |
 | Destroy + limpeza | ✅ | `npm run destroy` + `scripts/destroy-cleanup.sh` + `destroy-cleanup.md` |
 | Extras (MCP Gateway, Memory, Guardrails, traces) | ⏸ | não previstos |
 
-## 4. Defeito corrigido no código (deploy pendente)
+## 4. Defeito corrigido e validado na stack
 
 O transcript de `v0.0.2` reutilizava `INT-E36C946B` ao comprar outro produto depois de um
 `LIMITE_EXCEDIDO`. Correções aplicadas e validadas localmente com `npm run test:local`:
@@ -59,8 +59,8 @@ O transcript de `v0.0.2` reutilizava `INT-E36C946B` ao comprar outro produto dep
 - o histórico não esconde mais a mensagem de falha;
 - `cancelada`/`expirada`/`paga` têm códigos distintos.
 
-O estado por conversa (`conversa_id`) e o fallback de pagamento com ID pendente verificado
-foram implementados. Falta validar na stack implantada (`npm run test:agent`). O plano
+O estado por conversa (`conversa_id`), os fallbacks determinísticos e os códigos distintos
+foram implementados e validados na stack em 2026-11-17 (`npm run test:agent`, 3/3). O plano
 detalhado está em [`PLAN-AGENT-REVAMP.md`](PLAN-AGENT-REVAMP.md).
 
 ## 5. Desvio autorizado: frontend local
@@ -91,10 +91,12 @@ corrigida localmente.
 
 ## 7. Pendências priorizadas
 
-1. Implementar o `PLAN-AGENT-REVAMP.md` (estado por conversa, sem grounding, códigos
-   corretos).
-2. Adicionar testes de regressão para o transcript de `v0.0.2`.
-3. Confirmar modelo vivo (`npm run check:model`) e logs (`npm run check:logs`).
-4. Capturar evidências reais e preencher a tabela do `README.md`.
-5. Convidar o instrutor e manter a API acessível até a correção.
-6. Avaliar o requisito de streaming/WebSocket e o frontend S3/CloudFront se a SCP permitir.
+1. [x] Implementar o núcleo do `PLAN-AGENT-REVAMP.md`: estado por conversa, sem
+   grounding/overrides, códigos corretos e fallbacks verificados (2026-11-17).
+2. [x] Adicionar teste de regressão do transcript de `v0.0.2` e validar na stack (3/3).
+3. [x] Confirmar modelo vivo e logs (`npm run check:model` / `check:logs`): v15, Haiku.
+4. [x] Preencher a tabela de evidências do `README.md` com o resultado dos testes; ainda
+   faltam convite por e-mail e ajuste de saldo.
+5. [ ] Convidar o instrutor e manter a API acessível.
+6. [ ] Avaliar streaming/WebSocket e frontend S3/CloudFront se a SCP permitir.
+7. [ ] Resolver preço pelo catálogo e persistir histórico completo em `Conversas`.

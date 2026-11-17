@@ -52,7 +52,7 @@ Isso é leitura de control plane: **não invoca o modelo**. Se o `.env` não exi
 momento do deploy, o CDK usa `global.amazon.nova-2-lite-v1:0` silenciosamente. O
 `infra/cdk.out/Desafio1Stack.template.json` reflete o último `synth`, não o runtime vivo.
 
-**Verificado em 2026-11-17:** runtime `luiz_henrique_agent-AD3mRGF7e9`, versão 12, status
+**Verificado em 2026-11-17:** runtime `luiz_henrique_agent-AD3mRGF7e9`, versão 15, status
 `READY`, `BEDROCK_MODEL_ID=us.anthropic.claude-haiku-4-5-20251001-v1:0`.
 
 ## 4. Logs no CloudWatch

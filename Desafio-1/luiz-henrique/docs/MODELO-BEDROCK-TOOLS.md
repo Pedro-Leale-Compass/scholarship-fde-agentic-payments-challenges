@@ -11,7 +11,7 @@ estão no código. O que vale é o comportamento descrito aqui e o plano em
 - Código: `agent/index.ts`.
 - ID efetivo: `BEDROCK_MODEL_ID` do ambiente. O `.env` local usa
   `us.anthropic.claude-haiku-4-5-20251001-v1:0`.
-- **Confirmado no runtime em 2026-11-17:** `luiz_henrique_agent-AD3mRGF7e9`, versão 12,
+- **Confirmado no runtime em 2026-11-17:** `luiz_henrique_agent-AD3mRGF7e9`, versão 15,
   `READY`, Haiku 4.5.
 - Fallback do código: `global.amazon.nova-2-lite-v1:0` (`agent/index.ts:30`).
 - O CDK lê `BEDROCK_MODEL_ID` do `.env` no synth/deploy e grava nas variáveis do runtime
@@ -154,7 +154,7 @@ existem mais.
 - Streaming/WebSocket.
 - Validação na stack implantada desta rodada (o fluxo local já passou).
 
-Logs do runtime **estão confirmados** no CloudWatch (runtime v12, 2026-11-17); ver
+Logs do runtime **estão confirmados** no CloudWatch (runtime v15, 2026-11-17); ver
 `OPERATIONS.md`.
 
 ## 6. Paridade local/remota

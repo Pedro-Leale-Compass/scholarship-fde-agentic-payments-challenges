@@ -40,7 +40,7 @@ Não faça commit em `main`, `develop`, `master` ou outra branch. Antes de commi
 - Tools em 3 Lambdas: `listar_catalogo`, `registrar_intencao`, `realizar_compra`.
 - DynamoDB: `Usuarios`, `Conversas`, `Intencoes`, `Catalogo`. `Conversas` guarda o
   `pending_intencao_id` por conversa.
-- Modelo: Bedrock Claude Haiku 4.5 via `BEDROCK_MODEL_ID` (runtime v12, confirmado em
+- Modelo: Bedrock Claude Haiku 4.5 via `BEDROCK_MODEL_ID` (runtime v15, confirmado em
   2026-11-17); fallback do código é `global.amazon.nova-2-lite-v1:0` se a variável não
   existir.
 - `Usuarios.ultima_intencao_id` é legado problemático; ver §5.
@@ -108,11 +108,10 @@ A reutilização de `intencao_id` do `v0.0.2` foi removida do código:
 - falha visível no lugar de reescrita silenciosa;
 - status terminais têm códigos distintos.
 
-Validado com `npm run test:local` (Haiku, fallback). Estado por conversa (`conversa_id`)
-implementado em `Conversas`, com fallback de pagamento usando apenas ID pendente verificado.
-Ainda falta:
+Validado com `npm run test:local` e `npm run test:agent` (3/3 em 2026-11-17). Estado por
+conversa (`conversa_id`) implementado em `Conversas`, com fallbacks usando apenas dados
+verificados. Ainda falta:
 
-- validar na stack implantada (`npm run test:agent`);
 - preço resolvido pelo catálogo;
 - histórico completo em `Conversas`.
 
