@@ -1,0 +1,54 @@
+﻿# Dependencias
+node_modules/
+**/node_modules/
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Build e arquivos gerados
+dist/
+build/
+coverage/
+*.tsbuildinfo
+cdk.out/
+*.log
+
+# Variaveis de ambiente e credenciais
+.env
+.env.*
+!.env.example
+!.env.sample
+*.pem
+*.key
+*.p12
+
+# Arquivos temporarios de testes AWS
+*key.json
+*chave*.json
+*resposta*.json
+*teste*.json
+*usuario-cognito.json
+agentcore-update*.json
+agentcore-artifact.json
+agentcore-env.json
+
+# Arquivos locais do sistema
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Dependencias em qualquer subpasta
+**/node_modules/
+**/.venv/
+**/__pycache__/
+
+# Bundles temporarios de teste
+/api/chat-test.js
+
+# Arquivos locais de testes e diagnosticos
+/infra/agentcore-runtime.json
+/infra/verificar-intencao.json
+/infra/teste_cognito.py
+/scripts/login-cognito.cjs

@@ -1,0 +1,71 @@
+
+{
+  "heleno-agentic-catalog": [
+    {
+      "PutRequest": {
+        "Item": {
+          "id": {"S": "prod_001"},
+          "nome": {"S": "Teclado Mecanico"},
+          "categoria": {"S": "perifericos"},
+          "preco": {"N": "349.90"},
+          "estoque": {"N": "8"}
+        }
+      }
+    },
+    {
+      "PutRequest": {
+        "Item": {
+          "id": {"S": "prod_002"},
+          "nome": {"S": "Mouse Sem Fio"},
+          "categoria": {"S": "perifericos"},
+          "preco": {"N": "129.90"},
+          "estoque": {"N": "25"}
+        }
+      }
+    },
+    {
+      "PutRequest": {
+        "Item": {
+          "id": {"S": "prod_003"},
+          "nome": {"S": "Fone Bluetooth"},
+          "categoria": {"S": "audio"},
+          "preco": {"N": "249.90"},
+          "estoque": {"N": "12"}
+        }
+      }
+    },
+    {
+      "PutRequest": {
+        "Item": {
+          "id": {"S": "prod_004"},
+          "nome": {"S": "Caixa de Som"},
+          "categoria": {"S": "audio"},
+          "preco": {"N": "189.00"},
+          "estoque": {"N": "6"}
+        }
+      }
+    },
+    {
+      "PutRequest": {
+        "Item": {
+          "id": {"S": "prod_005"},
+          "nome": {"S": "Monitor 27 polegadas"},
+          "categoria": {"S": "monitores"},
+          "preco": {"N": "1499.00"},
+          "estoque": {"N": "3"}
+        }
+      }
+    },
+    {
+      "PutRequest": {
+        "Item": {
+          "id": {"S": "prod_006"},
+          "nome": {"S": "Cabo USB-C 2m"},
+          "categoria": {"S": "acessorios"},
+          "preco": {"N": "39.90"},
+          "estoque": {"N": "100"}
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+﻿{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node", "aws-lambda"],
+    "typeRoots": ["../infra/node_modules/@types"],
+    "paths": {
+      "*": ["../infra/node_modules/*"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

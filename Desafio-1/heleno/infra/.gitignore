@@ -1,0 +1,34 @@
+
+# JavaScript e TypeScript compilados
+*.js
+!jest.config.js
+*.d.ts
+*.tsbuildinfo
+
+# Dependências
+node_modules/
+**/node_modules/
+
+# AWS CDK
+.cdk.staging/
+cdk.out/
+**/cdk.out/
+
+# Credenciais e variáveis de ambiente
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.aws/
+
+# Arquivos temporários de testes
+resposta-lambda.json
+teste-catalogo.json
+*.log
+
+# Sistema operacional e IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
