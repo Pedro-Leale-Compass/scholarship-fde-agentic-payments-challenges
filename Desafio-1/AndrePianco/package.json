@@ -1,0 +1,24 @@
+{
+  "name": "desafio-agente-pagamentos-aws",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Chatbot de compras com agente Strands no Bedrock AgentCore, tools em Lambda e DynamoDB",
+  "workspaces": [
+    "shared",
+    "tools",
+    "api",
+    "infra",
+    "frontend"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "synth": "npm run synth -w infra",
+    "deploy": "npm run deploy -w infra",
+    "destroy": "npm run destroy -w infra",
+    "dev:frontend": "npm run dev -w frontend"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

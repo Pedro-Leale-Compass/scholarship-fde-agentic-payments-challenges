@@ -1,0 +1,40 @@
+# Segredos e configuração local
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+frontend/src/amplify_outputs.json
+frontend/src/config.local.ts
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+npm-debug.log*
+
+# CDK
+cdk.out/
+cdk.context.json
+cdk-outputs.json
+.cdk.staging/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+agent/.bedrock_agentcore.yaml
+agent/.bedrock_agentcore/
+agent/build/
+*.zip
+
+# Ferramentas / SO
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.claude/
+*.log
