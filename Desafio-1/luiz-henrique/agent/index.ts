@@ -3,17 +3,18 @@
  *
  * Usa bedrock-agentcore SDK (BedrockAgentCoreApp) + @strands-agents/sdk.
  * Mesmo código roda local e na AWS, sempre com Amazon Bedrock (Claude Haiku):
- *   - Local:  `npm run dev` → BedrockAgentCoreApp na porta 3031, usando o perfil AWS do desenvolvedor
- *   - Remoto: container no AgentCore Runtime via CDK (CfnAgentRuntime)
+ *   - Local:  `npm run dev:agent` → BedrockAgentCoreApp na porta 3031, usando o perfil AWS do desenvolvedor
+ *   - Remoto: container no AgentCore Runtime via CDK (CustomResource)
  *
  * As 3 tools invocam as respectivas Lambdas. Quando os ARNs não estão configurados
- * (desenvolvimento local sem stack implantada), usam um fallback em memória com as
- * mesmas regras de negócio.
+ * (desenvolvimento local sem stack implantada), usam um fallback em memória que
+ * replica os contratos das Lambdas (IDs, códigos de erro, status, expiração e saldo).
  */
 
 import { BedrockAgentCoreApp } from 'bedrock-agentcore/runtime';
 import { Agent, BedrockModel, ZodTool } from '@strands-agents/sdk';
 import { z } from 'zod';
+import { randomBytes } from 'crypto';
 import {
   LambdaClient,
   InvokeCommand,
@@ -28,7 +29,7 @@ await import('dotenv').then((m) => m.config?.({ override: true }));
 //   us.anthropic.claude-haiku-4-5-20251001-v1:0
 const MODEL_ID = process.env.BEDROCK_MODEL_ID || 'global.amazon.nova-2-lite-v1:0';
 const REGION = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1';
-const LIMITE_COMPRA = Number(process.env.LIMITE_COMPRA) || 500;
+const SALDO_INICIAL_LOCAL = Number(process.env.SALDO_INICIAL_LOCAL ?? process.env.LIMITE_COMPRA) || 500;
 
 const lambdaClient = new LambdaClient({ region: REGION });
 
@@ -49,8 +50,13 @@ interface Intencao {
   usuario_id: string;
   produtos: Produto[];
   valor: number;
-  status: 'pendente' | 'paga';
+  valor_centavos: number;
+  status: 'pendente' | 'paga' | 'cancelada';
+  expira_em: string;
+  created_at: string;
   forma_pagamento?: 'cartao' | 'pix';
+  motivo_falha?: string;
+  pago_em?: string;
 }
 
 const CATALOGO_LOCAL: Produto[] = [
@@ -64,20 +70,43 @@ const CATALOGO_LOCAL: Produto[] = [
   { id: 'p8', nome: 'Suporte para Monitor', preco: 149.0 },
 ];
 
+const EXPIRACAO_MINUTOS = 15;
 const intencoesLocal = new Map<string, Intencao>();
+const saldosLocal = new Map<string, number>();
+const gastosLocal = new Map<string, number>();
+
+function gerarIntencaoIdLocal(): string {
+  return `INT-${randomBytes(4).toString('hex').toUpperCase()}`;
+}
+
+function saldoLocal(usuario_id: string): number {
+  const atual = saldosLocal.get(usuario_id);
+  if (atual !== undefined) return atual;
+  const inicial = Math.round(SALDO_INICIAL_LOCAL * 100);
+  saldosLocal.set(usuario_id, inicial);
+  return inicial;
+}
 
 function listarCatalogoLocal() {
   return { ok: true, catalogo: CATALOGO_LOCAL, count: CATALOGO_LOCAL.length };
 }
 
 function registrarIntencaoLocal(usuario_id: string, produtos: Produto[], valor: number) {
-  const intencao_id = `int-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const intencao_id = gerarIntencaoIdLocal();
+  const valor_centavos = Math.round(valor * 100);
+  const created_at = new Date().toISOString();
+  const expira_em = new Date(
+    Date.now() + EXPIRACAO_MINUTOS * 60 * 1000,
+  ).toISOString();
   intencoesLocal.set(intencao_id, {
     intencao_id,
     usuario_id,
     produtos,
     valor,
+    valor_centavos,
     status: 'pendente',
+    expira_em,
+    created_at,
   });
   return {
     ok: true,
@@ -85,35 +114,80 @@ function registrarIntencaoLocal(usuario_id: string, produtos: Produto[], valor: 
     usuario_id,
     produtos,
     valor,
+    valor_centavos,
     status: 'pendente',
+    expira_em,
     message: 'Intencao registrada com sucesso',
   };
 }
 
-function realizarCompraLocal(usuario_id: string, intencao_id: string, forma_pagamento: 'cartao' | 'pix') {
+function realizarCompraLocal(
+  usuario_id: string,
+  intencao_id: string,
+  forma_pagamento: 'cartao' | 'pix',
+) {
   const intencao = intencoesLocal.get(intencao_id);
   if (!intencao) {
-    return { ok: false, error: 'intencao_id invalido: intencao nao encontrada' };
-  }
-  if (intencao.usuario_id !== usuario_id) {
-    return { ok: false, error: 'intencao nao pertence ao usuario' };
-  }
-  if (intencao.status !== 'pendente') {
-    return { ok: false, error: `intencao ja esta em status: ${intencao.status}` };
-  }
-  if (intencao.valor > LIMITE_COMPRA) {
     return {
       ok: false,
-      error: `limite excedido: valor ${intencao.valor} acima do limite de ${LIMITE_COMPRA}`,
+      code: 'INTENCAO_INVALIDA',
+      error: 'intencao_id invalido: intencao nao encontrada',
     };
   }
+  if (intencao.usuario_id !== usuario_id) {
+    return {
+      ok: false,
+      code: 'INTENCAO_INVALIDA',
+      error: 'intencao_id invalido: intencao nao encontrada',
+    };
+  }
+  if (intencao.status !== 'pendente') {
+    return {
+      ok: false,
+      code: 'INTENCAO_JA_PAGA',
+      error: `intencao ja esta em status: ${intencao.status}`,
+      status: intencao.status,
+    };
+  }
+  if (new Date(intencao.expira_em).getTime() <= Date.now()) {
+    intencao.status = 'cancelada';
+    intencao.motivo_falha = 'INTENCAO_EXPIRADA';
+    return {
+      ok: false,
+      code: 'INTENCAO_EXPIRADA',
+      error: 'intencao expirada: registre uma nova intencao',
+      intencao_id,
+      status: 'cancelada',
+    };
+  }
+  const valorCentavos = intencao.valor_centavos;
+  const saldo = saldoLocal(usuario_id);
+  if (valorCentavos > saldo) {
+    intencao.status = 'cancelada';
+    intencao.motivo_falha = 'LIMITE_EXCEDIDO';
+    return {
+      ok: false,
+      code: 'LIMITE_EXCEDIDO',
+      error: 'limite excedido: saldo disponivel insuficiente para esta compra',
+      intencao_id,
+      status: 'cancelada',
+    };
+  }
+  saldosLocal.set(usuario_id, saldo - valorCentavos);
+  gastosLocal.set(
+    usuario_id,
+    (gastosLocal.get(usuario_id) || 0) + valorCentavos,
+  );
   intencao.status = 'paga';
   intencao.forma_pagamento = forma_pagamento;
+  intencao.pago_em = new Date().toISOString();
   return {
     ok: true,
+    code: 'COMPRA_APROVADA',
     intencao_id,
     usuario_id,
     valor: intencao.valor,
+    valor_centavos: valorCentavos,
     forma_pagamento,
     status: 'paga',
     message: 'Compra realizada com sucesso',

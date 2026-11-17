@@ -1,3 +1,5 @@
+> **HISTÓRICO — arquivado em 2026-11-17.** Este documento descreve um estado antigo ou um plano concluído. Não use como fonte de verdade. Consulte `docs/README.md` e o código atual.
+
 # Deploy Findings — Desafio 1
 
 Live-state review of `Desafio1Stack` (account `<account-id>`, `us-east-1`), 2026-11-17.

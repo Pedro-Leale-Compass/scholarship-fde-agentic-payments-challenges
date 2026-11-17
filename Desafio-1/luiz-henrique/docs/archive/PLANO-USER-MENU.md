@@ -1,3 +1,5 @@
+> **HISTÓRICO — arquivado em 2026-11-17.** Este documento descreve um estado antigo ou um plano concluído. Não use como fonte de verdade. Consulte `docs/README.md` e o código atual.
+
 # Plano — Portar o menu de usuário do `sistema-doacoes-2`
 
 Referência: https://github.com/luiztosk/sistema-doacoes-2

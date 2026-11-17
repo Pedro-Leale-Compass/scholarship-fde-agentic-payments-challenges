@@ -1,89 +1,164 @@
 # AGENTS.md — Desafio 1 (luiz-henrique)
 
-Este documento define as restrições de trabalho para este desafio. Siga rigorosamente para não cometer fora da pasta ou fora da branch correta.
+Instruções para qualquer agente/pessoa que trabalhe neste projeto. O objetivo é evitar
+trabalho fora da pasta/branch, afirmações desatualizadas e custo AWS desnecessário.
 
-## 1. Pasta de trabalho exclusiva
+Baseline: tag **`v0.0.2` — “chat works sometimes”** (`d854762`).
 
-Trabalhe **somente** dentro desta pasta:
+## 1. Pasta e branch
+
+Trabalhe **somente** em:
 
 ```
 Desafio-1/luiz-henrique/
-├── frontend/
-├── api/
-├── agent/
-├── tools/
-├── infra/
-├── docs/
-├── README.md
-└── AGENTS.md  (este arquivo)
 ```
 
-Não crie, edite, mova ou remova arquivos fora de `Desafio-1/luiz-henrique/`.
-
-## 2. Branch exclusiva
-
-Trabalhe **somente** na branch:
+Branch exclusiva:
 
 ```
 fellow/luiz-henrique-desafio-1
 ```
 
-Crie-a a partir de `main`:
+Não faça commit em `main`, `develop`, `master` ou outra branch. Antes de commitar:
+
+1. `git branch --show-current` deve retornar `fellow/luiz-henrique-desafio-1`.
+2. `git status --short` deve listar apenas caminhos dentro de `Desafio-1/luiz-henrique/`.
+3. Adicione apenas a pasta: `git add Desafio-1/luiz-henrique/`. Nunca `git add .` na raiz.
+4. Nunca commite `.env`, `infra/cdk-outputs.json`, `tests/postman-environment.json`,
+   credenciais, tokens ou chaves.
+
+## 2. Estado real da stack
+
+- Região `us-east-1`; prefixo `luiz-henrique`.
+- Frontend Next.js roda **local** em `http://localhost:3000`. Não há S3 de site,
+  CloudFront, OAC, Amplify Hosting, VPC ou NAT Gateway no repositório.
+  `infra/dist/lib/frontend-stack.*` é artefato antigo de build e não é usado.
+- API Gateway **REST** com `POST /chat` e autorizador JWT Cognito. Não há
+  streaming/WebSocket.
+- Agente Strands no Bedrock AgentCore Runtime; runtime criado por `CustomResource`
+  (`infra/lambda/agent-runtime/index.ts`), não por `CfnResource`.
+- Tools em 3 Lambdas: `listar_catalogo`, `registrar_intencao`, `realizar_compra`.
+- DynamoDB: `Usuarios`, `Conversas`, `Intencoes`, `Catalogo`. `Conversas` existe, mas ainda
+  não é gravada.
+- Modelo: Bedrock Claude Haiku 4.5 via `BEDROCK_MODEL_ID` (runtime v12, confirmado em
+  2026-11-17); fallback do código é `global.amazon.nova-2-lite-v1:0` se a variável não
+  existir.
+- `Usuarios.ultima_intencao_id` é legado problemático; ver §5.
+
+Se um doc antigo contradizer esta seção, o código e os docs canônicos vencem. Corrija o doc
+na mesma alteração.
+
+## 3. Fonte de verdade da documentação
+
+Comece por [`docs/README.md`](docs/README.md).
+
+| Documento | Uso |
+|---|---|
+| `README.md` | visão geral, comandos, dados, IAM e limitações |
+| `docs/PLAN-AGENT-REVAMP.md` | plano detalhado da correção do checkout |
+| `docs/STACK.md` | arquitetura implementada |
+| `docs/MODELO-BEDROCK-TOOLS.md` | modelo, tools, runtime e falhas conhecidas |
+| `docs/MODELO-USUARIOS.md` | DynamoDB |
+| `docs/DEV-LOCAL-AGENTE.md` | agente local e paridade |
+| `docs/OPERATIONS.md` | deploy, modelo, logs, custos, destroy |
+| `docs/REQUISITOS-PDF-E-AUDITORIA.md` | requisitos × estado atual |
+| `docs/TODO.md` | somente lista de tarefas |
+| `docs/archive/` | histórico; **não** usar como estado atual |
+
+Convenções:
+
+- Doc canônico declara data de verificação e referencia código quando afirma comportamento.
+- Mudou código que afeta o doc? Atualize o doc no mesmo commit.
+- `TODO.md` é só tarefas; não coloque explicações longas nele.
+- Não reescreva docs históricos para “parecer atuais”; mova para `archive/` se necessário.
+- Não invente URLs, ARNs, IDs ou resultados de testes. Se não foi verificado, diga.
+
+## 4. Comandos
 
 ```bash
-git checkout -b fellow/luiz-henrique-desafio-1
+npm run setup                  # raiz + frontend
+npm --prefix infra install     # CDK (primeira vez)
+npm --prefix agent install     # agente local (primeira vez)
+
+npm run dev                    # frontend local :3000
+npm run dev:agent              # agente local :3031 (Bedrock real)
+npm run deploy:api-agent       # deploy backend/agente
+npm run diff                   # cdk diff antes do deploy
+npm run test:agent             # testes na stack implantada
+npm run check:model            # modelo vivo (control plane, read-only)
+npm run check:logs             # logs do agente/tools (read-only)
+npm run destroy                # destroy + cleanup
 ```
 
-Não faça commit em `main`, `develop`, `master` ou qualquer outra branch.
-
-## 3. Nunca commitar fora desta pasta
-
-Antes de qualquer `git add` / `git commit`:
-
-1. Confirme a branch: `git branch --show-current` deve retornar `fellow/luiz-henrique-desafio-1`.
-2. Confirme os arquivos: `git status` deve listar apenas arquivos dentro de `Desafio-1/luiz-henrique/`.
-3. Nunca faça `git add .` na raiz do repositório. Adicione apenas esta pasta:
+Credenciais:
 
 ```bash
-git add Desafio-1/luiz-henrique/
+aws sso login --profile desafio-1
+eval "$(scripts/aws-creds.sh)"
 ```
 
-Se houver alterações fora de `Desafio-1/luiz-henrique/` no `git status`, **não as inclua** no commit. Descarte ou deixe de lado.
+## 5. Foco atual e defeito conhecido
 
-## 4. Regras do desafio (resumo)
+O fluxo de compra reutiliza `intencao_id` depois de `LIMITE_EXCEDIDO` ou de uma compra
+paga. Causas:
 
-- Região: `us-east-1`.
-- Prefixo de recursos/stack: `luiz-henrique` (para não colidir com os demais fellows).
-- Bucket S3 privado, servido só pelo CloudFront (OAC).
-- Cognito sem auto cadastro (`AllowAdminCreateUserOnly`); usuários entram por convite.
-- `usuario_id` vem do `sub` do token JWT, nunca do corpo nem do modelo.
+- `Usuarios.ultima_intencao_id` é por usuário, nunca é invalidado e é enviado em todo turno;
+- a mensagem de falha é filtrada do histórico, então o modelo não vê o cancelamento;
+- `groundIntencaoIds` troca qualquer ID divergente pelo ID antigo;
+- `realizar_compra` sobrescreve o ID do modelo com o estado antigo;
+- `INTENCAO_JA_PAGA` é usado para `cancelada`.
+
+Não “conserte” isso com mais regex/grounding. Siga o
+[`docs/PLAN-AGENT-REVAMP.md`](docs/PLAN-AGENT-REVAMP.md): estado por conversa, ID só de tool
+result, sem reescrita silenciosa, códigos de status corretos.
+
+## 6. Custos (importante)
+
+- Orçamento: **US$ 20**; aproximadamente **US$ 5** gastos.
+- Não crie serviços pagos novos sem necessidade explícita: VPC/NAT, CloudFront, Amplify
+  Hosting, jobs agendados, instâncias, provisioned capacity.
+- DynamoDB é on-demand; mantenha assim.
+- CloudWatch Logs tem free tier, mas evite retenção infinita e logs verbosos.
+- Testes com Bedrock custam por token. Prefira o fallback local para iterar prompt; use a
+  stack implantada só para validar persistência/códigos.
+- `check:model` e `check:logs` não invocam Bedrock; use-os antes de supor o modelo/logs.
+- Rode `npm run diff` e revise se aparecer recurso novo antes de `deploy`.
+
+## 7. Modelo e logs
+
+- Confirme o modelo vivo: `npm run check:model`.
+- O `.env` com Haiku não garante que o runtime implantado usa Haiku. O CDK lê
+  `BEDROCK_MODEL_ID` no synth; deploy sem `.env` usa Nova.
+- Logs: `npm run check:logs`. Procure `/aws/bedrock-agentcore/*` e
+  `/aws/lambda/luiz-henrique-*`.
+- Eventos úteis do runtime: `guard: intencao_id_grounded`, `guard: payment_fallback`,
+  `guard: fabricated_turn_removed`, `guard: purchase_reply_adjusted`.
+- Logs das tools mostram `tool: registrar_intencao`/`realizar_compra` e o `intencao_id`.
+
+## 8. Regras do desafio (resumo)
+
+- Tudo em `us-east-1`; prefixo `luiz-henrique`.
+- Cognito sem auto cadastro (`AllowAdminCreateUserOnly`); usuários por convite.
+- `usuario_id` vem do `sub` do JWT, nunca do corpo nem do modelo.
 - API responde `401` sem token válido.
-- CORS da API aceita apenas o domínio do CloudFront.
-- IAM de menor privilégio, sem `*` e sem `AdministratorAccess`.
-- Nenhum segredo no Git (sem `.env`, sem chaves de acesso, sem tokens).
-- Modelo: Amazon Bedrock (Claude Haiku) via Agente Strands no AgentCore Runtime.
+- CORS restrito à origem do frontend (`http://localhost:3000`).
+- IAM de menor privilégio; exceção documentada do ECR.
+- Nenhum segredo no Git.
+- Modelo: Amazon Bedrock (Claude Haiku) via Strands no AgentCore Runtime.
+- Manter a aplicação no ar até a correção e criar o usuário do instrutor.
 
-## 5. Checklist antes de commitar
+## 9. Checklist antes de commitar
 
-- [ ] Branch é `fellow/luiz-henrique-desafio-1`.
-- [ ] `git status` mostra apenas arquivos em `Desafio-1/luiz-henrique/`.
-- [ ] Nenhum arquivo com segredos/credenciais foi adicionado.
-- [ ] Nenhum `git add` na raiz do repo (somente `Desafio-1/luiz-henrique/`).
-- [ ] Commit mensage é claro e refere-se ao desafio.
+- [ ] Branch correta (`fellow/luiz-henrique-desafio-1`).
+- [ ] `git status` só mostra `Desafio-1/luiz-henrique/`.
+- [ ] Nenhum segredo/credencial/ARN privado adicionado.
+- [ ] `npx tsc --noEmit` em `agent/` e `infra/` (se alterou TS).
+- [ ] Docs afetados atualizados; nada de afirmação não verificada.
+- [ ] Se alterou infra: `npm run diff` revisado, sem recurso pago novo.
+- [ ] Se alterou agente: teste local e/ou `npm run test:agent` conforme o risco.
+- [ ] Mensagem de commit clara e referente ao desafio.
 
-## 6. Limpeza (após a correção)
+## 10. Limpeza após a correção
 
-Destrua a stack e confirme no console que não restou bucket, distribuição CloudFront, runtime do AgentCore, imagens no ECR, tabelas DynamoDB ou logs.
-
-## 7. Stack de tecnologia
-
-- IaC: AWS CDK (TypeScript), pasta `infra/`; deploy único: `cdk deploy --require-approval never`.
-- Frontend: Next.js (App Router) + Tailwind CSS, pasta `frontend/`; autenticação via AWS Amplify Gen 2 (`Authenticator`); hospedagem S3 + CloudFront (estático, `next export`).
-- Modelo: Amazon Bedrock (Claude Haiku) via Agente Strands no AgentCore Runtime.
-- Banco: DynamoDB (tabelas prefixadas `luiz-henrique`).
-- Detalhes: `docs/STACK.md`.
-
-## 8. Convenção de documentação
-
-- O `docs/TODO.md` é exclusivamente para a lista de tarefas (TODO list). Não acrescente informações extras nele.
-- Informações adicionais (ex.: referência de projetos anteriores, notas de migração, stack) devem ir em novos arquivos dentro de `docs/`, por exemplo `docs/MIGRACAO-ANTERIOR.md` e `docs/STACK.md`.
+Rodar `npm run destroy` e confirmar que não restou runtime, ECR, tabelas, log groups,
+roles ou API. Detalhes em `docs/destroy-cleanup.md`.

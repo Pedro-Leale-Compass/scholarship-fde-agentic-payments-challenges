@@ -12,6 +12,8 @@
     "destroy": "eval \"$(bash scripts/aws-creds.sh)\" && cd infra && npx cdk destroy --force && cd .. && bash scripts/destroy-cleanup.sh",
     "dev:agent": "eval \"$(bash scripts/aws-creds.sh)\" && cd agent && npx tsx index.ts",
     "dev": "bash scripts/dev-local.sh",
+    "check:model": "bash scripts/check-model.sh",
+    "check:logs": "bash scripts/check-logs.sh",
     "setup": "npm install && npm --prefix frontend install",
     "dev:frontend": "bash scripts/dev-frontend-local.sh",
     "dev:create-test-user": "eval \"$(bash scripts/aws-creds.sh)\" && bash scripts/create-test-user.sh",

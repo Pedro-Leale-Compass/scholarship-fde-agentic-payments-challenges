@@ -1,173 +1,159 @@
-# Modelo, tool calling e alinhamento com Claude Haiku 4.5
+# Agente, Bedrock e tools — estado real e falhas conhecidas
 
-Pesquisa feita em 2026-11-17 (AWS Docs, Anthropic Docs e código do SDK instalado).
+Verificado contra o código em **2026-11-17** (baseline `v0.0.2`).
+
+Este documento substitui as notas antigas de “grounding” que afirmavam correções que não
+estão no código. O que vale é o comportamento descrito aqui e o plano em
+[`PLAN-AGENT-REVAMP.md`](PLAN-AGENT-REVAMP.md).
 
 ## 1. Modelo
 
-- ID usado: `us.anthropic.claude-haiku-4-5-20251001-v1:0`.
-- `us.` = perfil de inferência cross-region **só nos EUA** (us-east-1, us-east-2,
-  us-west-2). O perfil `global.` também existe e está ACTIVE, mas inclui um ARN global de
-  foundation model que pode servir fora dos EUA; por isso usamos `us.`, alinhado à exigência
-  de `us-east-1` e à residência de dados.
-- Região: `us-east-1`.
-- Haiku 4.5 suporta tool use, parallel tool use e strict tool use.
+- Código: `agent/index.ts`.
+- ID efetivo: `BEDROCK_MODEL_ID` do ambiente. O `.env` local usa
+  `us.anthropic.claude-haiku-4-5-20251001-v1:0`.
+- **Confirmado no runtime em 2026-11-17:** `luiz_henrique_agent-AD3mRGF7e9`, versão 12,
+  `READY`, Haiku 4.5.
+- Fallback do código: `global.amazon.nova-2-lite-v1:0` (`agent/index.ts:30`).
+- O CDK lê `BEDROCK_MODEL_ID` do `.env` no synth/deploy e grava nas variáveis do runtime
+  (`infra/lib/agent-stack.ts`). Um deploy feito sem `.env` usa Nova silenciosamente.
+- `temperature: 0` está configurado, mas não garante determinismo absoluto.
+- Região: `us-east-1`. O perfil `us.` é cross-region apenas nos EUA.
 
-## 2. Formato no Bedrock (Converse / ConverseStream)
+**Como confirmar o modelo vivo (sem invocar Bedrock):**
 
-O Strands `BedrockModel` monta o request no formato Converse:
-
-```json
-{
-  "modelId": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-  "system": [{ "text": "..." }],
-  "messages": [{ "role": "user", "content": [{ "text": "..." }] }],
-  "inferenceConfig": { "temperature": 0 },
-  "toolConfig": {
-    "tools": [
-      {
-        "toolSpec": {
-          "name": "realizar_compra",
-          "description": "...",
-          "inputSchema": { "json": { "type": "object", "properties": {}, "required": [] } }
-        }
-      }
-    ],
-    "toolChoice": { "auto": {} }
-  }
-}
+```bash
+npm run check:model
 ```
 
-- `toolChoice` aceita `{ "auto": {} }`, `{ "any": {} }` ou `{ "tool": { "name": "..." } }`.
-- Em streaming, a resposta traz `contentBlockStart` com `toolUse`, deltas com o JSON parcial
-  e `contentBlockStop`; o Strands monta a chamada e devolve o `toolResult`.
-- Sem `toolConfig`, a resposta é só texto. Com `toolConfig`, o modelo pode responder texto
-  **ou** `toolUse` (default `auto`).
+O script usa `bedrock-agentcore-control get-agent-runtime` e imprime
+`environmentVariables.BEDROCK_MODEL_ID`, status e versão do runtime. Leitura de control
+plane não gera custo de Bedrock. O `infra/cdk.out/Desafio1Stack.template.json` também mostra
+o valor do último synth, mas não prova o que está implantado.
 
-## 3. O que o código já fazia certo
+A resposta do runtime também inclui o campo `model`; uma invocação de teste confirma o
+modelo efetivo, mas consome tokens do Bedrock. Prefira `check:model` para a confirmação
+sem custo.
 
-- `ZodTool` gera `toolSpec` válido (nome, descrição, `inputSchema.json`).
-- `BedrockModel` envia `toolConfig` automaticamente quando há tools.
-- O runtime recebe `toolUse`, executa a Lambda e devolve `toolResult`; o loop continua até
-  o texto final.
-- `temperature` e `maxTokens` são campos válidos do `BedrockModelConfig`.
+## 2. Tools (contratos atuais)
 
-## 4. O que estava faltando (e foi corrigido)
+### `listar_catalogo`
 
-| Ponto | Antes | Agora |
-|---|---|---|
-| Temperatura | default do modelo | `temperature: 0` (menos variação/alucinação) |
-| Descrições das tools | genéricas | dizem quando usar e o que retornam |
-| Confirmação de compra | modelo podia dizer "aprovada" sem chamar a tool | guard determinístico: só aceita "aprovada" se `realizar_compra` retornou `ok: true` na mesma invocação |
-| Pagamento sem tool call | compra ficava pendente | fallback determinístico: se o usuário confirma pagamento e o modelo não chama a tool, o runtime chama `realizar_compra` com o último `intencao_id` |
-| Registro da intenção | modelo às vezes pedia confirmação antes | prompt manda registrar imediatamente |
-| Paralelismo | ferramentas podiam ser chamadas em paralelo | prompt pede uma por vez; as tools têm efeito colateral |
-| Erros | texto solto | tools retornam `{ ok: false, code }` e o prompt manda reportar o `code` |
+- Input: `{}`.
+- Output: `{ ok, catalogo: [{ id, nome, preco }], count }`.
+- Lambda: `tools/listar_catalogo/index.ts`, tabela `Catalogo`.
 
-## 5. `toolChoice` forçado: por que não usamos
+### `registrar_intencao`
 
-- `{ tool: { name: 'realizar_compra' } }` força a tool em **cada** chamada do loop; depois
-  do `toolResult`, o modelo seria forçado a chamar a mesma tool de novo, podendo entrar em
-  loop.
-- `{ any: {} }` força *alguma* tool, com o mesmo risco.
-- Por isso usamos `auto` + prompt explícito + guard + fallback determinístico. O fallback
-  cobre exatamente o caso em que o modelo não chama a tool no turno de pagamento.
+- Input atual: `{ produtos: [{ id, nome, preco }], valor }`.
+- Output ok: `{ ok, intencao_id, usuario_id, produtos, valor, valor_centavos, status,
+  expira_em, message }`.
+- O backend **confia** no `valor` e nos produtos enviados pelo modelo; ainda não resolve
+  preço pelo catálogo.
+- ID: `INT-XXXXXXXX` (8 hex maiúsculos), gerado por `randomBytes(4)`
+  (`tools/registrar_intencao/index.ts:11-13`).
+- Expiração: 15 minutos.
+- Erros: `usuario_id` ausente, lista vazia ou valor inválido (400).
 
-## 6. Tokens de system prompt para tool use (Haiku 4.5)
+### `realizar_compra`
 
-- `auto`/`none`: 496 tokens.
-- `any`/`tool`: 588 tokens.
+- Input: `{ intencao_id, forma_pagamento: "cartao" | "pix" }`.
+- Output ok: `{ ok: true, code: "COMPRA_APROVADA", intencao_id, valor, valor_centavos,
+  forma_pagamento, status: "paga" }`.
+- Valida: existência, dono (`usuario_id`), status `pendente`, expiração e saldo.
+- Transação: debita `Usuarios.limite_centavos` e marca `Intencoes.status = paga` numa única
+  `TransactWriteItems`.
+- Em `LIMITE_EXCEDIDO` e `INTENCAO_EXPIRADA`, cancela a intenção.
+- Códigos atuais: `COMPRA_APROVADA`, `INTENCAO_INVALIDA`, `INTENCAO_JA_PAGA`,
+  `INTENCAO_EXPIRADA`, `LIMITE_EXCEDIDO`, `METODO_INVALIDO`, `USUARIO_NAO_ENCONTRADO`.
+- **Problema:** qualquer status diferente de `pendente` (inclusive `cancelada`) vira
+  `INTENCAO_JA_PAGA` (`tools/realizar_compra/index.ts:145-148`). Isso engana o usuário.
 
-Não é um problema de orçamento aqui, mas explica por que o prompt não deve crescer
-indefinidamente.
+## 3. Fluxo do runtime (atual)
 
-## 7. Validação
+1. A Lambda do chat monta `prompt` (texto achatado) e `messages` estruturados, e envia
+   `intencao_id` persistido em `Usuarios.ultima_intencao_id` (`api/index.ts:214-228`).
+2. O runtime cria um `Agent` novo por requisição. O histórico vem de `messages`; o `prompt`
+   é usado pelo fallback de pagamento.
+3. `createAgent` inicializa `state.lastIntencaoId` com o `intencao_id` recebido
+   (`createAgent`, `agent/index.ts:353-359`).
+4. `registrar_intencao` atualiza `state.lastIntencaoId` quando retorna um ID.
+5. `realizar_compra` **sobrescreve** qualquer ID do modelo com `state.lastIntencaoId` se ele
+   existir (`realizar_compra` callback, `agent/index.ts:409-421`).
+6. Depois da resposta do modelo:
+   - `stripFabricatedTurns` corta transcrições fabricadas;
+   - `groundIntencaoIds` troca qualquer ID divergente pelo “real”
+     (`groundIntencaoIds`, `agent/index.ts:553-574`);
+   - `applyPurchaseGuard` impede afirmar sucesso sem `realizar_compra.ok === true`;
+   - `completePaymentFallback` tenta pagar se a última linha do usuário parecer confirmação
+     e o modelo não tiver chamado a tool (`completePaymentFallback`, `agent/index.ts:313-347`).
+7. A resposta sempre inclui `intencao_id: state.lastIntencaoId`, mesmo quando nenhuma
+   intenção nova foi criada (`agent/index.ts:685`). A API persiste esse valor
+   (`api/index.ts:252-256`).
 
-`tests/agent.test.mjs` (`npm run test:agent`) cobre:
+## 4. Falhas conhecidas (por que o transcript reutiliza ID)
 
-- 401 sem token.
-- Contrato de `realizar_compra`: compra ok, retry (`INTENCAO_JA_PAGA`), saldo
-  (`LIMITE_EXCEDIDO`), id inválido (`INTENCAO_INVALIDA`), dono errado, expirada
-  (`INTENCAO_EXPIRADA`), método inválido (`METODO_INVALIDO`).
-- Fluxo do agente: intenção pendente não pode ser narrada como compra paga; pagamento
-  confirmado baixa o saldo; compra acima do limite não é narrada como aprovada.
+1. **`ultima_intencao_id` é por usuário e nunca é invalidado.** Depois de uma compra paga ou
+   cancelada, o ID antigo continua sendo enviado em todo turno. Um chat novo herda o ID.
+2. **O histórico remove a mensagem de falha.** A API filtra respostas que contêm
+   “Nenhuma cobrança foi confirmada” (`api/index.ts:200-208`). O modelo deixa de ver que a
+   intenção foi cancelada e trata o novo produto como troca da intenção antiga.
+3. **`groundIntencaoIds` fabrica a resposta.** Se o modelo copia o ID do exemplo
+   `INT-1A2B3C4D`, usa um placeholder ou inventa outro, o runtime troca pelo ID antigo. A
+   resposta “Intenção ... registrada” passa a parecer verdadeira.
+4. **`realizar_compra` ignora o ID correto do modelo.** Mesmo que o modelo passe um ID novo
+   válido, o callback usa `state.lastIntencaoId` se ele existir.
+5. **Fallback de pagamento usa estado antigo primeiro.** `state.lastIntencaoId ||
+   ids[último]` (`agent/index.ts:330`) nunca prefere um ID novo do prompt quando há
+   estado persistido.
+6. **Não existe guarda de registro.** Só o sucesso de compra é verificado; “intenção
+   registrada” sem tool result passa.
+7. **O prompt atual não proíbe reutilizar intenção terminal.** O exemplo usa um ID concreto
+   (`agent/index.ts:481-486`), o que favorece cópia.
+8. **“Uma ferramenta por vez” é só texto.** O SDK pode emitir chamadas em paralelo; a ordem
+   dos callbacks não é uma garantia de estado.
+9. **Status terminal é mascarado.** `cancelada` vira `INTENCAO_JA_PAGA`.
+10. **A mensagem de fallback sempre diz “continua pendente”** (`agent/index.ts:305`), mesmo
+    quando o backend cancelou.
 
-As asserções usam o estado real do DynamoDB, não só o texto do modelo.
+Evidência de 2026-11-17 no log group
+`/aws/bedrock-agentcore/runtimes/luiz_henrique_agent-AD3mRGF7e9-DEFAULT`:
 
-## 8. Referências
+- `Intenção INT-1A2B3C4D registrada` — o modelo copiou o ID do exemplo do prompt;
+- `{"guard":"intencao_id_grounded","intencao_id":"INT-F8550A7B"}` — o runtime reescreveu;
+- `INT-E36C946B` no DynamoDB com `status=cancelada`, `motivo_falha=LIMITE_EXCEDIDO`;
+- `{"guard":"payment_fallback",...,"intencao_id":"INT-E36C946B","status":"cancelada"}`;
+- `{"guard":"purchase_reply_adjusted","purchase":{"ok":false,"code":"INTENCAO_JA_PAGA"}}`.
 
-- AWS Bedrock Converse API: `conversation-inference.html` e `tool-use.md`.
-- Anthropic: "Tool use with Claude" (overview, define tools, handle tool calls).
-- SDK local: `@strands-agents/sdk` (`models/bedrock.js`, `tools/types.d.ts`,
-  `agent/agent.d.ts`).
-## 9. Turnos fabricados (fala do usuário inventada)
+## 5. O que NÃO está implementado
 
-Sintoma: a resposta do assistente contém `user: ...` e continua a conversa como se o
-usuário tivesse dito algo.
+- Estado por conversa (`conversa_id`) no caminho de checkout.
+- `registrar_intencao` resolvendo preço pelo catálogo.
+- Código distinto `INTENCAO_CANCELADA`.
+- Guarda de registro.
+- Persistência de histórico em `Conversas`.
+- Streaming/WebSocket.
 
-- **Não é específico do Haiku 4.5.** É um modo de falha conhecido do Claude quando o
-  histórico chega como texto achatado (`user: ...\nassistant: ...`) em vez de mensagens
-  com role: o modelo trata o texto como um transcript e o continua. Há relatos em
-  `anthropics/claude-code` issues #94218 e #70315.
-- **Causa no nosso caso:** a Lambda montava `prompt` com `role: texto` e o runtime
-  ignorava o array `messages` que já era enviado.
-- **Mitigações aplicadas:**
-  1. O runtime agora usa `messages` estruturados (`MessageData[]`) no `agent.stream`,
-     preservando `user`/`assistant`. O `prompt` achatado virou fallback.
-  2. Regra no system prompt: responder só à última mensagem e nunca escrever
-     `user:`/`assistant:`/`human:`/`ai:`/`system:`.
-  3. Sanitizer determinístico `stripFabricatedTurns`: corta a resposta no primeiro turno
-     falso; se a resposta inteira for um transcript, devolve uma mensagem neutra.
-  4. Teste: `tests/agent.test.mjs` falha se qualquer resposta contiver linha de turno.
-- Se o chat atual já tiver uma resposta corrompida no histórico, limpe a conversa
-  (estado/localStorage) antes de continuar; o histórico corrompido re-alimenta o modelo.
+Logs do runtime **estão confirmados** no CloudWatch (runtime v12, 2026-11-17); ver
+`OPERATIONS.md`.
 
-## 10. IDs inventados e intenções não canceladas
+## 6. Paridade local/remota
 
-Dois problemas adicionais observados em conversas longas:
+O agente local roda o **mesmo** `agent/index.ts` e o mesmo modelo Bedrock. Com ARNs
+configurados, chama as mesmas Lambdas. Sem ARNs, usa o fallback em memória.
 
-1. **ID inventado**: o modelo registrava uma intenção real (ex.: `b5624514-...`) mas
-   escrevia outro UUID na resposta, ou usava placeholders como `intencao_1`.
-2. **Intenção falha continuava `pendente`**: após `LIMITE_EXCEDIDO`, a intenção ficava
-   disponível para reuso e o modelo se confundia.
+Desde esta rodada, o fallback local replica:
 
-Mitigações:
+- ID `INT-XXXXXXXX`;
+- `code`/`status`/`valor_centavos`/`expira_em`;
+- cancelamento em `LIMITE_EXCEDIDO` e `INTENCAO_EXPIRADA`;
+- saldo por usuário (não limite por compra).
 
-- `groundIntencaoIds` (runtime): qualquer UUID da resposta diferente do último
-  `intencao_id` real vira o ID real; placeholders `intencao_1`/`intencao-2` também.
-- Validação na borda da tool `realizar_compra`: se o ID não é UUID e existe um ID registrado
-  na invocação, usa o real; se ainda assim não houver UUID, recusa com
-  `INTENCAO_INVALIDA` sem chamar a Lambda.
-- `realizar_compra` agora **cancela** a intenção em `LIMITE_EXCEDIDO` e
-  `INTENCAO_EXPIRADA` (`status=cancelada`, `motivo_falha`, `cancelada_em`), e devolve
-  `status: "cancelada"` no erro.
-- Prompt: nunca inventar ID; copiar o UUID retornado; não reutilizar intenções canceladas,
-  expiradas ou pagas.
-- Histórico limitado a 12 mensagens no API Gateway (conversas longas degradam a aderência).
-- Testes: a suíte falha se a resposta contiver um UUID inexistente no DynamoDB e verifica
-  que a intenção acima do limite virou `cancelada`.
+O que o local **não** exercita: API Gateway, JWT, CORS, DynamoDB real, IAM, imagem Docker,
+sessão do AgentCore e logs do runtime. Para iterar prompt/tool loop, é simétrico o
+suficiente; para validar persistência, use a stack implantada.
 
-## 11. Prompt enxuto, IDs curtos e contexto persistido
+## 7. Próximo passo
 
-Pesquisa (Anthropic Docs, Claude Code docs, "Writing effective tools for agents"):
-
-- Tool descriptions detalhadas (3–4 frases) são o fator mais importante; o system prompt
-  não deve repetir o que já está na descrição da tool.
-- UUIDs são ruins para o modelo copiar; IDs semânticos/curtos reduzem alucinação.
-- Prompts de agente devem ter poucas seções claras (identidade, escopo, ferramentas,
-  fluxo, regras, exemplo) e evitar listas longas de proibições.
-- Conversas longas degradam a aderência; limitar histórico e persistir o estado real
-  (não depender da memória do modelo).
-
-Aplicado:
-
-1. **Prompt** reduzido para ~30 linhas em 6 seções (Escopo, Ferramentas, Fluxo, Regras,
-   Exemplo), sem as 11 regras anteriores.
-2. **IDs curtos**: `registrar_intencao` gera `INT-XXXXXXXX` (8 hex) em vez de UUID. O
-   formato UUID antigo continua aceito.
-3. **Contexto persistido**: o último `intencao_id` fica em `Usuarios.ultima_intencao_id`.
-   O próximo turno recebe esse ID no payload; se o modelo não chamar a tool, o fallback
-   usa o ID persistido. Isso corrige a segunda compra após uma compra confirmada.
-4. **Histórico**: últimas 12 mensagens; mensagens do guard "A compra ainda não foi
-   finalizada" são removidas do histórico para não virarem few-shot de erro.
-5. **Grounding**: UUIDs/`INT-...` divergentes e placeholders (`intencao_1`) são trocados
-   pelo ID real na resposta.
+Ver [`PLAN-AGENT-REVAMP.md`](PLAN-AGENT-REVAMP.md). Em resumo: remover o ID do payload,
+usar estado por conversa, só aceitar ID de tool result, remover `groundIntencaoIds`, separar
+códigos e cobrir o transcript atual com teste de regressão.

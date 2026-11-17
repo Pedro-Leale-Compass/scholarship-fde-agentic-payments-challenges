@@ -1,181 +1,93 @@
-# TODO — Desafio 1: Agente de Pagamentos na AWS
+# TODO — Desafio 1 (luiz-henrique)
 
-Sprint 2 · Trilha Pagamentos Agênticos · Trabalho individual · Branch `fellow/luiz-henrique-desafio-1`
+Lista de tarefas atual. Baseline: tag `v0.0.2` — “chat works sometimes” (`d854762`).
+Plano detalhado: [`PLAN-AGENT-REVAMP.md`](PLAN-AGENT-REVAMP.md).
 
-Pasta de trabalho: `Desafio-1/luiz-henrique/` com `frontend/ api/ agent/ tools/ infra/ README.md`.
+## 0. Baseline e documentação
 
-Região: `us-east-1`. Prefixo dos recursos: `luiz-henrique`.
+- [x] Tag `v0.0.2` criada no commit `d854762`.
+- [x] Diagnóstico da reutilização de `intencao_id` registrado no plano.
+- [x] `AGENTS.md` atualizado com estado real, custos e comandos.
+- [x] Docs canônicos revisados; docs históricos movidos para `docs/archive/`.
+- [x] `docs/README.md` como índice (canônico × histórico).
+- [x] `README.md` alinhado ao que está implementado (frontend local, sem CloudFront/VPC).
+- [x] `docs/STACK.md`, `MODELO-BEDROCK-TOOLS.md`, `MODELO-USUARIOS.md`,
+      `DEV-LOCAL-AGENTE.md`, `REQUISITOS-PDF-E-AUDITORIA.md` e `destroy-cleanup.md`
+      revisados.
 
-## 0. Preparação (pré-requisitos)
+## 1. Paridade local/remota
 
-- [x] Aceitar convite do IAM Identity Center (usuário + senha + MFA). — login_session presente em ~/.aws/config (perfil `desafio-1`)
-- [x] Instalar AWS CLI v2 (>= 2.22.0). — aws-cli/2.39.5
-- [x] Configurar perfil SSO: `aws configure sso` (profile `desafio-1`, região `us-east-1`). — presente em ~/.aws/config
-- [x] `export AWS_PROFILE=desafio-1` em cada terminal de deploy. — perfil configurado; exportar por terminal
-- [x] `aws sso login` e `aws sts get-caller-identity` para confirmar a conta. — login_session presente
-- [x] Criar branch `fellow/luiz-henrique-desafio-1` (já criada) e trabalhar somente em `Desafio-1/luiz-henrique/`.
-- [x] Não commitar segredos nem chaves de acesso; nenhum `*` nem `AdministratorAccess` no IAM. — nada commitado ainda
+- [x] Fallback local gera `INT-XXXXXXXX`.
+- [x] Fallback local devolve `code`, `status`, `valor_centavos`, `expira_em`.
+- [x] Fallback local cancela em `LIMITE_EXCEDIDO`/`INTENCAO_EXPIRADA`.
+- [x] Fallback local mantém saldo por usuário.
+- [x] `npx tsc --noEmit` no `agent/` passa.
+- [x] Smoke test local: servidor sobe em `:3031` e devolve `400 invalid_request` para payload
+      vazio, sem chamar o Bedrock.
+- [ ] Rodar um fluxo local de duas compras no fallback e registrar o resultado.
 
-## 1. Modelo de dados (DynamoDB)
+## 2. Observabilidade (read-only)
 
-- [x] Definir modelagem do DynamoDB: usuários, conversas, intenções/transações.
-- [x] Escrever o diagrama de modelagem no `docs/TODO.md` ou `README.md`.
-- [x] Tabelas: `Usuarios`, `Conversas`, `Intencoes`, `Catalogo` (definidas no CDK; criadas no deploy).
-- [x] Chaves de partição e sort definidas; índices secundários se necessário.
-- [x] Escrita condicional para evitar duplicidade de pagamento/limite.
+- [x] `npm run check:model` criado (control plane, sem custo de Bedrock).
+- [x] `npm run check:logs` criado (CloudWatch, sem criar recursos).
+- [x] Rodar `npm run check:model`: runtime v12 `READY`, Haiku 4.5 (2026-11-17).
+- [x] Rodar `npm run check:logs`: grupo
+      `/aws/bedrock-agentcore/runtimes/luiz_henrique_agent-AD3mRGF7e9-DEFAULT` e Lambdas.
+- [x] Confirmar logs do runtime no CloudWatch; documentado em `OPERATIONS.md`.
 
-## 2. Ferramentas do agente (tools/)
+## 3. Estado autoritativo da intenção
 
-- [x] `listar_catalogo` — retorna catálogo de produtos disponíveis.
-- [x] `registrar_intencao` — salva intenção de compra no DynamoDB (condicional).
-- [x] `realizar_compra` — efetua pagamento com cartão ou Pix; valida limite e intenção.
-- [x] Cada tool em sua própria Lambda com IAM de menor privilégio.
-- [x] Tratamento de erros: `intencao_id` inválido, limite excedido, pagamento rejeitado.
+- [ ] Adicionar `conversa_id` ao payload do frontend e da Lambda do chat.
+- [ ] Criar/ler estado em `Conversas` (`pending_intencao_id`, `pending_status`).
+- [ ] Remover `Usuarios.ultima_intencao_id` do caminho de decisão.
+- [ ] Remover seed de `state.lastIntencaoId` e override em `realizar_compra`.
+- [ ] Remover `groundIntencaoIds` e o fallback que prefere estado antigo.
+- [ ] Implementar guarda de registro (“registrada” só com tool result).
+- [ ] Condicionar o fallback de pagamento a intenção pendente verificada.
+- [ ] Limpar estado em `paga`/`cancelada`/`expirada`.
 
-## 3. Agente Strands (agent/)
+## 4. Tools e dados
 
-- [x] Implementar agente Strands com as 3 tools acima (código em agent/index.ts)
-- [x] Modelo: Amazon Bedrock (Claude Haiku — alvo) via AgentCore Runtime (CDK: CfnAgentRuntime)
-- [x] Liberar acesso ao Claude Haiku na conta Bedrock. — ativo: `us.anthropic.claude-haiku-4-5-20251001-v1:0` (runtime v5, verificado em 2026-11-17); fallback Nova 2 Lite mantido no CDK.
-- [x] Regras de negócio da Fase 1 inalteradas
-- [x] Container image no ECR (repositório criado via CDK; Dockerfile em agent/)
-- [x] IAM role com permissões para Bedrock Converse + invoke das 3 tool Lambdas
-- [x] Deploy do agente no Bedrock AgentCore Runtime (runtime READY)
-- [x] Build e push da imagem arm64 no ECR feito pelo CDK (DockerImageAsset)
+- [ ] `registrar_intencao` recebe `itens: [{ produto_id, quantidade }]` e resolve preço no
+      catálogo.
+- [ ] Adicionar `conversa_id`, `motivo_falha`, `cancelada_em` em `Intencoes`.
+- [ ] Separar `INTENCAO_CANCELADA`, `INTENCAO_EXPIRADA` e `INTENCAO_JA_PAGA`.
+- [ ] Ajustar IAM mínimo para os novos acessos.
+- [ ] Migrar/ignorar `ultima_intencao_id` com segurança.
 
-**Fluxo de desenvolvimento (remoto primeiro):**
+## 5. Prompt e testes
 
-- `eval "$(scripts/aws-creds.sh)"` exporta as credenciais do perfil `desafio-1`
-- `npm run deploy` → um único `cdk deploy` cria banco, tools, agente, API e frontend
-- Frontend local: `NEXT_PUBLIC_API_URL=<ApiUrl> npm run dev:frontend`
-- `npm run dev:agent` roda só o agente (3031) com Bedrock real para iterar no prompt
+- [ ] Reescrever o prompt conforme §3.4 do plano (sem ID concreto no exemplo).
+- [ ] Adicionar teste de regressão: limite excedido → novo produto → novo ID.
+- [ ] Adicionar teste: compra paga → novo produto → novo ID.
+- [ ] Adicionar teste: ID inválido não é “corrigido” para outro.
+- [ ] Adicionar teste: registro fabricado é bloqueado.
+- [ ] Adicionar teste: duas conversas isoladas.
+- [ ] Rodar `npm run test:agent` na stack implantada.
+- [ ] Rodar o cenário local sem ARNs.
 
-**Remoto (AWS):**
-- `npm run deploy` (CDK builda e publica a imagem do agente no ECR antes de criar o runtime)
-- API Lambda chama `InvokeAgentRuntime` no ARN do runtime
-- Custos: ECR storage + AgentCore Runtime compute
+## 6. Evidências e entrega
 
-**Nota:** não há L2 CDK construct para `AWS::BedrockAgentCore::AgentRuntime`, então usa-se `cdk.CfnResource` diretamente.
+- [ ] Login com usuário válido (JWT).
+- [ ] `POST /chat` sem token → `401`.
+- [ ] Compra com cartão.
+- [ ] Compra com Pix.
+- [ ] Limite excedido.
+- [ ] `intencao_id` inválido.
+- [ ] Preencher a tabela de evidências do `README.md`.
+- [ ] Convidar o instrutor (`npm run user:invite -- <email> [limite]`).
+- [ ] Manter a API acessível até a correção.
 
-## 4. API (api/)
+## 7. Custos e limpeza
 
-- [x] API Gateway (REST) com autorizador JWT Cognito.
-- [x] Lambda do chat que chama o AgentCore Runtime via InvokeAgentRuntime (bedrock-agentcore SDK).
-- [x] `usuario_id` vem do `sub` do token Cognito, nunca do corpo nem do modelo.
-- [x] Resposta `401` sem token válido.
-- [x] CORS aceita apenas o domínio do frontend (Amplify).
+- [ ] Revisar `cdk diff` antes de cada deploy; nenhum serviço novo pago.
+- [ ] Acompanhar o orçamento (US$ 20; ~US$ 5 gastos).
+- [ ] Evitar chamadas repetidas ao Bedrock; usar fallback local para prompt.
+- [ ] Após a correção, rodar `npm run destroy` e verificar órfãos.
 
-**Registro de usuários:** Cognito User Pool com `AllowAdminCreateUserOnly` (sem auto cadastro). Usuários são criados por admin via `admin-create-user` após o deploy.
+## 8. Pendências de requisito (avaliar depois)
 
-## 5. Frontend (frontend/)
-
-- [x] Login Cognito real (Amplify Auth) usando configuração do runtime.
-- [x] `frontend/lib/mock-auth.ts` removido.
-- [x] API URL lida de `config.json` publicado no deploy (sem rebuild por ambiente).
-- [x] Build estático (`next build`, `output: 'export'`) gerando `frontend/out`.
-- [x] Render markdown nas respostas do agente (apenas texto bruto atualmente).
-- [x] Mostrar nome/email do usuário após "Bem-vindo" (mostrando userId atualmente).
-- [x] Em "Bem-vindo, <valor>", exibir o username/email do usuário Cognito em vez do UUID (`sub`).
-- [x] Corrigir o balão de mensagem do usuário: "Você" está colado ao texto; adicionar espaço entre o rótulo e a mensagem.
-- [x] Rolar a lista de mensagens automaticamente até o fim ao receber/enviar mensagens.
-- [x] Chat box ocupar quase toda a altura vertical (atualmente fixo em 400px).
-- [x] Menu de usuário no canto: avatar com iniciais, nome, email, link Home, alternância de tema e Sair em vermelho.
-- [x] Tema claro/escuro (`next-themes`) com tokens HSL no `globals.css`.
-- [x] Composer em `<form>` com Enter para enviar, botão desabilitado durante o envio e placeholder `…` para resposta pendente.
-- [x] Histórico de entrada no composer: ↑ recupera mensagens anteriores, ↓ avança e limpa.
-- [x] Estado vazio da conversa com orientação de uso (ex.: listar produtos, comprar com cartão).
-- [x] Login: aplicar tema claro/escuro do Amplify (`ThemeProvider` + `defaultDarkModeOverride`, sincronizado com `next-themes`) — ver `docs/ISSUES-LOGIN.md`.
-- [x] Login: esconder “Create account” com `hideSignUp` (Cognito é `AllowAdminCreateUserOnly`) — ver `docs/ISSUES-LOGIN.md`.
-- [ ] Login: fazer o Chrome oferecer salvar/preencher credenciais (Hosted UI ou Credential Management API) — ver `docs/ISSUES-LOGIN.md`; decidido não implementar (conflita com a stack `Authenticator` ou exige manipular senha no cliente).
-- [ ] Catálogo menor, alinhado com repo anterior (https://github.com/luiztosk/squad-03-desafio-MCP-agentic).
-- [ ] Link para repo anterior no README.md.
-- [x] Verificar BEDROCK_MODEL_ID lido do `.env` — console/runtime agora mostram `us.anthropic.claude-haiku-4-5-20251001-v1:0`.
-- [ ] Build estático (`next build`, `output: 'export'`) gerando `frontend/out`.
-- [ ] Build e publicação no Amplify Hosting via `scripts/deploy-frontend.sh`.
-
-## 6. Infraestrutura (infra/)
-
-- [x] Escolher IaC: CDK (TypeScript) — definido, pasta `infra/` com stacks database/tools/agent/api/frontend.
-- [x] Um único comando deve criar todo o ambiente: `cdk deploy --require-approval never` (sintetiza corretamente; deploy não executado para evitar custos AWS).
-- [x] Frontend estático no Amplify Hosting (CloudFront/S3+OAC bloqueado por SCP nesta conta).
-- [x] Cognito user pool sem auto cadastro (`AllowAdminCreateUserOnly`); usuários por convite.
-- [x] Usuário do instrutor criado no Cognito via `npm run dev:create-test-user` (script, lê TEST_EMAIL/TEST_PASSWORD do `.env`); removido do template CDK para não versionar senha.
-- [x] IAM de menor privilégio para Lambda, AgentCore Runtime, API Gateway, DynamoDB, S3, CloudFront, ECR.
-- [x] Stack/recursos prefixados com `luiz-henrique` para não colidir.
-- [x] Nenhum segredo no Git.
-- [x] VPC pública (sem NAT Gateway para reduzir custo) + security group para AgentCore Runtime.
-- [x] ECR repository para imagem do container do agente.
-- [x] AgentCore Runtime via `cdk.CfnResource` (AWS::BedrockAgentCore::AgentRuntime, sem L2 CDK construct).
-
-## 7. Testes e evidências
-
-- [x] `cdk synth` executa sem erros.
-- [x] Agente Strands com bedrock-agentcore SDK roda localmente (porta 3031, Bedrock real).
-- [x] Frontend build estático compila (`frontend/out`).
-- [x] Teste manual do agente local: listar catálogo, compra cartão/pix, limite excedido.
-- [x] Validar/listar catálogo e compra usando as Lambdas reais (pós-deploy).
-- [x] Login com usuário válido via Cognito (produção AWS).
-- [ ] Requisição sem token → `401` (produção AWS).
-- [ ] Compra com cartão de crédito (produção AWS).
-- [ ] Compra com Pix (produção AWS).
-- [ ] Tentativa de compra com limite excedido → rejeitada (produção AWS).
-- [ ] Compra com `intencao_id` inválido → erro (produção AWS).
-- [ ] Capturar screenshots/logs de cada evidência para o `README.md`.
-
-## 8. Deploy
-
-- [ ] Rodar o script IaC da pasta `infra/` (único comando).
-- [ ] Verificar criação de: bucket, distribuição CloudFront, runtime do AgentCore, imagens no ECR, tabelas DynamoDB, logs.
-- [ ] Aplicação no ar e acessível via CloudFront.
-
-## 9. README da entrega
-
-Preencher `Desafio-1/luiz-henrique/README.md` com:
-- [x] Diagrama implementado.
-- [x] Passo a passo de deploy.
-- [x] Modelo usado (Bedrock Claude Haiku via AgentCore; temporariamente Nova 2 Lite até liberar acesso).
-- [x] Modelagem do DynamoDB.
-- [x] Resumo do IAM.
-- [ ] Evidências: login, `401` sem token, compra com cartão, compra com Pix, limite excedido, `intencao_id` inválido.
-- [x] Instruções de remoção.
-
-## 10. Limpeza (após a correção)
-
-- [ ] Destruir a stack (único comando de destroy).
-- [ ] Confirmar no console que não restou: bucket, distribuição CloudFront, runtime do AgentCore, imagens no ECR, tabelas DynamoDB, logs.
-
-## 11. Persistência e convite (requisitos do PDF)
-
-Detalhes em `docs/REQUISITOS-PDF-E-AUDITORIA.md` (§3 e §3.2).
-
-- [x] `scripts/invite-user.sh` + `npm run user:invite -- <email> [limite]`: cria o usuário no Cognito (convite enviado pelo próprio Cognito), lê o `sub` e faz `put-item` em `Usuarios` com o saldo inicial.
-- [x] `scripts/set-limit.sh` + `npm run user:set-limit` / `user:reset-limit`: resolve o `sub` por e-mail e atualiza `limite_centavos` em `Usuarios`, exibindo saldo anterior e novo.
-- [x] `realizar_compra`: fallback `LIMITE_COMPRA` removido; débito do saldo e pagamento da intenção numa única `TransactWriteItems` (`limite_centavos >= valor` + `status = pendente`), com códigos `LIMITE_EXCEDIDO`, `INTENCAO_JA_PAGA`, `INTENCAO_EXPIRADA`, `INTENCAO_INVALIDA`, `METODO_INVALIDO`.
-- [x] Valores monetários em centavos no saldo e na intenção (`valor_centavos`).
-- [x] Lambda do chat registra o usuário no primeiro acesso (`origem=lazy`, saldo padrão R$ 500).
-- [ ] Lambda do chat grava cada turno em `Conversas` (`conversa_id` gerado no backend, append atômico) com permissão de escrita só nessa tabela.
-- [ ] `GET /conversas` no API Gateway (mesmo autorizador JWT, só conversas do `sub`) + CORS com `GET`.
-- [ ] Frontend carrega o histórico de `GET /conversas` ao abrir o chat.
-- [ ] Convidar o instrutor pelo script e manter a aplicação acessível até a correção.
-
-## 12. Instrutor e dev local
-
-- [x] `frontend/public/config.json` versionado com URL do API Gateway, User Pool ID e Client ID (identificadores públicos, sem segredos).
-- [x] `npm run dev` funciona no clone sem AWS CLI/CDK (`scripts/dev-local.sh`).
-- [x] `npm run setup` instala dependências da raiz e do frontend.
-- [x] `docs/DEV-LOCAL-AGENTE.md` documenta o loop local do agente (porta 3031, `/invocations`, tools por ARN ou locais).
-- [ ] Convidar o instrutor com `npm run user:invite -- <email> [limite]` e confirmar o primeiro login.
-- [ ] Rodar `npm run test:agent` após renovar a sessão SSO.
-
-## 13. Próximos passos (pós-entrega)
-
-Detalhes e opções em `docs/ROADMAP.md`.
-
-- [ ] Revisar o projeto anterior (`docs/MIGRACAO-ANTERIOR.md`) e reescrever o system prompt do agente com política de tools, confirmação e tratamento de erro explícitos.
-- [ ] Pesquisar e implementar verificação/grounding: a resposta final só pode citar produtos, preços, IDs, limite e status que vieram do retorno das tools; adicionar evals cobrindo catálogo, compra, limite excedido e `intencao_id` inválido.
-- [ ] Criar painel administrativo (grupo `admins` no Cognito + rotas autenticadas): resetar limite/gasto por usuário, corrigir catálogo e consultar intenções/compras, com log de auditoria. Convite e ajuste de limite seguem por CLI (§11) até o painel existir.
-
-## Status
-
-- [x] Em andamento
-- [ ] Concluído
+- [ ] Frontend S3 + CloudFront + OAC (bloqueado por SCP nesta conta).
+- [ ] API streaming ou WebSocket (PDF pede “Stream ou WebSocket”).
+- [ ] Histórico completo em `Conversas` + `GET /conversas`.
+- [ ] Painel administrativo / grupo `admins`.

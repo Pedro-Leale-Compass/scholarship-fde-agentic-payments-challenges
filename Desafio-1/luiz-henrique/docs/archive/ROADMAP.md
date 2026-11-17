@@ -1,3 +1,5 @@
+> **HISTÓRICO — arquivado em 2026-11-17.** Este documento descreve um estado antigo ou um plano concluído. Não use como fonte de verdade. Consulte `docs/README.md` e o código atual.
+
 # Roadmap — qualidade do agente, grounding e administração
 
 Notas para o trabalho pós-entrega. Nada aqui está implementado ainda; o objetivo é

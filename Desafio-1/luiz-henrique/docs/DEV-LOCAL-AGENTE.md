@@ -1,30 +1,91 @@
-# Desenvolvimento local do agente (sem deploy)
+# Desenvolvimento local do agente
 
-Objetivo: iterar prompt/loop do agente em segundos, sem buildar imagem Docker nem
-atualizar o AgentCore Runtime. O agente local chama o Bedrock (Haiku) direto e as tools
-pelo ARN das Lambdas já implantadas.
+Verificado em **2026-11-17**. O agente local usa o **mesmo** `agent/index.ts` e o mesmo
+Bedrock do runtime remoto. A diferença é a camada de transporte (HTTP local em vez de
+AgentCore) e, opcionalmente, tools em memória.
 
-## O que roda local
+## 1. O que roda
 
-- `agent/index.ts` cria um `BedrockAgentCoreApp` (Fastify) em `http://localhost:3031`.
-- O handler `POST /invocations` recebe o mesmo payload do runtime:
-  `{"prompt": "...", "usuario_id": "...", "messages": [...], "intencao_id": "..."}`.
-- O modelo é o Bedrock real (`us.anthropic.claude-haiku-4-5-20251001-v1:0`).
-- As tools são chamadas pelo ARN; sem ARN, o agente usa fallbacks em memória.
+- `agent/index.ts` sobe um `BedrockAgentCoreApp` em `http://localhost:3031`.
+- O handler `POST /invocations` exige o header
+  `x-amzn-bedrock-agentcore-runtime-session-id` (ou `sessionId` no corpo) e recebe:
+  `{ "prompt": "...", "usuario_id": "...", "messages": [...], "intencao_id": "..." }`.
+  Sem o session id, o SDK responde `Missing sessionId`.
+- `messages` é o caminho principal (roles `user`/`assistant`); `prompt` é fallback.
+- O modelo é o Bedrock real (`BEDROCK_MODEL_ID`; o `.env` usa Haiku 4.5).
+- Com os 3 ARNs configurados, as tools chamam as Lambdas implantadas. Sem ARNs, usa o
+  fallback em memória.
 
-## Pré-requisitos
+## 2. Pré-requisitos
 
-- Credenciais AWS válidas (`aws sso login` ou `scripts/aws-creds.sh`).
-- Permissões: `bedrock:InvokeModel` no perfil/modelo e `lambda:InvokeFunction` nas 3 tools.
-- Node 20+ e dependências do `agent/` instaladas.
+- Node 20+ e dependências.
+  - `npm install` na raiz;
+  - `npm --prefix agent install` (o `agent/` tem `package-lock.json` próprio);
+  - `npm run setup` instala raiz + frontend, mas **não** instala o `agent/`.
+- Credenciais AWS para o Bedrock. O perfil do projeto é `desafio-1`:
+  `aws sso login --profile desafio-1`.
+- Permissões: `bedrock:InvokeModel`/`Converse` no modelo e, se usar ARNs,
+  `lambda:InvokeFunction` nas 3 tools.
 
-## Fase 0 — loop manual (funciona hoje)
+## 3. Rodar sem ARNs (fallback local)
+
+Bom para iterar prompt, fluxo e tool loop sem gravar no DynamoDB nem pagar Lambda.
 
 ```bash
-cd Desafio-1/luiz-henrique/agent
-eval "$(bash ../scripts/aws-creds.sh)"
-set -a; source ../.env; set +a
+cd Desafio-1/luiz-henrique
+eval "$(scripts/aws-creds.sh)"          # credenciais para o Bedrock
 export BEDROCK_MODEL_ID=us.anthropic.claude-haiku-4-5-20251001-v1:0
+export AWS_REGION=us-east-1
+unset TOOL_LISTAR_CATALOGO_ARN TOOL_REGISTRAR_INTENCAO_ARN TOOL_REALIZAR_COMPRA_ARN
+
+npm run dev:agent
+```
+
+> `agent/index.ts` carrega o `.env` com `override: true`: no modo local, o
+> `BEDROCK_MODEL_ID` do `.env` vence o valor exportado no shell. Para testar outro modelo,
+> altere o `.env` ou rode `npx tsx index.ts` sem o `dotenv` (não recomendado).
+
+Em outro terminal:
+
+```bash
+curl -s -X POST http://localhost:3031/invocations \
+  -H 'content-type: application/json' \
+  -H 'x-amzn-bedrock-agentcore-runtime-session-id: local-dev' \
+  -d '{
+    "usuario_id": "dev-user",
+    "messages": [
+      { "role": "user", "content": [{ "type": "text", "text": "Quero comprar o Fone Bluetooth" }] }
+    ]
+  }'
+```
+
+A resposta inclui `reply`, `purchase`, `intencao_id` e `model`. Para continuar a conversa,
+reenvie o array `messages` com os turnos anteriores.
+
+> Verificado em 2026-11-17: o servidor sobe na porta 3031 e devolve `400` com
+> `invalid_request` para payload vazio, sem chamar o Bedrock. O caminho completo com modelo
+> exige credenciais AWS válidas.
+
+### O que o fallback replica hoje
+
+- ID `INT-XXXXXXXX` (8 hex), igual ao `registrar_intencao` remoto.
+- `code`, `status`, `valor_centavos`, `expira_em`.
+- Cancelamento em `LIMITE_EXCEDIDO` e `INTENCAO_EXPIRADA`.
+- Saldo por usuário, iniciado em `SALDO_INICIAL_LOCAL` (fallback `LIMITE_COMPRA`, 500
+  reais), debitado na compra.
+
+O que ele **não** replica: DynamoDB, IAM, concorrência real, transação atômica, dados
+persistidos entre reinícios e logs do runtime.
+
+## 4. Rodar com as Lambdas reais
+
+Use quando precisar validar persistência, saldo e códigos de erro de verdade. Isso grava
+em DynamoDB e invoca Lambdas (custo baixo, mas real).
+
+```bash
+cd Desafio-1/luiz-henrique
+eval "$(scripts/aws-creds.sh)"
+set -a; source .env; set +a
 export AWS_REGION=us-east-1
 
 ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
@@ -32,64 +93,47 @@ export TOOL_LISTAR_CATALOGO_ARN=arn:aws:lambda:$AWS_REGION:$ACCOUNT:function:lui
 export TOOL_REGISTRAR_INTENCAO_ARN=arn:aws:lambda:$AWS_REGION:$ACCOUNT:function:luiz-henrique-registrar-intencao
 export TOOL_REALIZAR_COMPRA_ARN=arn:aws:lambda:$AWS_REGION:$ACCOUNT:function:luiz-henrique-realizar-compra
 
-npm run dev
+npm run dev:agent
 ```
 
-Em outro terminal:
+Use um `usuario_id` que exista em `Usuarios` (ou o `sub` de um usuário de teste). O
+`registrar_intencao` real grava no DynamoDB; limpe os itens depois se necessário.
+
+## 5. Paridade com o remoto
+
+| Aspecto | Local | Remoto |
+|---|---|---|
+| Código do agente | `agent/index.ts` | mesma imagem/`index.ts` |
+| Modelo | Bedrock (`BEDROCK_MODEL_ID`) | mesmo env no runtime |
+| Tools | fallback ou Lambdas reais | Lambdas reais |
+| Prompt/tool loop | igual | igual |
+| IDs/códigos | iguais desde esta rodada | iguais |
+| Estado de conversa | memória do processo | `Usuarios.ultima_intencao_id` (atual) |
+| API Gateway/JWT/CORS | não | sim |
+| DynamoDB/IAM | não (fallback) | sim |
+| AgentCore session/logs | não | sim |
+| Container arm64 | não | sim |
+
+Para o bug de reutilização de ID, o local reproduz o comportamento do runtime porque o
+estado problemático está no código do agente/API, não no transporte. Use o local para
+validar o plano antes de cada deploy.
+
+## 6. Confirmar modelo e logs (sem invocar Bedrock)
 
 ```bash
-curl -N -X POST http://localhost:3031/invocations \
-  -H 'content-type: application/json' \
-  -d '{"prompt":"Quero comprar o Fone Bluetooth","usuario_id":"<sub>"}'
+npm run check:model   # lê o BEDROCK_MODEL_ID do runtime implantado
+npm run check:logs    # lista log groups/streams de agente e Lambdas
 ```
 
-A resposta é SSE; o evento final traz `reply`, `purchase` e `intencao_id`.
+Ambos são read-only e exigem credenciais. `check:model` não chama o modelo; `check:logs` não
+cria recursos.
 
-Para continuar a conversa, envie `messages` no mesmo formato do frontend:
+## 7. Limitações e segurança
 
-```json
-{
-  "messages": [
-    { "role": "user", "content": [{ "type": "text", "text": "Quero comprar o Fone Bluetooth" }] },
-    { "role": "assistant", "content": [{ "type": "text", "text": "Intenção INT-... pendente. Cartão ou pix?" }] },
-    { "role": "user", "content": [{ "type": "text", "text": "Pix" }] }
-  ],
-  "usuario_id": "<sub>"
-}
-```
-
-## Modo tools locais (mais rápido, sem DynamoDB)
-
-Não defina os três ARNs. O agente usa:
-
-- catálogo local (8 produtos);
-- intenções em memória (perdem ao reiniciar);
-- `LIMITE_COMPRA` (default 500) para o pagamento.
-
-Bom para iterar prompt e formato de resposta; não valida persistência/IAM.
-
-## Limitações
-
-- Não exercita API Gateway, JWT, CORS nem a imagem Docker.
-- Mudanças nas tools (Lambda) ainda exigem deploy; mudanças no `agent/` não.
-- Usa Bedrock real (custo por chamada, baixo).
-- O servidor sobe em `0.0.0.0:3031`; use apenas em rede confiável.
-- AgentCore Runtime features (sessão, memória, guardrails) não estão no caminho local.
-
-## Próximas fases (para acelerar mais)
-
-1. **`agent/core.ts` + `agent/dev-call.ts`**: separar a criação do agente do servidor e
-   chamar `createAgent` direto, sem HTTP/SSE. `npm run dev:call -- "prompt"`.
-2. **Cenários**: catálogo, primeira compra, segunda compra após confirmada, limite
-   excedido, Pix/cartão, com asserções no DynamoDB.
-3. **Override no `api/index.ts`**: `LOCAL_AGENT=1` faz a Lambda chamar
-   `http://localhost:3031/invocations` em vez do AgentCore Runtime; assim o navegador
-   inteiro roda contra o agente local (ainda com JWT/CORS reais).
-4. **Tools locais**: executar os handlers das tools com `tsx` para iterar tool + prompt
-   sem deploy.
-
-## Segurança
-
-- O agente local só chama o que as credenciais permitem; use o perfil SSO.
-- Não exponha a porta 3031 em rede pública.
-- ARN do runtime, modelo e ARNs das tools não vão para o frontend.
+- Não exercita API Gateway, JWT, CORS, DynamoDB real, IAM, imagem Docker, sessão do
+  AgentCore nem logs do runtime.
+- O servidor sobe em `0.0.0.0:3031`; use só em rede confiável.
+- Não exponha a porta 3031 publicamente.
+- O modo local ainda consome Bedrock (custo por token). Para iterar prompt, prefira frases
+  curtas e poucas chamadas.
+- Não coloque ARNs, account ID ou credenciais no frontend.

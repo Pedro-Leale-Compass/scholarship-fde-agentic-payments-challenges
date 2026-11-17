@@ -39,7 +39,7 @@ const API_URL = String(outputs.ApiUrl || '').replace(/\/$/, '');
 const CLIENT_ID = outputs.CognitoUserPoolClientId;
 const POOL_ID = outputs.CognitoUserPoolId;
 const USUARIOS_TABLE = outputs.UsuariosTableName || 'luiz-henrique-usuarios';
-const INTOCOES_TABLE = process.env.INTENCOES_TABLE || 'luiz-henrique-intencoes';
+const INTENCOES_TABLE = process.env.INTENCOES_TABLE || 'luiz-henrique-intencoes';
 const REALIZAR_COMPRA_FN =
   process.env.TOOL_REALIZAR_COMPRA || 'luiz-henrique-realizar-compra';
 
@@ -169,20 +169,20 @@ async function createUser(limitCentavos) {
   const cleanup = async () => {
     try {
       const intentions = awsJson('dynamodb', 'query', {
-        TableName: INTOCOES_TABLE,
+        TableName: INTENCOES_TABLE,
         IndexName: 'usuario_id-index',
         KeyConditionExpression: 'usuario_id = :u',
         ExpressionAttributeValues: { ':u': S(sub) },
       });
       for (const item of intentions.Items || []) {
         awsJson('dynamodb', 'delete-item', {
-          TableName: INTOCOES_TABLE,
+          TableName: INTENCOES_TABLE,
           Key: { intencao_id: item.intencao_id },
         });
       }
       // Intenção criada para um usuário fictício no teste de ownership.
       awsJson('dynamodb', 'delete-item', {
-        TableName: INTOCOES_TABLE,
+        TableName: INTENCOES_TABLE,
         Key: { intencao_id: S('test-txn-outro-dono') },
       });
       awsJson('dynamodb', 'delete-item', {
@@ -215,7 +215,7 @@ async function getUsuario(sub) {
 async function getIntencoes(sub) {
   return (
     awsJson('dynamodb', 'query', {
-      TableName: INTOCOES_TABLE,
+      TableName: INTENCOES_TABLE,
       IndexName: 'usuario_id-index',
       KeyConditionExpression: 'usuario_id = :u',
       ExpressionAttributeValues: { ':u': S(sub) },
@@ -225,7 +225,7 @@ async function getIntencoes(sub) {
 
 async function getIntencao(intencaoId) {
   return awsJson('dynamodb', 'get-item', {
-    TableName: INTOCOES_TABLE,
+    TableName: INTENCOES_TABLE,
     Key: { intencao_id: S(intencaoId) },
   }).Item;
 }
@@ -239,7 +239,7 @@ async function putIntencao({
   status = 'pendente',
 }) {
   await awsJson('dynamodb', 'put-item', {
-    TableName: INTOCOES_TABLE,
+    TableName: INTENCOES_TABLE,
     Item: {
       intencao_id: S(intencaoId),
       usuario_id: S(usuarioId),

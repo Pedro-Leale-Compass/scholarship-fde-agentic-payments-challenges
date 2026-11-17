@@ -1,3 +1,5 @@
+> **HISTÓRICO — arquivado em 2026-11-17.** Este documento descreve um estado antigo ou um plano concluído. Não use como fonte de verdade. Consulte `docs/README.md` e o código atual.
+
 # Issues conhecidos — tela de login (Amplify `Authenticator`)
 
 Registro dos problemas observados na tela de login do frontend (`frontend/app/page.tsx`, `<Authenticator>` de `@aws-amplify/ui-react`) após o makeover de UI.

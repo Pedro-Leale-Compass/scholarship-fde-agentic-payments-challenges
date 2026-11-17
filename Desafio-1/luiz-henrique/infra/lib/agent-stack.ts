@@ -207,7 +207,6 @@ export class AgentStack extends Construct {
           TOOL_LISTAR_CATALOGO_ARN: toolLambdaArns.listarCatalogo,
           TOOL_REGISTRAR_INTENCAO_ARN: toolLambdaArns.registrarIntencao,
           TOOL_REALIZAR_COMPRA_ARN: toolLambdaArns.realizarCompra,
-          LIMITE_COMPRA: '500',
         },
       },
     });
