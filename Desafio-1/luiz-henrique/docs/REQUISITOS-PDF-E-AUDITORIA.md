@@ -81,8 +81,8 @@ O instrutor deve rodar:
 
 ```bash
 git clone <repo>
-cd Desafio-1/luiz-henrique
-npm run setup
+cd Desafio-1/luiz-henrique/frontend
+npm install
 npm run dev
 ```
 

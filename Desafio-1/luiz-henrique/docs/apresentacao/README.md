@@ -29,7 +29,7 @@ Arquitetura implementada:
 **O que adaptamos da arquitetura de referência:**
 
 - O frontend não está em S3 + CloudFront + OAC; por restrição da conta, roda local. O
-  instrutor consegue rodar com `npm run setup && npm run dev`.
+  instrutor consegue rodar com `cd frontend && npm install && npm run dev`.
 - O WebSocket foi iniciado, mas está **parcial**: `$connect` autentica e grava a conexão;
   `$default` ainda retorna `Internal server error` no API Gateway. O chat principal usa
   REST, que está estável. O próximo passo está documentado em `docs/WS-NEXT.md`.
@@ -84,8 +84,8 @@ Respostas curtas sugeridas:
   saldo suficiente.
 - **O que acontece se o modelo inventar um ID?** A tool retorna `INTENCAO_INVALIDA`; a
   resposta mostra a falha, sem cobrança.
-- **O instrutor consegue rodar?** Sim: `npm run setup`, `npm run dev`, login com o convite
-  do Cognito. O `config.json` versionado aponta para a API atual.
+- **O instrutor consegue rodar?** Sim: `cd frontend && npm install && npm run dev`, login com
+  o convite do Cognito. O `config.json` versionado aponta para a API atual.
 
 ## Plano B
 
@@ -102,7 +102,7 @@ npm run check:model
 npm run user:reset-limit -- luiz@desafio.test
 
 # 3. Suba o frontend
-npm run dev
+cd frontend && npm run dev
 ```
 
 Use um usuário de teste (não o e-mail do instrutor) e não exiba credenciais. O convite do

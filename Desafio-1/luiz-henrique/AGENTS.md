@@ -85,7 +85,8 @@ npm run setup                  # raiz + frontend
 npm --prefix infra install     # CDK (primeira vez)
 npm --prefix agent install     # agente local (primeira vez)
 
-npm run dev                    # frontend local :3000
+cd frontend && npm install     # frontend (primeira vez; `npm ci` falha, lock fora de sincronia)
+cd frontend && npm run dev     # frontend local :3000 (caminho do instrutor)
 npm run dev:agent              # agente local :3031 (Bedrock real)
 npm run deploy:api-agent       # deploy backend/agente
 npm run diff                   # cdk diff antes do deploy

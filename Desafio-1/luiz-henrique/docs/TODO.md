@@ -98,4 +98,5 @@ Plano detalhado: [`PLAN-AGENT-REVAMP.md`](PLAN-AGENT-REVAMP.md).
 - [x] Capturas de tela da demo em `docs/apresentacao/`.
 - [ ] Fechar WebSocket `$default` — ver `WS-NEXT.md`.
 - [ ] Evidências formais de 401/ID inválido em imagem/Postman.
+- [ ] Lista de conversas anteriores no menu lateral + botão “Nova conversa” (tipo Gemini/Qwen); hoje o chat reabre sempre a conversa anterior.
 - [ ] Painel administrativo / grupo `admins`.

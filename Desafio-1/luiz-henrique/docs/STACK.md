@@ -77,7 +77,7 @@ Comandos:
 | `npm run diff` | `cdk diff` (usar antes de deploy) |
 | `npm run deploy:api-agent` | deploy completo do backend/agente |
 | `npm run destroy` | `cdk destroy` + `scripts/destroy-cleanup.sh` |
-| `npm run dev:frontend` | frontend local em `http://localhost:3000` |
+| `npm run dev:frontend` | frontend local em `http://localhost:3000` (avaliação usa `cd frontend && npm install && npm run dev`) |
 | `npm run dev:agent` | agente local em `http://localhost:3031` |
 | `npm run test:agent` | testes de integração na stack implantada |
 

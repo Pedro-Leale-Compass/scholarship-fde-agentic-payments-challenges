@@ -80,32 +80,58 @@ AgentCore Runtime (container arm64 no ECR)
 
 ## 2. Instruções de deploy
 
-### 2.1 Para avaliação (rodar frontend local, AWS api + agente já está rodando)
+### 2.1 Para avaliação (rodar frontend local apenas, api + agente já estão rodando na AWS)
+
+O frontend é um Next.js comum e não depende dos scripts do projeto. Em um clone limpo:
 
 ```bash
-cd Desafio-1/luiz-henrique
-npm run setup          # raiz + frontend
+git clone https://github.com/luiztosk/scholarship-fde-agentic-payments-challenges.git
+cd scholarship-fde-agentic-payments-challenges/Desafio-1/luiz-henrique/frontend
+npm install
 npm run dev            # http://localhost:3000
 ```
 
 - O `frontend/public/config.json` versionado já aponta para a API/Cognito atuais e contém
   apenas identificadores públicos.
-- Use a porta **3000**; o CORS da API aceita apenas essa origem (o `next dev` está fixado
-  nessa porta).
+- Use a porta **3000**; o CORS da API aceita apenas essa origem (`next dev -p 3000`).
 - O login é o `Authenticator` do Cognito, sem cadastro (`hideSignUp`).
 - O instrutor entra com o e-mail convidado; o Cognito envia senha temporária e ele escolhe
   a definitiva no primeiro login.
-- Para reenviar o convite (depende do login no `aws cli`):
+- Os scripts em `scripts/` servem ao ambiente de desenvolvimento (deploy, credenciais,
+  agente local, convites); não são necessários para avaliar o frontend.
+- O navegador só fala com o API Gateway; não recebe ARNs, account ID nem credenciais.
+
+Para reenviar o convite do instrutor (aqui sim, com o AWS CLI autenticado):
 
 ```bash
+cd Desafio-1/luiz-henrique
 eval "$(bash scripts/aws-creds.sh)"
 npm run user:invite -- instrutor@example.com 500
 ```
 
-- Em um clone limpo, `npm run dev` usa o `config.json` versionado. Se
-  `infra/cdk-outputs.json` existir (ambiente de desenvolvimento), o script regenera o
-  `config.json` antes de subir.
-- O navegador só fala com o API Gateway; não recebe ARNs, account ID nem credenciais.
+#### 2.1.1 Validação em clone limpo (2026-11-17)
+
+Este caminho foi validado exatamente como acima, a partir de um clone novo do GitHub, sem
+`infra/cdk-outputs.json` e sem usar script algum:
+
+1. `git clone --branch fellow/luiz-henrique-desafio-1 <repo>` em uma pasta temporária;
+2. `cd Desafio-1/luiz-henrique/frontend && npm install` (1.283 pacotes, ~32 s);
+3. `npm run dev` → `http://localhost:3000` respondeu `200`;
+4. login no Cognito com um usuário de teste já convidado (credenciais temporárias, fora do
+   repositório);
+5. mensagem `listar produtos` no chat.
+
+Resultado: o login funcionou e o agente respondeu com o catálogo e os preços lidos do
+DynamoDB pela API implantada (`Fone Bluetooth (p1) - R$ 199,90`, `Teclado Mecânico (p2) -
+R$ 349,90`, ...). A validação consumiu uma invocação do Bedrock.
+
+Observações medidas nesse commit:
+
+- `npm ci` **não** funciona aqui: o `package-lock.json` do frontend está fora de sincronia
+  com o `package.json` (falta `@opentelemetry/core@2.0.0`). Use `npm install`.
+- O `npm install` do frontend instala também `@aws-amplify/backend` e
+  `@aws-amplify/backend-cli` (devDependencies herdadas do scaffold), o que explica o volume
+  de pacotes; nada disso é necessário em runtime.
 
 ### 2.2 Deploy completo
 
@@ -139,7 +165,8 @@ npm run deploy:api-agent
 
 > **Desvio em relação ao PDF:** o comando único cobre **backend, tools, agente e API**, mas
 > **não** publica o frontend em S3 + CloudFront + OAC. A conta tem SCP que bloqueia esses
-> recursos; o frontend roda local. O instrutor consegue rodar com `npm run setup && npm run dev`.
+> recursos; o frontend roda local. O instrutor consegue rodar com
+> `cd frontend && npm install && npm run dev`.
 > O desvio está registrado em [`docs/REQUISITOS-PDF-E-AUDITORIA.md`](docs/REQUISITOS-PDF-E-AUDITORIA.md).
 
 #### 2.2.3 Variáveis de ambiente
@@ -252,7 +279,7 @@ Reproduzir a demo:
 
 ```bash
 npm run user:reset-limit -- luiz@desafio.test
-npm run dev
+cd frontend && npm run dev
 # login com TEST_EMAIL/TEST_PASSWORD; use o roteiro em docs/apresentacao/README.md
 ```
 
@@ -278,10 +305,13 @@ Detalhes e verificação: [`docs/destroy-cleanup.md`](docs/destroy-cleanup.md).
 
 ## Comandos
 
+Comandos do ambiente de desenvolvimento (deploy, agente, credenciais). Para apenas avaliar o
+frontend, use `cd frontend && npm install && npm run dev` (§2.1).
+
 | Comando | Efeito |
 |---|---|
 | `npm run setup` | instala dependências da raiz e do frontend |
-| `npm run dev` | frontend local em `http://localhost:3000` |
+| `npm run dev` | atalho de dev do frontend; usa `dev-frontend-local.sh` quando há `cdk-outputs.json` |
 | `npm run dev:frontend` | regenera `config.json` a partir de `cdk-outputs.json` e sobe o frontend |
 | `npm run dev:agent` | agente local em `http://localhost:3031` (Bedrock real) |
 | `npm run deploy:api-agent` | deploy do backend/agente (CDK) |
