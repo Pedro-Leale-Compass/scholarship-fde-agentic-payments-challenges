@@ -192,12 +192,9 @@ function applyPurchaseGuard(
 
   const reason =
     purchase && purchase.ok === false && purchase.code
-      ? `O pagamento não foi concluído (${purchase.code}). `
-      : '';
-  return (
-    `${reason}A compra ainda não foi finalizada e nenhuma cobrança foi confirmada. ` +
-    'Se quiser, registro a intenção e aguardo a forma de pagamento para finalizar.'
-  );
+      ? `Pagamento não concluído (${purchase.code}).`
+      : 'Pagamento não confirmado.';
+  return `${reason} A compra ainda não foi finalizada.`;
 }
 
 const INTENCAO_ID_ANY_RE =
