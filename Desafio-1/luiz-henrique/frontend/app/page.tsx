@@ -2,28 +2,15 @@
 
 import { useEffect, useState } from 'react';
 import { Amplify } from 'aws-amplify';
-import { signOut, fetchAuthSession } from 'aws-amplify/auth';
 import { Authenticator } from '@aws-amplify/ui-react';
 import '@aws-amplify/ui-react/styles.css';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import type { AuthUser } from 'aws-amplify/auth';
 
-interface RuntimeConfig {
-  apiUrl: string;
-  userPoolId: string;
-  userPoolClientId: string;
-  region: string;
-}
-
-interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
-}
-
-function getDisplayName(user: any): string {
-  if (!user) return 'usuário';
-  return user.attributes?.email || user.username || user.userId || 'usuário';
-}
+import { AppHeader } from '@/components/app-header';
+import { ChatComposer } from '@/components/chat/chat-composer';
+import { ChatThread } from '@/components/chat/chat-thread';
+import { useChat } from '@/hooks/use-chat';
+import type { RuntimeConfig } from '@/lib/chat';
 
 export default function Page() {
   const [config, setConfig] = useState<RuntimeConfig | null>(null);
@@ -47,11 +34,11 @@ export default function Page() {
   }, []);
 
   if (configError) {
-    return <div style={{ padding: '2rem' }}>{configError}</div>;
+    return <div className="p-8 text-sm text-destructive">{configError}</div>;
   }
 
   if (!config) {
-    return <div style={{ padding: '2rem' }}>Carregando...</div>;
+    return <div className="p-8 text-sm text-muted-foreground">Carregando...</div>;
   }
 
   return (
@@ -63,154 +50,32 @@ export default function Page() {
   );
 }
 
-function ChatApp({ config, user, signOut }: { config: RuntimeConfig; user: any; signOut: () => void }) {
-  const [token, setToken] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
+function ChatApp({
+  config,
+  user,
+  signOut,
+}: {
+  config: RuntimeConfig;
+  user?: AuthUser;
+  signOut?: () => void;
+}) {
+  const { token, messages, loading, send, reset } = useChat(config);
 
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const session = await fetchAuthSession();
-        const idToken = session.tokens?.idToken?.toString();
-        if (idToken && mounted) {
-          setToken(idToken);
-        }
-      } catch (_) {
-        // sem sessão válida
-      }
-    })();
-    return () => { mounted = false; };
-  }, []);
-
-  async function sendMessage() {
-    if (!input.trim() || !config || !token) return;
-
-    const userMessage: ChatMessage = { role: 'user', content: input };
-    const nextMessages = [...messages, userMessage];
-    setMessages(nextMessages);
-    setInput('');
-    setLoading(true);
-
-    try {
-      const response = await fetch(`${config.apiUrl}/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          messages: nextMessages.map((m) => ({
-            role: m.role,
-            content: [{ text: m.content }],
-          })),
-        }),
-      });
-
-      if (response.status === 401) {
-        throw new Error('401 não autorizado — faça login novamente.');
-      }
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || errorData.message || `HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
-      setMessages([
-        ...nextMessages,
-        { role: 'assistant', content: data.reply || data.message || 'Sem resposta' },
-      ]);
-    } catch (err) {
-      setMessages([
-        ...nextMessages,
-        { role: 'assistant', content: `Erro: ${err instanceof Error ? err.message : String(err)}` },
-      ]);
-    } finally {
-      setLoading(false);
-    }
+  function handleSignOut() {
+    reset();
+    signOut?.();
   }
 
   return (
-    <div style={{ padding: '2rem', maxWidth: 800, margin: '0 auto', minHeight: '100vh', boxSizing: 'border-box' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <div>
-          <h1>Agente de Pagamentos</h1>
-          <p>Bem-vindo, {getDisplayName(user)}</p>
-        </div>
-        <button
-          onClick={() => { signOut(); setToken(null); setMessages([]); }}
-          style={{ padding: '0.5rem 1rem', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-        >
-          Sair
-        </button>
-      </div>
-
-      <div
-        style={{
-          border: '1px solid #ddd',
-          borderRadius: '8px',
-          padding: '1rem',
-          height: 'calc(100vh - 320px)',
-          maxHeight: '70vh',
-          overflowY: 'auto',
-          marginBottom: '1rem',
-          background: '#f9f9f9',
-          boxSizing: 'border-box',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '1rem',
-        }}
-      >
-        {messages.map((m, i) => (
-          <div
-            key={i}
-            style={{
-              padding: '0.75rem',
-              borderRadius: '6px',
-              background: m.role === 'user' ? '#dbeafe' : '#ffffff',
-              border: '1px solid #ccc',
-              maxWidth: '80%',
-              alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
-              boxSizing: 'border-box',
-            }}
-          >
-            <strong style={{ fontSize: '0.85rem', opacity: 0.7 }}>
-              {m.role === 'user' ? 'Você' : 'Agente'}
-            </strong>
-            {m.role === 'assistant' ? (
-              <ReactMarkdown remarkPlugins={[remarkGfm]} children={m.content} />
-            ) : (
-              m.content
-            )}
-          </div>
-        ))}
-        {messages.length === 0 && (
-          <div style={{ marginTop: 'auto', color: '#666', fontSize: '0.9rem' }}>
-            Digite uma mensagem para começar a conversa com o agente.
-          </div>
-        )}
-      </div>
-
-      <div style={{ display: 'flex', gap: '0.5rem', marginTop: 'auto' }}>
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-          placeholder="Digite sua mensagem (ex: listar produtos, comprar com cartão)"
-          disabled={loading || !token}
-          style={{ flex: 1, padding: '0.75rem', border: '1px solid #ccc', borderRadius: '4px', fontSize: '1rem' }}
-        />
-        <button
-          onClick={sendMessage}
-          disabled={loading || !input.trim() || !token}
-          style={{ padding: '0.75rem 1.5rem', background: loading || !input.trim() || !token ? '#9ca3af' : '#2563eb', color: '#fff', border: 'none', borderRadius: '4px', cursor: loading || !input.trim() || !token ? 'not-allowed' : 'pointer', fontSize: '1rem' }}
-        >
-          {loading ? 'Enviando...' : 'Enviar'}
-        </button>
-      </div>
-    </div>
+    <main className="mx-auto flex h-screen max-w-2xl flex-col gap-4 p-4">
+      {user && <AppHeader user={user} onSignOut={handleSignOut} />}
+      <ChatThread messages={messages} loading={loading} />
+      <ChatComposer
+        messages={messages}
+        loading={loading}
+        disabled={!token}
+        onSend={send}
+      />
+    </main>
   );
 }

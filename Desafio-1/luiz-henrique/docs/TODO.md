@@ -73,12 +73,17 @@ Região: `us-east-1`. Prefixo dos recursos: `luiz-henrique`.
 - [x] `frontend/lib/mock-auth.ts` removido.
 - [x] API URL lida de `config.json` publicado no deploy (sem rebuild por ambiente).
 - [x] Build estático (`next build`, `output: 'export'`) gerando `frontend/out`.
-- [ ] Render markdown nas respostas do agente (apenas texto bruto atualmente).
-- [ ] Mostrar nome/email do usuário após "Bem-vindo" (mostrando userId atualmente).
-- [ ] Em "Bem-vindo, <valor>", exibir o username/email do usuário Cognito em vez do UUID (`sub`).
-- [ ] Corrigir o balão de mensagem do usuário: "Você" está colado ao texto; adicionar espaço entre o rótulo e a mensagem.
-- [ ] Rolar a lista de mensagens automaticamente até o fim ao receber/enviar mensagens.
-- [ ] Chat box ocupar quase toda a altura vertical (atualmente fixo em 400px).
+- [x] Render markdown nas respostas do agente (apenas texto bruto atualmente).
+- [x] Mostrar nome/email do usuário após "Bem-vindo" (mostrando userId atualmente).
+- [x] Em "Bem-vindo, <valor>", exibir o username/email do usuário Cognito em vez do UUID (`sub`).
+- [x] Corrigir o balão de mensagem do usuário: "Você" está colado ao texto; adicionar espaço entre o rótulo e a mensagem.
+- [x] Rolar a lista de mensagens automaticamente até o fim ao receber/enviar mensagens.
+- [x] Chat box ocupar quase toda a altura vertical (atualmente fixo em 400px).
+- [x] Menu de usuário no canto: avatar com iniciais, nome, email, link Home, alternância de tema e Sair em vermelho.
+- [x] Tema claro/escuro (`next-themes`) com tokens HSL no `globals.css`.
+- [x] Composer em `<form>` com Enter para enviar, botão desabilitado durante o envio e placeholder `…` para resposta pendente.
+- [x] Histórico de entrada no composer: ↑ recupera mensagens anteriores, ↓ avança e limpa.
+- [x] Estado vazio da conversa com orientação de uso (ex.: listar produtos, comprar com cartão).
 - [ ] Catálogo menor, alinhado com repo anterior (https://github.com/luiztosk/squad-03-desafio-MCP-agentic).
 - [ ] Link para repo anterior no README.md.
 - [x] Verificar BEDROCK_MODEL_ID lido do `.env` — console/runtime agora mostram `global.anthropic.claude-haiku-4-5-20251001-v1:0`.
