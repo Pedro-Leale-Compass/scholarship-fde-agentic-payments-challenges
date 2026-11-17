@@ -174,9 +174,9 @@
     },
     {
       "key": "testPassword",
-      "value": "<redacted>",
+      "value": "",
       "type": "string",
-      "description": "Senha do usuário de teste (do .env: TEST_PASSWORD)"
+      "description": "Senha do usuário de teste. Defina no environment local (tests/postman-environment.json, gitignorado) a partir de TEST_PASSWORD no .env."
     },
     {
       "key": "userPoolClientId",

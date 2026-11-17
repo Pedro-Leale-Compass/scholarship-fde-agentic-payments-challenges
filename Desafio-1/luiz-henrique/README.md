@@ -86,13 +86,32 @@ localmente (porta 3031) com Bedrock real e as tools em fallback em memória.
 
 ## Modelo usado
 
-- Amazon Bedrock — Claude Haiku (modelo alvo do desafio)
+- Amazon Bedrock — Claude Haiku 4.5 (`global.anthropic.claude-haiku-4-5-20251001-v1:0`)
 - Agente Strands rodando no Bedrock AgentCore Runtime
-- Enquanto o acesso ao Claude Haiku não é liberado na conta, o agente usa
-  `global.amazon.nova-2-lite-v1:0`. Para trocar, defina `BEDROCK_MODEL_ID` no
-  `.env` e faça `npm run deploy:api-agent` (o modelo é lido do .env no deploy
-  da infra e no `dev:agent` local; sempre usa `override: true` para não manter
-  valor antigo do shell).
+- Fallback: se o acesso ao Claude Haiku não estiver liberado na conta, defina
+  `BEDROCK_MODEL_ID=global.amazon.nova-2-lite-v1:0` no `.env` e faça
+  `npm run deploy:api-agent` (o modelo é lido do .env no deploy da infra e no
+  `dev:agent` local; sempre usa `override: true` para não manter valor antigo do shell).
+
+## Testar o agente no console da AWS
+
+O contrato do AgentCore Runtime exige `prompt` **e** `usuario_id` no corpo. O console
+não preenche `usuario_id` sozinho: se ele faltar, o runtime responde `400` (validação
+do schema) e o console mostra apenas um erro genérico.
+
+```json
+{
+  "prompt": "liste o catálogo de produtos",
+  "usuario_id": "console-test-user"
+}
+```
+
+- Console: Bedrock AgentCore → Runtimes → `luiz_henrique_agent` → endpoint `DEFAULT`
+  → Test/Invoke → colar o JSON acima.
+- Em produção (API `/chat`) o `usuario_id` não vem do cliente: a Lambda do chat o
+  extrai do `sub` do token Cognito e monta esse payload internamente. Sem token, a API
+  responde `401` antes de chamar o runtime.
+- Detalhes, comandos de CLI e roteiro de teste: `docs/deploy-findings.md`.
 
 ## Modelagem do DynamoDB
 

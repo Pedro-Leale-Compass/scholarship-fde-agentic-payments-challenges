@@ -1,10 +1,13 @@
 import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
 import { Desafio1Stack } from '../lib/desafio-1-stack';
+import { loadEnv } from '../lib/env';
 
-// Carrega variáveis de ambiente do .env (ignorado pelo git) se existir.
-import dotenv from 'dotenv';
-dotenv.config({ override: true });
+// Carrega variáveis do .env (gitignorado) antes de qualquer leitura de process.env.
+const envFile = loadEnv();
+if (!envFile) {
+  console.warn('[env] no .env file found; using defaults (BEDROCK_MODEL_ID fallback, no test user)');
+}
 
 const app = new cdk.App();
 

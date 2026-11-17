@@ -36,7 +36,7 @@ Região: `us-east-1`. Prefixo dos recursos: `luiz-henrique`.
 
 - [x] Implementar agente Strands com as 3 tools acima (código em agent/index.ts)
 - [x] Modelo: Amazon Bedrock (Claude Haiku — alvo) via AgentCore Runtime (CDK: CfnAgentRuntime)
-- [ ] Liberar acesso ao Claude Haiku na conta Bedrock (formulário de use case da Anthropic). Enquanto isso, o agente usa `global.amazon.nova-2-lite-v1:0`.
+- [x] Liberar acesso ao Claude Haiku na conta Bedrock. — ativo: `global.anthropic.claude-haiku-4-5-20251001-v1:0` (runtime v5, verificado em 2026-11-17); fallback Nova 2 Lite mantido no CDK.
 - [x] Regras de negócio da Fase 1 inalteradas
 - [x] Container image no ECR (repositório criado via CDK; Dockerfile em agent/)
 - [x] IAM role com permissões para Bedrock Converse + invoke das 3 tool Lambdas
@@ -75,10 +75,13 @@ Região: `us-east-1`. Prefixo dos recursos: `luiz-henrique`.
 - [x] Build estático (`next build`, `output: 'export'`) gerando `frontend/out`.
 - [ ] Render markdown nas respostas do agente (apenas texto bruto atualmente).
 - [ ] Mostrar nome/email do usuário após "Bem-vindo" (mostrando userId atualmente).
+- [ ] Em "Bem-vindo, <valor>", exibir o username/email do usuário Cognito em vez do UUID (`sub`).
+- [ ] Corrigir o balão de mensagem do usuário: "Você" está colado ao texto; adicionar espaço entre o rótulo e a mensagem.
+- [ ] Rolar a lista de mensagens automaticamente até o fim ao receber/enviar mensagens.
 - [ ] Chat box ocupar quase toda a altura vertical (atualmente fixo em 400px).
 - [ ] Catálogo menor, alinhado com repo anterior (https://github.com/luiztosk/squad-03-desafio-MCP-agentic).
 - [ ] Link para repo anterior no README.md.
-- [ ] Verificar BEDROCK_MODEL_ID lido do .env (não do .env.example) — console ainda mostra nova-2-lite.
+- [x] Verificar BEDROCK_MODEL_ID lido do `.env` — console/runtime agora mostram `global.anthropic.claude-haiku-4-5-20251001-v1:0`.
 - [ ] Build estático (`next build`, `output: 'export'`) gerando `frontend/out`.
 - [ ] Build e publicação no Amplify Hosting via `scripts/deploy-frontend.sh`.
 

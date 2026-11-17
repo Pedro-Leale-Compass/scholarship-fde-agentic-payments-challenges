@@ -6,21 +6,16 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as customResources from 'aws-cdk-lib/custom-resources';
 import * as path from 'path';
+import { optionalEnv } from './env';
 
-// Carrega variáveis de ambiente do .env (ignorado pelo git) se existir.
-import dotenv from 'dotenv';
-dotenv.config({ path: path.resolve(__dirname, '..', '..', '.env'), override: true });
-
-if (!process.env.BEDROCK_MODEL_ID) {
-  throw new Error(
-    'BEDROCK_MODEL_ID environment variable is not defined. ' +
-    'Set it in .env (e.g. BEDROCK_MODEL_ID=us.anthropic.claude-haiku-4-5-20251001-v1:0).',
-  );
-}
-
-const MODEL_ID = process.env.BEDROCK_MODEL_ID;
-const FOUNDATION_MODEL_ID = 'amazon.nova-2-lite-v1:0';
+const DEFAULT_MODEL_ID = 'global.amazon.nova-2-lite-v1:0';
 const BEDROCK_MODEL_REGIONS = ['us-east-1', 'us-east-2', 'us-west-2'];
+
+// `global.`/`us.`/`eu.`/`apac.` prefixes identify cross-region inference profiles;
+// the foundation-model ARNs use the bare model id.
+function foundationModelId(modelId: string): string {
+  return modelId.replace(/^(global|us|eu|apac|us-gov)\./, '');
+}
 
 export interface AgentStackProps {
   stackPrefix: string;
@@ -48,6 +43,8 @@ export class AgentStack extends Construct {
 
     const { stackPrefix, toolLambdaArns } = props;
     const prefix = `${stackPrefix}-`;
+    const MODEL_ID = optionalEnv('BEDROCK_MODEL_ID', DEFAULT_MODEL_ID);
+    const FOUNDATION_MODEL_ID = foundationModelId(MODEL_ID);
 
     // CDK constrói e publica a imagem antes de criar o runtime.
     const image = new ecrAssets.DockerImageAsset(this, 'AgentImage', {
@@ -100,9 +97,10 @@ export class AgentStack extends Construct {
     this.agentRole.addToPolicy(
       new iam.PolicyStatement({
         actions: [
-          'bedrock-runtime:InvokeModel',
-          'bedrock-runtime:InvokeModelWithResponseStream',
-          'bedrock-runtime:Converse',
+          'bedrock:InvokeModel',
+          'bedrock:InvokeModelWithResponseStream',
+          'bedrock:Converse',
+          'bedrock:ConverseStream',
         ],
         resources: [
           `arn:aws:bedrock:us-east-1:${cdk.Aws.ACCOUNT_ID}:inference-profile/${MODEL_ID}`,

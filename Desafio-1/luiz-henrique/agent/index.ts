@@ -208,14 +208,47 @@ Você é um agente de compras da loja. Regras de negócio:
 
 // --- BedrockAgentCoreApp (local dev + AgentCore Runtime compatible) ---
 
+interface AgentRequest {
+  prompt?: unknown;
+  usuario_id?: unknown;
+}
+
+function jsonError(
+  statusCode: number,
+  code: string,
+  message: string,
+  extra?: Record<string, unknown>,
+): string {
+  return JSON.stringify({
+    statusCode,
+    body: { ok: false, code, error: message, ...extra },
+  });
+}
+
 const app = new BedrockAgentCoreApp({
   invocationHandler: {
-    requestSchema: z.object({
-      prompt: z.string().describe('Mensagem do usuário'),
-      usuario_id: z.string().describe('ID do usuário (sub do token Cognito)'),
-    }),
+    // No requestSchema here on purpose: the SDK answers schema failures with a
+    // JSON object, which Fastify/SSE cannot serialize and turns into an opaque
+    // 500. Validate in the handler and always answer with a JSON string.
     process: async (request) => {
-      const { prompt, usuario_id } = request as { prompt: string; usuario_id: string };
+      const payload = (request ?? {}) as AgentRequest;
+      const prompt = typeof payload.prompt === 'string' ? payload.prompt.trim() : '';
+      const usuario_id =
+        typeof payload.usuario_id === 'string' ? payload.usuario_id.trim() : '';
+
+      const missing = [
+        prompt.length > 0 ? null : 'prompt',
+        usuario_id.length > 0 ? null : 'usuario_id',
+      ].filter((field): field is string => field !== null);
+
+      if (missing.length > 0) {
+        return jsonError(
+          400,
+          'invalid_request',
+          `missing or blank required field(s): ${missing.join(', ')}`,
+          { required: { prompt: 'non-blank string', usuario_id: 'non-blank string' } },
+        );
+      }
 
       try {
         const agent = createAgent(usuario_id);
@@ -237,7 +270,11 @@ const app = new BedrockAgentCoreApp({
         });
       } catch (err) {
         console.error('agent invocation error:', err);
-        throw err;
+        return jsonError(
+          502,
+          'agent_error',
+          err instanceof Error ? err.message : String(err),
+        );
       }
     },
   },
