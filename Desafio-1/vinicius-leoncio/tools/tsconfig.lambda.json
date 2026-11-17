@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": false,
+    "sourceMap": false,
+    "rootDir": "src",
+    "types": ["node"],
+    "outDir": "build/lambda"
+  },
+  "include": ["src/lambda-handlers.ts"],
+  "exclude": ["src/tools.check.ts"]
+}

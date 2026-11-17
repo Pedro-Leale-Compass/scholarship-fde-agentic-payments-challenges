@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": false,
+    "sourceMap": false,
+    "rootDir": "src",
+    "types": ["node"],
+    "outDir": "build/lambda"
+  },
+  "include": ["src/**/*.ts"]
+}
