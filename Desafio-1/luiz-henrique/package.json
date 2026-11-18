@@ -1,0 +1,33 @@
+{
+  "name": "desafio-1",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Desafio 1 - Agente de Pagamentos na AWS (luiz-henrique) - raiz do CDK",
+  "scripts": {
+    "build": "cd infra && npm run build",
+    "synth": "cd infra && npx cdk synth",
+    "deploy:api-agent": "eval \"$(bash scripts/aws-creds.sh)\" && cd infra && npx cdk deploy --require-approval never --outputs-file cdk-outputs.json",
+    "deploy": "npm run deploy:api-agent",
+    "diff": "eval \"$(bash scripts/aws-creds.sh)\" && cd infra && npx cdk diff",
+    "destroy": "eval \"$(bash scripts/aws-creds.sh)\" && cd infra && npx cdk destroy --force && cd .. && bash scripts/destroy-cleanup.sh",
+    "dev:agent": "eval \"$(bash scripts/aws-creds.sh)\" && cd agent && npx tsx index.ts",
+    "dev": "bash scripts/dev-local.sh",
+    "check:model": "bash scripts/check-model.sh",
+    "check:logs": "bash scripts/check-logs.sh",
+    "setup": "npm install && npm --prefix frontend install",
+    "dev:frontend": "bash scripts/dev-frontend-local.sh",
+    "dev:create-test-user": "eval \"$(bash scripts/aws-creds.sh)\" && bash scripts/create-test-user.sh",
+    "user:invite": "eval \"$(bash scripts/aws-creds.sh)\" && bash scripts/invite-user.sh",
+    "user:set-limit": "eval \"$(bash scripts/aws-creds.sh)\" && bash scripts/set-limit.sh set",
+    "user:reset-limit": "eval \"$(bash scripts/aws-creds.sh)\" && bash scripts/set-limit.sh reset",
+    "test": "node --test tests/agent.test.mjs",
+    "test:agent": "node --test tests/agent.test.mjs",
+    "test:local": "bash scripts/local-flow.sh",
+    "test:ws": "eval \"$(bash scripts/aws-creds.sh)\" && set -a && . ./.env && set +a && unset AWS_PROFILE && node scripts/ws-smoke.mjs"
+  },
+  "devDependencies": {
+    "aws-cdk": "2.160.0",
+    "tsx": "^4.23.0",
+    "typescript": "~5.5.0"
+  }
+}
