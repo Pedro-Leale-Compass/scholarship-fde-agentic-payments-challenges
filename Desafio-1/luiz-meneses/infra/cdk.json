@@ -1,0 +1,7 @@
+{
+  "app": "npx tsx bin/app.ts",
+  "context": {
+    "prefixo": "luiz-meneses",
+    "origemFront": "http://localhost:5173"
+  }
+}

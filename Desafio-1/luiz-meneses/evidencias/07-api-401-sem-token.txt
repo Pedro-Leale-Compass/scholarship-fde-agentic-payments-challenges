@@ -1,0 +1,25 @@
+$ curl -i -X POST https://w6ilv2h9fl.execute-api.us-east-1.amazonaws.com/prod/chat -H "Content-Type: application/json" -d '{"message":"oi"}'
+HTTP/1.1 401 Unauthorized
+Content-Type: application/json
+Content-Length: 26
+Connection: keep-alive
+Access-Control-Allow-Origin: http://localhost:5173
+Access-Control-Allow-Headers: Authorization,Content-Type
+X-Cache: Error from cloudfront
+Via: 1.1 2ae0d8998d1b72a313a605d7b02ef22c.cloudfront.net (CloudFront)
+
+{"message":"Unauthorized"}
+
+
+$ curl -i -X POST https://w6ilv2h9fl.execute-api.us-east-1.amazonaws.com/prod/chat -H "Authorization: Bearer token.falso.qualquer" -d '{"message":"oi"}'
+HTTP/1.1 401 Unauthorized
+Content-Type: application/json
+Content-Length: 26
+Connection: keep-alive
+Access-Control-Allow-Origin: http://localhost:5173
+Access-Control-Allow-Headers: Authorization,Content-Type
+X-Cache: Error from cloudfront
+Via: 1.1 44a6c802c3d03205b127ad1ff111d67c.cloudfront.net (CloudFront)
+
+{"message":"Unauthorized"}
+

@@ -1,0 +1,11 @@
+node_modules/
+cdk.out/
+cdk-outputs.json
+dist/
+.env
+.env.local
+*.tfstate
+__pycache__/
+.pytest_cache/
+.venv/
+.env.teste
